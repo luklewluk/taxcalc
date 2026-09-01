@@ -1,0 +1,147 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Kalkulator PIT-38 — wgraj pliki{% endblock %}
+
+{% block progress %}
+    {% include '_partials/steps.html.twig' with {current: 1} only %}
+{% endblock %}
+
+{% block body %}
+    <h1>Wgraj pliki</h1>
+    <p class="lead">Zestawienia od brokera albo własny CSV. Format rozpoznaje się sam.</p>
+
+    <form action="{{ path('app_calculator_import') }}" method="post" enctype="multipart/form-data" class="panel">
+        <input type="hidden" name="_token" value="{{ csrf_token(csrf_token_id) }}">
+
+        <div class="field">
+            <div class="field--inline">
+                <label for="tax_year">Rok podatkowy</label>
+                <select id="tax_year" name="tax_year">
+                    {% for year in tax_years %}
+                        <option value="{{ year }}" {{ year == selected_year ? 'selected' : '' }}>{{ year }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <p class="field__hint">
+                Rozliczany jest rok sprzedaży lub wypłaty dywidendy. Zakupy z wcześniejszych lat
+                i tak posłużą do wyliczenia kosztów metodą FIFO.
+            </p>
+        </div>
+
+        <div class="field">
+            <div class="dropzone" data-role="dropzone">
+                <span class="dropzone__icon" aria-hidden="true"></span>
+                <label class="dropzone__label" for="files">Pliki CSV</label>
+                <input type="file" id="files" name="files[]" accept=".csv,.txt,text/csv,text/plain" multiple required>
+                <p class="dropzone__hint">Wybierz pliki z dysku albo przeciągnij je tutaj.</p>
+                <p class="dropzone__status" data-role="file-summary" aria-live="polite"></p>
+            </div>
+            <p class="field__hint">
+                Pliki są odczytywane w pamięci i natychmiast usuwane — nic nie zostaje na serwerze.
+            </p>
+            <p class="quiet">
+                Do {{ max_files }} plików CSV, każdy do {{ max_megabytes }} MB, w kodowaniu UTF-8.
+            </p>
+        </div>
+
+        <p class="actions actions--start">
+            <button type="submit" class="button button--primary button--large button--next">Wczytaj pliki</button>
+        </p>
+    </form>
+
+    <section class="section" aria-labelledby="pomoc">
+        <p class="eyebrow">Pomoc</p>
+        <h2 id="pomoc">Skąd wziąć plik</h2>
+
+        <details class="disclosure disclosure--card">
+            <summary>Jak pobrać pliki z IBKR</summary>
+            <div class="disclosure__body">
+                <ul class="list-plain">
+                    <li>
+                        <strong>Transakcje giełdowe:</strong> <em>Performance &amp; Reports → Flex Queries</em>,
+                        zapytanie typu <em>Trades</em> z kolumnami
+                        <code>AssetClass, Symbol, TradeDate, Quantity, TradePrice, NetCash, TransactionID, CurrencyPrimary</code>.
+                    </li>
+                    <li>
+                        <strong>Dywidendy (zalecane):</strong> <em>Performance &amp; Reports → Tax Documents</em> →
+                        zestawienie <em>Dividend Detail</em> w CSV. Zawiera kraj źródła, więc nie trzeba go uzupełniać.
+                    </li>
+                    <li>
+                        <strong>Dywidendy z aktywności:</strong> zapytanie Flex z sekcji <em>Cash Transactions</em>
+                        z typami <em>Dividends</em> oraz <em>Withholding Tax</em>, żeby podatek u źródła wczytał się sam.
+                    </li>
+                </ul>
+                <p>Nie masz konta w IBKR? Wystarczy arkusz zapisany w formacie własnym.</p>
+            </div>
+        </details>
+
+        <details class="disclosure disclosure--card">
+            <summary>Jak pobrać pliki z DEGIRO</summary>
+            <div class="disclosure__body">
+                <p>
+                    Oba pliki są w portfelu DEGIRO w sekcji <em>Aktywność</em>. Wybierz zakres dat obejmujący
+                    cały rok — a przy sprzedaży także lata, w których kupowałeś — i użyj <em>Eksport → CSV</em>.
+                </p>
+                <ul class="list-plain">
+                    <li>
+                        <strong>Transakcje</strong> — kupno i sprzedaż. Kwota rozliczenia brana jest z kolumny
+                        <em>Total</em>, więc zawiera już opłatę transakcyjną.
+                    </li>
+                    <li>
+                        <strong>Zestawienie konta</strong> — dywidendy i pobrany podatek u źródła. O roku
+                        podatkowym decyduje <em>data waluty</em>.
+                    </li>
+                </ul>
+                <p>
+                    Eksport nie zawiera kraju dochodu — kalkulator proponuje go z prefiksu ISIN. To kraj
+                    rejestracji papieru, nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj” na następnym ekranie.
+                </p>
+                <p>
+                    Instrukcję prowadzi też sam broker:
+                    <a href="https://www.degiro.com/uk/helpdesk/tax/tax-treaties/which-reports-are-there-and-where-can-i-find-them"
+                       rel="noreferrer noopener nofollow">Which reports are there and where can I find them</a>.
+                </p>
+            </div>
+        </details>
+
+        <details class="disclosure disclosure--card">
+            <summary>Czego kalkulator nie rozliczy</summary>
+            <div class="disclosure__body">
+                <p>W każdym z tych przypadków import zatrzymuje się i mówi wprost, którego instrumentu dotyczy.</p>
+                <ul class="list-plain">
+                    <li>
+                        <strong>Operacje korporacyjne</strong> — splity, scalenia, przydziały. Pominięcie takiego
+                        wiersza zmieniłoby koszt nabycia wszystkich późniejszych sprzedaży tego papieru.
+                    </li>
+                    <li>
+                        <strong>Sprzedaż bez pokrycia w zakupach</strong> — bez kosztu nabycia cały przychód
+                        wyglądałby jak dochód. Dograj wcześniejsze zestawienie.
+                    </li>
+                    <li>
+                        <strong>Pozycja kupiona i sprzedana w różnych walutach</strong> — pozycja zamknięta ma
+                        jedną walutę, więc wybór „którejś” z nich byłby zgadywaniem.
+                    </li>
+                    <li>
+                        <strong>Opłaty, których nie ma w pliku</strong> — starsze eksporty DEGIRO nie ujmowały
+                        kosztu przewalutowania w kwocie całkowitej.
+                    </li>
+                </ul>
+            </div>
+        </details>
+
+        <details class="disclosure disclosure--card">
+            <summary>Przykładowe pliki</summary>
+            <div class="disclosure__body">
+                <p>Wyłącznie dane fikcyjne; pokazują wymagany układ kolumn.</p>
+                <ul class="list-plain">
+                    {% for filename, meta in example_files %}
+                        <li>
+                            <a href="{{ path('app_example_file', {filename: filename}) }}" download>{{ filename }}</a>
+                            <span class="quiet">{{ meta[1] }}</span>
+                        </li>
+                    {% endfor %}
+                </ul>
+            </div>
+        </details>
+    </section>
+{% endblock %}

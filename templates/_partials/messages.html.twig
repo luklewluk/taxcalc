@@ -1,0 +1,39 @@
+{#
+    Import feedback. Errors are always visible - they stop the calculation, so
+    they are never a click away. A long tail of warnings and every information
+    message is grouped, because a screen of grey paragraphs hides the one line
+    that actually needs attention.
+#}
+{% if errors is not empty or warnings is not empty or infos is not empty %}
+    <div class="messages" role="status" aria-live="polite">
+        {% for message in errors %}
+            <p class="message message--error"><strong>Błąd:</strong> {{ message }}</p>
+        {% endfor %}
+
+        {% if warnings|length <= 3 %}
+            {% for message in warnings %}
+                <p class="message message--warning">{{ message }}</p>
+            {% endfor %}
+        {% else %}
+            <details class="message-group">
+                <summary>Ostrzeżenia ({{ warnings|length }})</summary>
+                <div class="message-group__body">
+                    {% for message in warnings %}
+                        <p class="message message--warning">{{ message }}</p>
+                    {% endfor %}
+                </div>
+            </details>
+        {% endif %}
+
+        {% if infos is not empty %}
+            <details class="message-group">
+                <summary>Informacje o wczytanych plikach ({{ infos|length }})</summary>
+                <div class="message-group__body">
+                    {% for message in infos %}
+                        <p class="message message--info">{{ message }}</p>
+                    {% endfor %}
+                </div>
+            </details>
+        {% endif %}
+    </div>
+{% endif %}

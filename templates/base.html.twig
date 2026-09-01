@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="index, follow">
+    <meta name="description" content="{% block meta_description %}Otwartoźródłowy kalkulator podatku PIT-38 od akcji i dywidend. Dane przetwarzane w pamięci, bez bazy danych i bez zapisywania plików.{% endblock %}">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0e0b" media="(prefers-color-scheme: dark)">
+    <title>{% block title %}{{ app_name }}{% endblock %}</title>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
+    <link rel="icon" href="data:,">
+</head>
+<body>
+<a class="skip-link" href="#tresc">Przejdź do treści</a>
+
+{# The current route drives aria-current; the error page renders without one. #}
+{% set current_route = app.request is not null ? app.current_route : null %}
+
+<header class="site-header">
+    <div class="container site-header__inner">
+        <a class="site-header__brand" href="{{ path('app_home') }}">
+            <span class="brand-mark" aria-hidden="true"></span>
+            {{ app_name }}
+        </a>
+        <nav aria-label="Nawigacja główna">
+            <ul class="site-nav">
+                <li><a href="{{ path('app_home') }}"{{ current_route == 'app_home' ? ' aria-current="page"' : '' }}>Start</a></li>
+                <li><a href="{{ path('app_calculator') }}"{{ current_route == 'app_calculator' ? ' aria-current="page"' : '' }}>Kalkulator</a></li>
+                {% if app_repository_url %}
+                    <li><a href="{{ app_repository_url }}" rel="noopener noreferrer">Kod</a></li>
+                {% endif %}
+            </ul>
+        </nav>
+    </div>
+</header>
+
+<main id="tresc" class="{% block container_class %}container{% endblock %}">
+    {% block progress %}{% endblock %}
+    {% block body %}{% endblock %}
+</main>
+
+<footer class="site-footer">
+    <div class="container">
+        <div class="site-footer__grid">
+            <p class="disclaimer" role="note">
+                Narzędzie pomocnicze — nie stanowi porady podatkowej. Wyniki warto zestawić
+                z aktualnymi przepisami oraz formularzami PIT-38 i PIT/ZG.
+            </p>
+            <p>
+                {{ app_name }} — open source, licencja MIT. Twoje dane nie są nigdzie zapisywane.
+                {% if app_repository_url %}
+                    <a href="{{ app_repository_url }}" rel="noopener noreferrer">Repozytorium</a>.
+                {% endif %}
+            </p>
+        </div>
+    </div>
+</footer>
+
+{% block javascripts %}
+    <script src="{{ asset('js/app.js') }}" defer></script>
+{% endblock %}
+</body>
+</html>

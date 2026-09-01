@@ -1,0 +1,36 @@
+services:
+  app:
+    build: .
+    image: pit-stock-calc
+    ports:
+      - "127.0.0.1:8080:8080"
+    environment:
+      APP_ENV: prod
+      APP_DEBUG: "0"
+      # Generate a real one before exposing this anywhere:
+      #   php -r 'echo bin2hex(random_bytes(16)), PHP_EOL;'
+      APP_SECRET: ${APP_SECRET:?ustaw APP_SECRET, np. w pliku .env obok compose.yaml}
+      # Regular expression matching the hostnames you serve from.
+      TRUSTED_HOSTS: ${TRUSTED_HOSTS:-}
+      DEFAULT_URI: ${DEFAULT_URI:-http://localhost:8080}
+      NBP_API_BASE_URL: https://api.nbp.pl/api/
+      APP_REPOSITORY_URL: ${APP_REPOSITORY_URL:-https://github.com/luklewluk/pit-stock-calc}
+    restart: unless-stopped
+
+    # No user data is ever written, so everything except the framework cache
+    # can stay read-only.
+    read_only: true
+    tmpfs:
+      # Alpine's www-data UID/GID is 82. Mount options matter: a bare tmpfs is
+      # root-owned and the non-root nginx/PHP processes cannot write to it.
+      - /tmp:rw,noexec,nosuid,size=128m,uid=82,gid=82,mode=1770
+    volumes:
+      - app-cache:/app/var
+
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+
+volumes:
+  app-cache:

@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="color-scheme" content="light dark">
+    <title>Raport PIT-38 za {{ report.taxYear }}</title>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
+    <link rel="icon" href="data:,">
+</head>
+<body class="printable">
+<main class="container container--wide">
+    <header class="print-header">
+        <h1>Raport pomocniczy do PIT-38 za {{ report.taxYear }}</h1>
+        <p class="muted">Wygenerowano lokalnie przez {{ app_name }}. Dokument nie został nigdzie zapisany.</p>
+    </header>
+
+    {# `expanded` keeps every disclosure open, so nothing is missing on paper. #}
+    {% include '_partials/report_body.html.twig' with {expanded: true} %}
+
+    <footer class="print-footer">
+        <p class="disclaimer">Zastrzeżenie: {{ disclaimer }}</p>
+    </footer>
+
+    {#
+        Only a script can open the browser's print dialog - no link or form does
+        it. So the button ships `hidden` and app.js reveals it; with JavaScript
+        off the shortcut line stays instead. A visible button that does nothing
+        would be worse than no button at all.
+    #}
+    <p class="actions no-print">
+        <button type="button" class="button button--primary" data-action="print" hidden>Drukuj</button>
+        <span class="print-hint" data-role="print-fallback">
+            Drukowanie uruchamia przeglądarka: naciśnij <kbd>Ctrl</kbd>&nbsp;+&nbsp;<kbd>P</kbd>
+            (na Macu <kbd>⌘</kbd>&nbsp;+&nbsp;<kbd>P</kbd>) albo wybierz „Drukuj” w jej menu.
+            Ten raport jest już w całości rozwinięty, więc wydruk nic nie pominie.
+        </span>
+        <a class="button button--plain" href="{{ path('app_calculator') }}">Wróć do kalkulatora</a>
+    </p>
+</main>
+<script src="{{ asset('js/app.js') }}" defer></script>
+</body>
+</html>

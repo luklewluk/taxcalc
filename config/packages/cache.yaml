@@ -1,0 +1,16 @@
+framework:
+    cache:
+        prefix_seed: 'pit_stock_calc'
+
+        # Only public NBP exchange rates are cached - never any uploaded user data.
+        pools:
+            nbp.rate.cache:
+                adapter: cache.adapter.filesystem
+                default_lifetime: 31536000
+
+when@test:
+    framework:
+        cache:
+            pools:
+                nbp.rate.cache:
+                    adapter: cache.adapter.array

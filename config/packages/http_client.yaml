@@ -1,0 +1,9 @@
+framework:
+    http_client:
+        scoped_clients:
+            nbp.http_client:
+                base_uri: '%env(NBP_API_BASE_URL)%'
+                timeout: 10
+                max_duration: 20
+                headers:
+                    Accept: 'application/json'

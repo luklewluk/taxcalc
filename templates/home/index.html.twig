@@ -1,0 +1,156 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}{{ app_name }} — prywatny kalkulator podatku od akcji i dywidend{% endblock %}
+
+{% block body %}
+    <section class="hero">
+        <div class="hero__text">
+            <p class="eyebrow">Open source · Licencja MIT</p>
+            <h1>PIT-38 bez arkuszy i bez wysyłania danych</h1>
+            <p class="lead hero__lead">
+                Wgrywasz zestawienie od brokera, kalkulator przelicza je po kursach NBP i pokazuje
+                kwoty do PIT-38 oraz PIT/ZG.
+            </p>
+            <p class="hero__actions">
+                <a class="button button--primary button--large button--next" href="{{ path('app_calculator') }}">Oblicz podatek</a>
+                <a class="button" href="#jak-to-dziala">Jak to działa</a>
+            </p>
+            <p class="hero__meta">Działa z IBKR, DEGIRO i własnym CSV.</p>
+        </div>
+
+        {#
+            Decoration, not data: bars rather than digits, so nothing here can be
+            mistaken for a figure the calculator produced.
+        #}
+        <div class="hero__art" aria-hidden="true">
+            <div class="hero__art-back"></div>
+            <div class="hero__art-card">
+                <span class="hero__art-row"></span>
+                <span class="hero__art-row"></span>
+                <span class="hero__art-row"></span>
+                <span class="hero__art-row"></span>
+                <span class="hero__art-total"></span>
+            </div>
+        </div>
+    </section>
+
+    <ul class="chips trust">
+        <li class="chip">Bez konta</li>
+        <li class="chip">Bez bazy danych</li>
+        <li class="chip">Bez śledzenia</li>
+    </ul>
+
+    <section class="section" aria-labelledby="jak-to-dziala">
+        <p class="eyebrow">Przebieg</p>
+        <h2 id="jak-to-dziala">Trzy kroki</h2>
+        <ol class="flow">
+            <li class="flow__step">
+                <span class="flow__num" aria-hidden="true">1</span>
+                <h3 class="flow__title">Wgraj</h3>
+                <p class="flow__text">Pliki CSV od brokera. Format rozpoznaje się sam.</p>
+            </li>
+            <li class="flow__step">
+                <span class="flow__num" aria-hidden="true">2</span>
+                <h3 class="flow__title">Sprawdź</h3>
+                <p class="flow__text">Przejrzyj dopasowane pozycje, uzupełnij kraj, usuń zbędne wiersze.</p>
+            </li>
+            <li class="flow__step">
+                <span class="flow__num" aria-hidden="true">3</span>
+                <h3 class="flow__title">Pobierz wynik</h3>
+                <p class="flow__text">Kwoty do zeznania plus raport CSV i wersja do wydruku.</p>
+            </li>
+        </ol>
+    </section>
+
+    <section class="section" aria-labelledby="brokerzy">
+        <p class="eyebrow">Źródła danych</p>
+        <h2 id="brokerzy">Skąd mogą pochodzić dane</h2>
+        <dl class="brokers">
+            <div>
+                <dt>Interactive Brokers</dt>
+                <dd>Zapytania Flex z transakcjami oraz zestawienia dywidend, w tym Dividend Detail z krajem źródła.</dd>
+            </div>
+            <div>
+                <dt>DEGIRO</dt>
+                <dd>Transakcje i zestawienie konta, w dowolnym języku eksportu.</dd>
+            </div>
+            <div>
+                <dt>Własny plik CSV</dt>
+                <dd>Zwykły arkusz z pozycjami zamkniętymi albo dywidendami, zapisany jako CSV.</dd>
+            </div>
+        </dl>
+    </section>
+
+    <section class="section" aria-labelledby="szczegoly">
+        <p class="eyebrow">Dobrze wiedzieć</p>
+        <h2 id="szczegoly">Szczegóły</h2>
+        <div class="disclosure-group">
+            <details class="disclosure">
+                <summary>Co się dzieje z moimi danymi</summary>
+                <div class="disclosure__body">
+                    <ul class="list-plain">
+                        <li>Aplikacja nie ma bazy danych — plik jest czytany w pamięci, w obrębie jednego żądania.</li>
+                        <li>Tymczasowy plik z wysyłki jest usuwany natychmiast po odczytaniu.</li>
+                        <li>W sesji zostaje wyłącznie token CSRF; kwoty i daty krążą w formularzu w Twojej przeglądarce.</li>
+                        <li>Zero analityki i zero zewnętrznych zasobów — strona ładuje się tylko z tego serwera.</li>
+                    </ul>
+                    <p>Kalkulator jest wolnym oprogramowaniem na licencji MIT i możesz uruchomić go lokalnie.</p>
+                </div>
+            </details>
+
+            <details class="disclosure">
+                <summary>Jak liczy kalkulator</summary>
+                <div class="disclosure__body">
+                    <ul class="list-plain">
+                        <li>Każda kwota przeliczana jest kursem średnim NBP z ostatniego dnia roboczego poprzedzającego transakcję (zasada D-1).</li>
+                        <li>Sprzedaże dopasowywane są do najstarszych zakupów metodą FIFO; zakupy z wcześniejszych lat pozostają dostępne.</li>
+                        <li>Podatek od dochodu ze sprzedaży to 19%; przy stracie wynosi zero.</li>
+                        <li>Przy dywidendach pokazywane są dwa warianty odliczenia podatku zagranicznego, bo stan prawny jest sporny.</li>
+                        <li>Wartości rozbite na kraje odpowiadają układowi załącznika PIT/ZG.</li>
+                        <li>Kwoty liczone są w arytmetyce dziesiętnej, bez liczb zmiennoprzecinkowych.</li>
+                    </ul>
+                </div>
+            </details>
+
+            <details class="disclosure">
+                <summary>Stawki umowne przyjmowane domyślnie</summary>
+                <div class="disclosure__body">
+                    <p>
+                        Te stawki ograniczają jedynie kwotę podatku zagranicznego możliwą do odliczenia
+                        w Polsce. Umowy bywają zmieniane — zweryfikuj stawkę dla swojej sytuacji.
+                    </p>
+                    <div class="table-wrapper">
+                        <table class="table table--compact">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Kod</th>
+                                    <th scope="col">Kraj</th>
+                                    <th scope="col">Stawka</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for code, rate in treaty_rates %}
+                                    <tr>
+                                        <th scope="row"><code>{{ code }}</code></th>
+                                        <td>{{ country_names[code] }}</td>
+                                        <td>{{ rate }}%</td>
+                                    </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </details>
+        </div>
+    </section>
+
+    <section class="cta-band" aria-labelledby="zaczynamy">
+        <div class="cta-band__text">
+            <h2 id="zaczynamy">Gotowe w kilka minut</h2>
+            <p>Serwer przetwarza plik tylko w pamięci i niczego nie zapisuje.</p>
+        </div>
+        <p class="actions">
+            <a class="button button--primary button--large button--next" href="{{ path('app_calculator') }}">Oblicz podatek</a>
+        </p>
+    </section>
+{% endblock %}

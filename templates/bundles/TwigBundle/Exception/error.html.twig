@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="color-scheme" content="light dark">
+    <meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
+    <meta name="theme-color" content="#0c0e0b" media="(prefers-color-scheme: dark)">
+    <title>Coś poszło nie tak — {{ app_name }}</title>
+    <link rel="stylesheet" href="{{ asset('css/app.css') }}">
+    <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
+    <link rel="icon" href="data:,">
+</head>
+<body>
+<main class="container">
+    <section class="error-page">
+        <p class="error-page__badge">Błąd {{ status_code }}</p>
+
+        <h1>
+            {% if status_code == 404 %}
+                Nie znaleziono strony
+            {% elseif status_code == 403 %}
+                Brak dostępu
+            {% elseif status_code == 413 %}
+                Przesłane pliki są za duże
+            {% else %}
+                Wystąpił nieoczekiwany błąd
+            {% endif %}
+        </h1>
+
+        <p class="lead">
+            {% if status_code == 404 %}
+                Ten adres nie istnieje. Sprawdź pisownię albo wróć na stronę główną.
+            {% elseif status_code == 403 %}
+                Formularz stracił ważność lub token bezpieczeństwa był nieprawidłowy.
+                Wróć do kalkulatora i spróbuj jeszcze raz.
+            {% elseif status_code == 413 %}
+                Zmniejsz liczbę plików albo podziel dane na mniejsze części.
+            {% else %}
+                Nic nie zostało zapisane. Wróć do kalkulatora i spróbuj ponownie —
+                jeśli problem się powtarza, zgłoś go w repozytorium projektu.
+            {% endif %}
+        </p>
+
+        <p class="actions">
+            <a class="button button--primary button--next" href="{{ path('app_calculator') }}">Wróć do kalkulatora</a>
+            <a class="button button--link" href="{{ path('app_home') }}">Strona główna</a>
+        </p>
+
+        <p class="quiet">Żadne wgrane dane nie zostały zapisane na serwerze.</p>
+    </section>
+</main>
+</body>
+</html>

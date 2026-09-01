@@ -1,0 +1,68 @@
+parameters:
+    app.examples_dir: '%kernel.project_dir%/examples'
+    app.upload.max_files: 10
+    app.upload.max_bytes: 5242880
+    app.tax_year.first: 2018
+
+    # Maximum normalized records (positions + dividends) one import may produce.
+    # The review form has to fit inside PHP's max_input_vars - see docker/php.ini.
+    app.rows.max: 5000
+
+    # Maximum data rows read from a single file, applied while iterating so an
+    # oversized upload is bounded before it becomes an array of domain objects.
+    app.import.max_rows_per_file: 50000
+
+services:
+    _defaults:
+        autowire: true
+        autoconfigure: true
+        bind:
+            $examplesDir: '%app.examples_dir%'
+            $maxFiles: '%app.upload.max_files%'
+            $maxBytes: '%app.upload.max_bytes%'
+            $firstTaxYear: '%app.tax_year.first%'
+            $nbpApiBaseUrl: '%env(NBP_API_BASE_URL)%'
+            $maxRows: '%app.rows.max%'
+            $maxRecords: '%app.rows.max%'
+            $maxRowsPerFile: '%app.import.max_rows_per_file%'
+
+    App\:
+        resource: '../src/'
+        exclude:
+            - '../src/Kernel.php'
+            - '../src/Money/'
+            - '../src/Import/Degiro/'
+            - '../src/Import/Dto/'
+            - '../src/Tax/Result/'
+            - '../src/CurrencyRate/ExchangedAmount.php'
+
+    App\CurrencyRate\ExchangeInterface: '@App\CurrencyRate\NbpExchange'
+
+    App\CurrencyRate\NbpRateProviderInterface: '@App\CurrencyRate\CachedNbpRateProvider'
+
+    App\CurrencyRate\CachedNbpRateProvider:
+        arguments:
+            $delegate: '@App\CurrencyRate\NbpApiRateProvider'
+            $cache: '@nbp.rate.cache'
+
+    App\CurrencyRate\NbpApiRateProvider:
+        arguments:
+            $httpClient: '@nbp.http_client'
+
+when@test:
+    services:
+        _defaults:
+            autowire: true
+            autoconfigure: true
+
+        # Tests must never touch the network: the NBP HTTP layer is replaced by a
+        # deterministic in-memory provider.
+        App\CurrencyRate\NbpRateProviderInterface: '@App\Tests\Support\FixedNbpRateProvider'
+
+        App\Tests\Support\FixedNbpRateProvider:
+            public: true
+
+        # Several tests deliberately trigger 403/404 responses. Symfony's default
+        # logger prints those to stderr, which buries the actual test output.
+        logger:
+            class: Psr\Log\NullLogger

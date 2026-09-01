@@ -1,0 +1,11 @@
+twig:
+    file_name_pattern: '*.twig'
+    default_path: '%kernel.project_dir%/templates'
+    strict_variables: true
+    globals:
+        app_name: 'Kalkulator PIT-38'
+        app_repository_url: '%env(APP_REPOSITORY_URL)%'
+
+when@test:
+    twig:
+        strict_variables: true

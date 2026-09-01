@@ -1,0 +1,20 @@
+.git
+.github
+var
+vendor
+tests
+examples/*.local.csv
+input
+output
+node_modules
+.env.local
+.env.*.local
+# Never bake an operator's local APP_SECRET or deployment settings into an image.
+.env
+.phpunit.result.cache
+phpunit.xml
+phpstan.neon
+Dockerfile
+compose.yaml
+*.md
+!README.md
