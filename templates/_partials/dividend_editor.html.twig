@@ -1,0 +1,27 @@
+<div class="table-wrapper table-wrapper--editable">
+    <table class="table table--editable">
+        <thead><tr><th>Instrument</th><th>Kraj</th><th>Data uzyskania</th><th>Waluta</th><th>Brutto</th><th>Podatek u źródła</th><th>Źródło</th><th>Usuń</th></tr></thead>
+        <tbody data-editor-body="dividends">
+        {% for index, row in dividend_rows %}
+            {% set country_group = dividend_country_groups[index] ?? {group_id: '', empty_count: 0} %}
+            <tr id="row-{{ row.id }}" data-row-id="{{ row.id }}" data-country-group="{{ country_group.group_id }}">
+                <td><input type="hidden" name="dividends[{{ index }}][id]" value="{{ row.id }}"><input name="dividends[{{ index }}][name]" value="{{ row.name }}" aria-label="Nazwa dywidendy, wiersz {{ index + 1 }}" required></td>
+                <td><select name="dividends[{{ index }}][country]" aria-label="Kraj dywidendy, wiersz {{ index + 1 }}" required aria-required="true"><option value="">— wybierz —</option>{% for code, name in country_options %}<option value="{{ code }}" {{ row.country == code ? 'selected' : '' }}>{{ code }} — {{ name }}</option>{% endfor %}</select></td>
+                <td><input type="date" name="dividends[{{ index }}][date]" value="{{ row.date }}" required></td>
+                <td><input name="dividends[{{ index }}][currency]" value="{{ row.currency }}" size="4" required></td>
+                <td><input name="dividends[{{ index }}][gross]" value="{{ row.gross }}" size="12" inputmode="decimal" required></td>
+                <td><input name="dividends[{{ index }}][tax_paid]" value="{{ row.tax_paid }}" size="12" inputmode="decimal"></td>
+                <td class="cell--source">{{ row.source ?: 'ręcznie' }}<input type="hidden" name="dividends[{{ index }}][source]" value="{{ row.source }}"></td>
+                <td><label class="remove-toggle"><input type="checkbox" name="dividends[{{ index }}][remove]" value="1"><span class="visually-hidden">Usuń dywidendę {{ index + 1 }}</span></label></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if dividend_rows is empty %}<p class="note">Brak dywidend.</p>{% endif %}
+<template data-row-template="dividends"><tr data-row-id="">
+    <td><input type="hidden" name="dividends[__INDEX__][id]" value=""><input name="dividends[__INDEX__][name]" aria-label="Nazwa dywidendy" required></td>
+    <td><select name="dividends[__INDEX__][country]" aria-label="Kraj dywidendy" required aria-required="true"><option value="">— wybierz —</option>{% for code, name in country_options %}<option value="{{ code }}">{{ code }} — {{ name }}</option>{% endfor %}</select></td>
+    <td><input type="date" name="dividends[__INDEX__][date]" required></td><td><input name="dividends[__INDEX__][currency]" size="4" required></td><td><input name="dividends[__INDEX__][gross]" size="12" inputmode="decimal" required></td><td><input name="dividends[__INDEX__][tax_paid]" value="0" size="12" inputmode="decimal"></td>
+    <td class="cell--source">ręcznie<input type="hidden" name="dividends[__INDEX__][source]" value="ręcznie"></td><td><label class="remove-toggle"><input type="checkbox" name="dividends[__INDEX__][remove]" value="1"><span class="visually-hidden">Usuń dywidendę</span></label></td>
+</tr></template>

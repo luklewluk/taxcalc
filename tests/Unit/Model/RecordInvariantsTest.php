@@ -88,6 +88,54 @@ final class RecordInvariantsTest extends TestCase
         );
     }
 
+    /**
+     * The sell fee stopped being decoration once it started grossing up the
+     * declared przychód, so a foreign-currency fee has to be refused here. The
+     * alternative is Amount::plus() throwing CurrencyMismatchException deep in
+     * the tax layer, which is a LogicException nothing catches - a 500 instead
+     * of a message on the offending row.
+     */
+    public function testAFeeInAnotherCurrencyIsRefused(): void
+    {
+        $this->expectException(InvalidRecordException::class);
+
+        self::position(sellCommission: Amount::of('1.00', 'EUR'));
+    }
+
+    public function testANegativeFeeIsRefused(): void
+    {
+        $this->expectException(InvalidRecordException::class);
+
+        self::position(sellAutoFx: Amount::of('-1.00', 'USD'));
+    }
+
+    public function testAnExplicitZeroFeeIsAccepted(): void
+    {
+        // A blank column means "not reported" and stays null; a reported 0.00
+        // is data, and the split can be made from it.
+        $position = self::position(sellCommission: Amount::of('0.00', 'USD'));
+
+        self::assertSame('0.00', (string) $position->disposalFee()?->value());
+    }
+
+    public function testTheDisposalFeeSumsOnlyWhatWasReported(): void
+    {
+        self::assertNull(self::position()->disposalFee());
+        self::assertSame(
+            '1.25',
+            (string) self::position(sellCommission: Amount::of('1.25', 'USD'))->disposalFee()?->value(),
+        );
+        self::assertSame(
+            '1.75',
+            (string) self::position(
+                sellCommission: Amount::of('1.25', 'USD'),
+                sellAutoFx: Amount::of('0.50', 'USD'),
+            )->disposalFee()?->value(),
+        );
+        // The buy leg never contributes: it is already inside buyAmount.
+        self::assertNull(self::position(buyCommission: Amount::of('1.00', 'USD'))->disposalFee());
+    }
+
     public function testValidPositionIsAccepted(): void
     {
         $position = self::position();
@@ -152,6 +200,9 @@ final class RecordInvariantsTest extends TestCase
         string $buy = '10.00',
         string $sell = '15.00',
         ?string $quantity = '3',
+        ?Amount $buyCommission = null,
+        ?Amount $sellCommission = null,
+        ?Amount $sellAutoFx = null,
     ): ClosedPosition {
         return new ClosedPosition(
             'AAA',
@@ -163,6 +214,9 @@ final class RecordInvariantsTest extends TestCase
             Amount::of($sell, 'USD'),
             null === $quantity ? null : Decimal::of($quantity),
             'test',
+            buyCommission: $buyCommission,
+            sellCommission: $sellCommission,
+            sellAutoFx: $sellAutoFx,
         );
     }
 

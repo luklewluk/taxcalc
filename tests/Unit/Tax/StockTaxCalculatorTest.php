@@ -137,6 +137,142 @@ final class StockTaxCalculatorTest extends TestCase
         self::assertSame('0', (string) $result->taxRoundedToZloty->value());
     }
 
+    public function testSellCommissionIsGrossedIntoRevenueAndAddedToCost(): void
+    {
+        // Single-lot position, USD fixed at 4.0: gross proceeds are
+        // 4478.75 + 1.25 = 4480.00, and the same 1.25 is a cost of disposal.
+        $result = $this->calculator->calculate([
+            self::position(
+                'ALFA CORP', 'US', 'USD',
+                '2024-04-03', '1523.98',
+                '2025-02-27', '4478.75',
+                sellCommission: '1.25',
+            ),
+        ]);
+
+        $position = $result->positions[0];
+        self::assertSame('4480.00', (string) $position->revenue->original->value());
+        self::assertSame('17920.00', (string) $position->revenue->pln->value());
+        self::assertSame('6095.92', (string) $position->cost->pln->value());
+        self::assertSame('5.00', (string) $position->disposalCost?->pln->value());
+        self::assertSame('6100.92', (string) $position->totalCost()->value());
+        self::assertSame('11819.08', (string) $position->income->value());
+
+        self::assertSame('17920.00', (string) $result->totalRevenue->value());
+        self::assertSame('6100.92', (string) $result->totalCost->value());
+        self::assertSame('5.00', (string) $result->disposalCost->value());
+        self::assertSame('11819.08', (string) $result->income->value());
+    }
+
+    public function testSellAutoFxIsTreatedLikeTheCommission(): void
+    {
+        $result = $this->calculator->calculate([
+            self::position(
+                'ALFA CORP', 'US', 'USD',
+                '2024-04-03', '1000.00',
+                '2025-02-27', '1500.00',
+                sellCommission: '1.00',
+                sellAutoFx: '0.50',
+            ),
+        ]);
+
+        self::assertSame('1501.50', (string) $result->positions[0]->revenue->original->value());
+        self::assertSame('6006.00', (string) $result->totalRevenue->value());
+        self::assertSame('6.00', (string) $result->disposalCost->value());
+        self::assertSame('4006.00', (string) $result->totalCost->value());
+    }
+
+    public function testABuyCommissionIsNotAddedTwice(): void
+    {
+        // buyAmount is the cash that left the account, so the buy fee is already
+        // inside the acquisition cost.
+        $result = $this->calculator->calculate([
+            self::position(
+                'ALFA CORP', 'US', 'USD',
+                '2024-04-03', '1000.00',
+                '2025-02-27', '1500.00',
+                buyCommission: '7.00',
+            ),
+        ]);
+
+        self::assertSame('6000.00', (string) $result->totalRevenue->value());
+        self::assertSame('4000.00', (string) $result->totalCost->value());
+        self::assertSame('0.00', (string) $result->disposalCost->value());
+    }
+
+    public function testAPositionWithoutAnyReportedSellFeeKeepsTheNetProceeds(): void
+    {
+        $result = $this->calculator->calculate([
+            self::position('ALFA CORP', 'US', 'USD', '2024-04-03', '1000.00', '2025-02-27', '1500.00'),
+        ]);
+
+        self::assertNull($result->positions[0]->disposalCost);
+        self::assertSame('6000.00', (string) $result->totalRevenue->value());
+        self::assertSame('4000.00', (string) $result->totalCost->value());
+        self::assertSame('4000.00', (string) $result->positions[0]->totalCost()->value());
+    }
+
+    public function testAReportedZeroFeeIsNotTheSameAsNoData(): void
+    {
+        $result = $this->calculator->calculate([
+            self::position(
+                'ALFA CORP', 'US', 'USD',
+                '2024-04-03', '1000.00',
+                '2025-02-27', '1500.00',
+                sellCommission: '0.00',
+            ),
+        ]);
+
+        self::assertSame('0.00', (string) $result->positions[0]->disposalCost?->pln->value());
+        self::assertSame('6000.00', (string) $result->totalRevenue->value());
+    }
+
+    /**
+     * The one test that makes the byCountry() change unforgettable: if the
+     * disposal cost is added to the global cost but not to the country's, PIT/ZG
+     * declares more foreign income than PIT-38 declares in total.
+     */
+    public function testCountryTotalsReconcileWithTheGlobalTotals(): void
+    {
+        $result = $this->calculator->calculate([
+            self::position('ALFA CORP', 'US', 'USD', '2024-04-03', '1000.00', '2025-02-27', '1500.00',
+                sellCommission: '1.00'),
+            self::position('BETA ETF', 'IE', 'EUR', '2024-04-03', '100.00', '2025-02-27', '200.00',
+                sellCommission: '0.50'),
+        ]);
+
+        $revenue = Amount::zero('PLN');
+        $cost = Amount::zero('PLN');
+        $income = Amount::zero('PLN');
+        foreach ($result->countries as $country) {
+            $revenue = $revenue->plus($country->revenue);
+            $cost = $cost->plus($country->cost);
+            $income = $income->plus($country->income);
+        }
+
+        self::assertSame((string) $result->totalRevenue->value(), (string) $revenue->value());
+        self::assertSame((string) $result->totalCost->value(), (string) $cost->value());
+        self::assertSame((string) $result->income->value(), (string) $income->value());
+    }
+
+    public function testTheReallocationLeavesTheIncomeAlone(): void
+    {
+        $withFee = $this->calculator->calculate([
+            self::position('ALFA CORP', 'US', 'USD', '2024-04-03', '1000.00', '2025-02-27', '1500.00',
+                sellCommission: '1.00'),
+        ]);
+        $withoutFee = $this->calculator->calculate([
+            self::position('ALFA CORP', 'US', 'USD', '2024-04-03', '1000.00', '2025-02-27', '1500.00'),
+        ]);
+
+        self::assertSame(
+            (string) $withoutFee->income->value(),
+            (string) $withFee->income->value(),
+        );
+        self::assertSame('4.00', (string) $withFee->totalRevenue->minus($withoutFee->totalRevenue)->value());
+        self::assertSame('4.00', (string) $withFee->totalCost->minus($withoutFee->totalCost)->value());
+    }
+
     private static function position(
         string $name,
         string $country,
@@ -145,6 +281,9 @@ final class StockTaxCalculatorTest extends TestCase
         string $buyAmount,
         string $sellDate,
         string $sellAmount,
+        ?string $buyCommission = null,
+        ?string $sellCommission = null,
+        ?string $sellAutoFx = null,
     ): ClosedPosition {
         return new ClosedPosition(
             $name,
@@ -156,6 +295,9 @@ final class StockTaxCalculatorTest extends TestCase
             Amount::of($sellAmount, $currency),
             null,
             'test',
+            buyCommission: null === $buyCommission ? null : Amount::of($buyCommission, $currency),
+            sellCommission: null === $sellCommission ? null : Amount::of($sellCommission, $currency),
+            sellAutoFx: null === $sellAutoFx ? null : Amount::of($sellAutoFx, $currency),
         );
     }
 }

@@ -19,6 +19,7 @@ use App\Import\ImportResult;
 use App\Import\Parser\DateParser;
 use App\Import\Parser\NumberParser;
 use App\Model\Dividend;
+use App\Model\AccountFee;
 use App\Money\Amount;
 use App\Money\Decimal;
 use DateTimeImmutable;
@@ -38,9 +39,20 @@ use DateTimeImmutable;
  *  - The 12 columns include duplicated *blank* headers, because the currency of
  *    an amount is written in the unnamed column beside it. Rows therefore have
  *    to be read positionally; see {@see DegiroCsvReader}.
- *  - The *value date* decides the tax year, not the booking date. A dividend
- *    booked on 2 January with a value date of 29 December belongs to the earlier
- *    year, and using the wrong one moves income between tax returns.
+ *  - The *booking date* decides the tax year, not the value date. Income exists
+ *    on the day it is received or placed at the taxpayer's disposal (art. 11
+ *    ust. 1) and the NBP rate is the last business day before it (art. 11a);
+ *    DEGIRO books a dividend only once the custodian confirms the cash, so the
+ *    value date is the issuer's payable date and proves nothing about
+ *    availability. Using the wrong one moves income between tax returns. Where
+ *    a group spans several bookings, the *earliest* is the day the cash first
+ *    landed and the later ones are corrections of it.
+ *  - Payments are grouped by instrument, currency, value date **and the year of
+ *    the booking date**. The value date says which payment a row describes, so
+ *    a reversal and its re-post net against the original. The booking year
+ *    keeps a reversal posted in a later year from reaching back and emptying
+ *    the year the original was settled in; such a group is a reversal on its
+ *    own and is reported instead of settled.
  *  - Descriptions are localized, and every language spells its withholding tax
  *    as a variation on the word "dividend" (`Dividendbelasting`,
  *    `Podatek od dywidendy`). Tax patterns are therefore matched *before* the
@@ -63,7 +75,8 @@ final class DegiroAccountImporter implements BatchImporterInterface
     private const array TAX_MARKERS = [
         'dividend tax', 'dividendtax', 'withholding tax', 'withholdingtax',
         'dividendbelasting',
-        'podatek od dywidendy', 'podatek od dywidend', 'podatek u źródła', 'podatek u zrodla',
+        'podatek od dywidendy', 'podatek od dywidend', 'podatek dywidendowy',
+        'podatek u źródła', 'podatek u zrodla',
         'impôts sur dividende', 'impots sur dividende', 'retenue à la source', 'retenue a la source',
         'retención del dividendo', 'retencion del dividendo',
         'quellensteuer', 'dividendensteuer', 'kapitalertragsteuer',
@@ -88,6 +101,30 @@ final class DegiroAccountImporter implements BatchImporterInterface
         'buy', 'sell', 'koop', 'verkoop', 'kup', 'sprzeda', 'compra', 'venta', 'kauf', 'verkauf', 'achat', 'vente',
     ];
 
+    /** Product substitutions are account movements, not cash dividends. */
+    private const array PRODUCT_CHANGE_MARKERS = [
+        'product change', 'product change correction', 'zmiana produktu', 'korekta zmiany produktu',
+        'productwijziging', 'produktänderung', 'produktaenderung', 'cambio de producto',
+    ];
+
+    /** Distributions whose tax treatment cannot be inferred from this export. */
+    private const array UNSUPPORTED_DISTRIBUTIONS = [
+        'capital return', 'qie distribution capital gain',
+    ];
+
+    /** Exact normalized descriptions accepted as standalone account charges. */
+    private const array CONNECTION_FEE_DESCRIPTIONS = [
+        'degiro exchange connection fee',
+        'degiro exchange connection fee correction',
+        'degiro exchange connection fee (correction)',
+        'degiro exchange connection fee refund',
+        'degiro aansluitingskosten beurs',
+        'degiro börsenanschlussgebühr',
+        'degiro borsenanschlussgebuhr',
+        'degiro opłata za połączenie z giełdą',
+        'degiro oplata za polaczenie z gielda',
+    ];
+
     public function __construct(
         private readonly int $maxRowsPerFile = AbstractCsvImporter::DEFAULT_MAX_ROWS_PER_FILE,
     ) {
@@ -110,17 +147,21 @@ final class DegiroAccountImporter implements BatchImporterInterface
         $rows = [];
         $skipped = 0;
         $skippedTrades = 0;
+        /** @var list<AccountFee> $fees */
+        $fees = [];
 
         foreach ($sources as $source) {
-            [$sourceRows, $sourceMessages, $sourceSkipped, $sourceTrades] = $this->readSource($source);
+            [$sourceRows, $sourceFees, $sourceMessages, $sourceSkipped, $sourceTrades] = $this->readSource($source);
 
             $rows = [...$rows, ...$sourceRows];
+            $fees = [...$fees, ...$sourceFees];
             $messages = [...$messages, ...$sourceMessages];
             $skipped += $sourceSkipped;
             $skippedTrades += $sourceTrades;
         }
 
         [$rows, $duplicates] = self::deduplicate($rows);
+        [$fees, $feeDuplicates] = self::deduplicateFees($fees);
 
         /** @var array<string, array{string, string, string, DateTimeImmutable, Decimal}> $gross */
         $gross = [];
@@ -144,23 +185,70 @@ final class DegiroAccountImporter implements BatchImporterInterface
 
             if (isset($gross[$row->paymentKey])) {
                 $gross[$row->paymentKey][4] = $gross[$row->paymentKey][4]->plus($row->amount);
+                // The day the cash first landed is the day the income arose;
+                // later bookings in the group are corrections of it.
+                if ($row->date < $gross[$row->paymentKey][3]) {
+                    $gross[$row->paymentKey][3] = $row->date;
+                }
 
                 continue;
             }
 
-            $gross[$row->paymentKey] = [$row->name, $row->isin, $row->currency, $row->date, $row->amount];
+            $gross[$row->paymentKey] = [$row->name, $row->isin, $row->currency, $row->date, $row->amount, $row->valueDate];
             $grossSource[$row->paymentKey] = $row->source;
         }
 
         $dividends = [];
         $inferredCountry = false;
         $unknownCountry = false;
+        $zeroCorrections = 0;
+        /** @var list<string> $reversals */
+        $reversals = [];
 
-        foreach ($gross as $key => [$name, $isin, $currency, $date, $amount]) {
+        foreach ($gross as $key => $payment) {
+            [$name, $isin, $currency, $date, $amount] = $payment;
+            $valueDate = $payment[5] ?? null;
             $country = Isin::country($isin);
 
             try {
                 $netWithholding = $withheld[$key] ?? Decimal::zero();
+
+                if ($amount->isNegative()) {
+                    // A reversal of an earlier payment, posted on its own: the
+                    // cash moved now, but it is not income now. `Dividend`
+                    // refuses a non-positive gross, so building one here would
+                    // fail the whole batch on an ordinary statement - and
+                    // subtracting it from this year would be wrong anyway,
+                    // because it corrects the year the payment was settled in.
+                    $reversals[] = sprintf(
+                        '%s (%s %s, zaksięgowano %s%s)',
+                        $name,
+                        (string) $amount,
+                        $currency,
+                        $date->format('Y-m-d'),
+                        null === $valueDate ? '' : ', koryguje wypłatę z '.$valueDate->format('Y'),
+                    );
+                    unset($withheld[$key]);
+
+                    continue;
+                }
+
+                if ($amount->isZero()) {
+                    if (!$netWithholding->isZero()) {
+                        throw new InvalidRecordException(sprintf(
+                            'Kwota brutto po korektach wynosi zero, ale podatek u źródła ma saldo %s %s. '
+                            .'Taka grupa jest niespójna i wymaga ręcznej weryfikacji.',
+                            (string) $netWithholding,
+                            $currency,
+                        ));
+                    }
+
+                    ++$zeroCorrections;
+                    unset($withheld[$key]);
+
+                    continue;
+                }
+
                 if ($netWithholding->isPositive()) {
                     throw new InvalidRecordException(sprintf(
                         'Podatek u źródła ma dodatnie saldo %s %s (zwrot większy niż pobranie). Zweryfikuj zestawienie.',
@@ -192,6 +280,26 @@ final class DegiroAccountImporter implements BatchImporterInterface
             unset($withheld[$key]);
         }
 
+        if ([] !== $reversals) {
+            $listed = array_slice($reversals, 0, 10);
+            $messages[] = ImportMessage::review('Import', sprintf(
+                'Pominięto %d storn(o/a) wcześniejszych wypłat: %s%s. Ujemna wypłata nie jest '
+                .'przychodem bieżącego roku - koryguje rok, w którym rozliczono pierwotną wypłatę, '
+                .'więc rozlicz ją tam, a nie odejmuj od tego roku.',
+                count($reversals),
+                implode('; ', $listed),
+                count($reversals) > count($listed) ? sprintf(' i %d innych', count($reversals) - count($listed)) : '',
+            ))->forTab('dividends');
+        }
+
+        if ($zeroCorrections > 0) {
+            $messages[] = ImportMessage::info('Import', sprintf(
+                'Pominięto %d grup(ę/y) wypłat odwróconych w całości: po zsumowaniu korekt zarówno brutto, '
+                .'jak i podatek wynoszą zero.',
+                $zeroCorrections,
+            ));
+        }
+
         // Only now, with every uploaded statement read, is a leftover tax row
         // genuinely orphaned rather than merely booked in another file.
         foreach ($withheld as $key => $amount) {
@@ -216,10 +324,20 @@ final class DegiroAccountImporter implements BatchImporterInterface
             ));
         }
 
+        if ($feeDuplicates > 0) {
+            $messages[] = ImportMessage::info('Import', sprintf(
+                'Pominięto %d powtórzon(ą/e) opłat(ę/y) z nakładających się zestawień konta.',
+                $feeDuplicates,
+            ));
+        }
+
+        [$fees, $feeMessages] = self::validateFeeGroups($fees);
+        $messages = [...$messages, ...$feeMessages];
+
         if ($skipped > 0) {
             $messages[] = ImportMessage::info('Import', sprintf(
                 'Pominięto %d wiersz(y), które nie są dywidendą ani podatkiem u źródła '
-                .'(np. wpłaty, wypłaty, opłaty, przewalutowania, odsetki).',
+                .'(np. wpłaty, wypłaty, przewalutowania, odsetki).',
                 $skipped,
             ));
         }
@@ -249,28 +367,36 @@ final class DegiroAccountImporter implements BatchImporterInterface
             );
         }
 
-        return new ImportResult([], $dividends, $messages);
+        return new ImportResult([], $dividends, $messages, [], $fees);
     }
 
     /**
      * Reads one statement on its own: its own header, language and notation.
      *
-     * @return array{list<DegiroCashRow>, list<ImportMessage>, int, int} rows,
-     *                                                                  messages, skipped rows and, of those, buy/sell rows
+     * @return array{list<DegiroCashRow>, list<AccountFee>, list<ImportMessage>, int, int}
      */
     private function readSource(CsvSource $source): array
     {
         [$table, $messages] = DegiroCsvReader::read($source, $this->maxRowsPerFile);
         if (null === $table) {
-            return [[], $messages, 0, 0];
+            return [[], [], $messages, 0, 0];
         }
 
         $header = $table->header;
 
         $descriptionIndex = $header->indexOf(DegiroHeader::DESCRIPTION);
-        // The value date is what the tax year is taken from; the booking date is
-        // only a fallback for the rare export that omits it.
-        $dateIndex = $header->indexOf(DegiroHeader::VALUE_DATE) ?? $header->indexOf(DegiroHeader::DATE);
+        // The booking date settles the year: income exists on the day the money
+        // is received or placed at the taxpayer's disposal (art. 11 ust. 1), and
+        // DEGIRO books a dividend only once the custodian confirms the cash. The
+        // value date is the issuer's payable date - it does not prove the money
+        // was available - so it is only a fallback for an export that omits the
+        // booking column, plus audit data for reversal messages.
+        //
+        // Current Polish statements label both columns simply `Data`: the first
+        // is the booking date and the second the value date.
+        $dateIndexes = $header->indexesOf(DegiroHeader::DATE);
+        $valueDateIndex = $header->indexOf(DegiroHeader::VALUE_DATE) ?? ($dateIndexes[1] ?? null);
+        $dateIndex = $dateIndexes[0] ?? $valueDateIndex;
         $money = self::locateMoney($header);
 
         $missing = [];
@@ -285,7 +411,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
         }
 
         if (null === $descriptionIndex || null === $dateIndex || null === $money) {
-            return [[], [...$messages, ImportMessage::error(
+            return [[], [], [...$messages, ImportMessage::error(
                 $source->name,
                 sprintf('Brakuje wymaganych kolumn: %s.', implode(', ', $missing)),
             )], 0, 0];
@@ -297,8 +423,10 @@ final class DegiroAccountImporter implements BatchImporterInterface
         $isinIndex = $header->indexOf(DegiroHeader::ISIN);
 
         $rows = [];
+        $fees = [];
         $skipped = 0;
         $skippedTrades = 0;
+        $unsupported = [];
 
         /** @var array<string, int> $ordinals occurrences of each identical row in this file */
         $ordinals = [];
@@ -307,14 +435,69 @@ final class DegiroAccountImporter implements BatchImporterInterface
             $description = DegiroHeader::normalize($table->value($row, $descriptionIndex));
 
             $isTax = self::matches($description, self::TAX_MARKERS);
+            $isConnectionFee = in_array($description, self::CONNECTION_FEE_DESCRIPTIONS, true);
+
+            if ($isConnectionFee) {
+                try {
+                    $currency = self::normalizeCurrency($headerCurrency ?? mb_strtoupper($table->value($row, $currencyIndex)));
+                    $signedAmount = NumberParser::parseLocalized($table->value($row, $amountIndex), $table->decimalComma());
+                    Amount::zero($currency);
+                    if ($signedAmount->isZero()) {
+                        ++$skipped;
+                        continue;
+                    }
+
+                    $date = DateParser::parse($table->value($row, $dateIndex));
+                    $identity = implode('|', [$description, $date->format('Y-m-d'), $currency, (string) $signedAmount]);
+                    $ordinal = $ordinals['fee|'.$identity] = ($ordinals['fee|'.$identity] ?? 0) + 1;
+                    $fees[] = new AccountFee(
+                        $table->value($row, $descriptionIndex),
+                        'Połączenie z giełdą DEGIRO',
+                        $date,
+                        $currency,
+                        Amount::fromDecimal($signedAmount->abs(), $currency),
+                        $signedAmount->isPositive(),
+                        sprintf('%s (%s)', $source->name, CsvFormat::DegiroAccount->label()),
+                        hash('sha256', 'degiro-fee|'.$identity.'|'.$ordinal),
+                    );
+                } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
+                    $messages[] = ImportMessage::error($source->name, 'Opłata rachunkowa: '.$e->getMessage(), $line);
+                }
+
+                continue;
+            }
+
+            // These categories have priority over the broad `dividend` stem:
+            // an ETF name in a buy description is not income, and a product
+            // substitution is not a distribution.
+            if (!$isTax && self::matches($description, self::TRADE_MARKERS)) {
+                ++$skipped;
+                ++$skippedTrades;
+
+                continue;
+            }
+
+            if (!$isTax && self::matches($description, self::PRODUCT_CHANGE_MARKERS)) {
+                ++$skipped;
+
+                continue;
+            }
+
+            if (!$isTax && self::matches($description, self::UNSUPPORTED_DISTRIBUTIONS)) {
+                ++$skipped;
+                foreach (self::UNSUPPORTED_DISTRIBUTIONS as $marker) {
+                    if (str_contains($description, $marker)) {
+                        $unsupported[$marker] = true;
+                    }
+                }
+
+                continue;
+            }
+
             $isDividend = !$isTax && self::matches($description, self::DIVIDEND_MARKERS);
 
             if (!$isTax && !$isDividend) {
                 ++$skipped;
-                if (self::matches($description, self::TRADE_MARKERS)) {
-                    ++$skippedTrades;
-                }
-
                 continue;
             }
 
@@ -343,16 +526,31 @@ final class DegiroAccountImporter implements BatchImporterInterface
                     continue;
                 }
 
-                $currency = $headerCurrency ?? mb_strtoupper($table->value($row, $currencyIndex));
-                $amount = NumberParser::parse($table->value($row, $amountIndex), $table->decimalComma());
+                $currency = self::normalizeCurrency($headerCurrency ?? mb_strtoupper($table->value($row, $currencyIndex)));
+                $amount = NumberParser::parseLocalized($table->value($row, $amountIndex), $table->decimalComma());
 
                 // Validated here so a shifted column is a row error rather than
                 // an amount silently tagged with the wrong currency.
                 Amount::zero($currency);
 
                 $date = DateParser::parse($table->value($row, $dateIndex));
+                $rawValueDate = $table->value($row, $valueDateIndex);
+                $valueDate = $valueDateIndex === $dateIndex || '' === $rawValueDate
+                    ? null
+                    : DateParser::parse($rawValueDate);
+                // The value date identifies *which payment* a row describes, so
+                // corrections keep netting against the payment they correct -
+                // DEGIRO reverses one on one day and re-posts it on the next,
+                // and keying on the booking date alone would settle both.
+                //
+                // The booking *year* is part of the key as well, because a
+                // reversal posted in a later year must not reach back and empty
+                // the year the original was settled in. Within one year
+                // corrections net; across years the parts stay apart.
                 $key = ('' === $isin ? 'name:'.mb_strtoupper($product) : $isin)
-                    .'|'.$currency.'|'.$date->format('Y-m-d');
+                    .'|'.$currency
+                    .'|'.($valueDate ?? $date)->format('Y-m-d')
+                    .'|'.$date->format('Y');
 
                 $identity = ($isTax ? 'tax' : 'gross').'|'.$key.'|'.$amount;
                 $ordinal = $ordinals[$identity] = ($ordinals[$identity] ?? 0) + 1;
@@ -364,6 +562,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
                     $isin,
                     $currency,
                     $date,
+                    $valueDate,
                     $amount,
                     $source->name,
                     $line,
@@ -374,7 +573,18 @@ final class DegiroAccountImporter implements BatchImporterInterface
             }
         }
 
-        return [$rows, $messages, $skipped, $skippedTrades];
+        if ([] !== $unsupported) {
+            $messages[] = ImportMessage::warning(
+                $source->name,
+                sprintf(
+                    'Pominięto wypłaty typu %s. Kalkulator nie ustala automatycznie ich skutków podatkowych; '
+                    .'sprawdź je i rozlicz ręcznie.',
+                    implode(' oraz ', array_map(static fn (string $name): string => '"'.$name.'"', array_keys($unsupported))),
+                ),
+            );
+        }
+
+        return [$rows, $fees, $messages, $skipped, $skippedTrades];
     }
 
     /**
@@ -408,6 +618,75 @@ final class DegiroAccountImporter implements BatchImporterInterface
         }
 
         return [$kept, $duplicates];
+    }
+
+    /**
+     * @param list<AccountFee> $fees
+     *
+     * @return array{list<AccountFee>, int}
+     */
+    private static function deduplicateFees(array $fees): array
+    {
+        $seen = [];
+        $kept = [];
+        $duplicates = 0;
+        foreach ($fees as $fee) {
+            if (isset($seen[$fee->id()])) {
+                ++$duplicates;
+                continue;
+            }
+            $seen[$fee->id()] = true;
+            $kept[] = $fee;
+        }
+
+        return [$kept, $duplicates];
+    }
+
+    /**
+     * Net strict connection-fee corrections per tax year and currency. A fully
+     * reversed group disappears; a net refund is unsafe and fails the batch.
+     *
+     * @param list<AccountFee> $fees
+     * @return array{list<AccountFee>, list<ImportMessage>}
+     */
+    private static function validateFeeGroups(array $fees): array
+    {
+        /** @var array<string, array{Decimal, Decimal, list<int>}> $groups */
+        $groups = [];
+        foreach ($fees as $index => $fee) {
+            $key = $fee->taxYear().'|'.$fee->currency.'|'.$fee->category;
+            $groups[$key] ??= [Decimal::zero(), Decimal::zero(), []];
+            $slot = $fee->correction ? 1 : 0;
+            $groups[$key][$slot] = $groups[$key][$slot]->plus($fee->amount->value());
+            $groups[$key][2][] = $index;
+        }
+
+        $drop = [];
+        $messages = [];
+        foreach ($groups as $key => [$charges, $corrections, $indexes]) {
+            $comparison = $corrections->compareTo($charges);
+            if (0 === $comparison && !$charges->isZero()) {
+                foreach ($indexes as $index) {
+                    $drop[$index] = true;
+                }
+                $messages[] = ImportMessage::info('Import', sprintf(
+                    'Pominięto wyzerowaną grupę opłat rachunkowych %s — korekty w całości odwracają opłaty.',
+                    str_replace('|', ' / ', $key),
+                ));
+            } elseif ($comparison > 0) {
+                $messages[] = ImportMessage::error('Import', sprintf(
+                    'Zwroty opłat rachunkowych %s przewyższają pierwotne opłaty. Rozliczenie tej grupy zatrzymano; '
+                    .'popraw wpisy ręcznie.',
+                    str_replace('|', ' / ', $key),
+                ));
+            }
+        }
+
+        return [array_values(array_filter(
+            $fees,
+            static fn (AccountFee $fee, int $index): bool => !isset($drop[$index]),
+            ARRAY_FILTER_USE_BOTH,
+        )), $messages];
     }
 
     /**
@@ -451,5 +730,14 @@ final class DegiroAccountImporter implements BatchImporterInterface
         }
 
         return false;
+    }
+
+    private static function normalizeCurrency(string $currency): string
+    {
+        return match ($currency) {
+            'NO' => 'NOK',
+            'SG' => 'SGD',
+            default => $currency,
+        };
     }
 }

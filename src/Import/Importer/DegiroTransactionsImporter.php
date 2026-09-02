@@ -16,6 +16,7 @@ use App\Import\CsvSource;
 use App\Import\Degiro\DegiroCsvReader;
 use App\Import\Degiro\DegiroHeader;
 use App\Import\Degiro\DegiroTable;
+use App\Import\Degiro\ExchangeCountry;
 use App\Import\Degiro\Isin;
 use App\Import\ImportMessage;
 use App\Import\ImportResult;
@@ -41,8 +42,10 @@ use App\Money\Decimal;
  *
  * Money comes from the settled `Total` column, never from `Quantity * Price`.
  * That is the cash that actually left or entered the account, so it already
- * carries the transaction fee - which Polish rules count towards the cost basis
- * and against the proceeds. Two consequences worth knowing:
+ * carries the transaction fee. On the buy leg that is exactly the acquisition
+ * cost Polish rules want; on the sell leg the fee is added back to reach the
+ * declared przychód and counted as a cost of disposal instead, in the tax layer
+ * {@see \App\Tax\StockTaxCalculator}. Two consequences worth knowing:
  *
  *  - a total whose sign contradicts the quantity means the columns were misread,
  *    so the row is refused rather than settled;
@@ -108,9 +111,9 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
             'data' => $header->indexOf(DegiroHeader::DATE),
             'ISIN' => $header->indexOf(DegiroHeader::ISIN),
             'liczba' => $header->indexOf(DegiroHeader::QUANTITY),
-            'kurs' => $header->indexOf(DegiroHeader::PRICE),
         ];
 
+        $priceColumn = $header->indexOfAmount(DegiroHeader::PRICE);
         $total = $header->indexOfAmount(DegiroHeader::TOTAL);
 
         // A plain `Total`/`Razem` header stores its currency in the following
@@ -128,6 +131,9 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
         if (null === $total) {
             $missing[] = 'razem (Total)';
         }
+        if (null === $priceColumn) {
+            $missing[] = 'cena (Price/Kurs)';
+        }
 
         if ([] !== $missing) {
             return new TradeExtraction([], [...$messages, ImportMessage::error(
@@ -140,9 +146,23 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
         $productIndex = $header->indexOf(DegiroHeader::PRODUCT);
         $orderIndex = $header->indexOf(DegiroHeader::ORDER_ID);
         $timeIndex = $header->indexOf(DegiroHeader::TIME);
+        $venueIndex = $header->indexOf(DegiroHeader::EXECUTION_VENUE);
+        $referenceIndex = $header->indexOf(DegiroHeader::REFERENCE_EXCHANGE);
+        $commissionColumn = $header->indexOfAmount(DegiroHeader::COSTS);
+        $autoFxColumn = $header->indexOfAmount(DegiroHeader::AUTOFX);
 
         $trades = [];
         $skippedZero = 0;
+
+        /**
+         * Venue codes seen in this file that the table does not resolve to a
+         * country, kept as keys so one message covers the whole file.
+         *
+         * @var array<string, true> $unresolvedVenues
+         */
+        $unresolvedVenues = [];
+        $proposedFromExchange = false;
+        $rowsWithoutVenue = 0;
 
         /**
          * Occurrences of each identical row seen so far in *this* file.
@@ -176,18 +196,19 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
 
                 $decimalComma = $table->decimalComma();
 
-                $quantity = NumberParser::parseOrZero($table->value($row, $columns['liczba']), $decimalComma);
+                $quantity = NumberParser::parseLocalizedOrZero($table->value($row, $columns['liczba']), $decimalComma);
                 if ($quantity->isZero()) {
                     ++$skippedZero;
 
                     continue;
                 }
 
-                $price = NumberParser::parseOrZero($table->value($row, $columns['kurs']), $decimalComma);
                 $currency = self::currency($table, $row, $total);
-                $amount = NumberParser::parseOrZero($table->value($row, $total[0]), $decimalComma);
+                $amount = NumberParser::parseLocalizedOrZero($table->value($row, $total[0]), $decimalComma);
+                $commission = self::optionalFee($table, $row, $commissionColumn, $currency, 'prowizja');
+                $autoFx = self::optionalFee($table, $row, $autoFxColumn, $currency, 'AutoFX');
 
-                if ($price->isZero() || $amount->isZero()) {
+                if ($amount->isZero()) {
                     // A row that moves shares without moving cash is a corporate
                     // action - a split, a merger, a rights issue. Those change
                     // the quantity and the cost basis of everything that follows
@@ -207,6 +228,9 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
                     continue;
                 }
 
+                /** @var array{int, string|null} $priceColumn */
+                $price = self::optionalPrice($table, $row, $priceColumn);
+
                 self::assertSignsAgree($quantity, $amount, $currency);
 
                 $date = DateParser::parseWithTime(
@@ -225,9 +249,22 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
                     $date->format('Y-m-d H:i:s'),
                     (string) $quantity,
                     (string) $amount,
+                    null === $price ? '' : $price->currency().':'.$price->value(),
                     $orderId ?? '',
                 ]);
                 $ordinal = $ordinals[$signature] = ($ordinals[$signature] ?? 0) + 1;
+
+                [$venueCode, $venueCountry] = self::resolveVenue(
+                    $table->value($row, $referenceIndex),
+                    $table->value($row, $venueIndex),
+                );
+                if ('' === $venueCode) {
+                    ++$rowsWithoutVenue;
+                } elseif ('' === $venueCountry) {
+                    $unresolvedVenues[$venueCode] = true;
+                } else {
+                    $proposedFromExchange = true;
+                }
 
                 $trades[] = new Trade(
                     $isin,
@@ -235,22 +272,67 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
                     $quantity,
                     Amount::fromDecimal($amount->abs(), $currency),
                     $orderId ?? self::syntheticId($signature),
-                    $source->name,
+                    sprintf('%s (%s)', $source->name, CsvFormat::DegiroTransactions->label()),
                     new InstrumentDetails(
                         $table->value($row, $productIndex) ?: $isin,
-                        Isin::country($isin),
+                        $venueCountry,
+                        $venueCode,
                     ),
                     $ordinal,
+                    null !== $orderId,
+                    $price,
+                    null === $venueIndex ? '[nieznana kolumna miejsca wykonania]' : $table->value($row, $venueIndex),
+                    'DEGIRO',
+                    $commission,
+                    $autoFx,
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
                 $messages[] = ImportMessage::error($source->name, $e->getMessage(), $line);
             }
         }
 
+        [$trades, $neutralChanges, $correctionMessages] = self::removeNeutralProductChanges($trades, $source->name);
+        $messages = [...$messages, ...$correctionMessages];
+
+        if ($neutralChanges > 0) {
+            $messages[] = ImportMessage::info($source->name, sprintf(
+                'Pominięto %d neutraln(ą/e) zmian(ę/y) nazwy produktu (pary przeciwnych zapisów bez zmiany salda i liczby sztuk).',
+                $neutralChanges,
+            ));
+        }
+
         if ($skippedZero > 0) {
             $messages[] = ImportMessage::info($source->name, sprintf(
                 'Pominięto %d wiersz(y) z zerową liczbą sztuk - takie wiersze nie przenoszą kosztu nabycia.',
                 $skippedZero,
+            ));
+        }
+
+        if ($proposedFromExchange) {
+            $messages[] = ImportMessage::warning(
+                $source->name,
+                'Kraj uzyskania dochodu został ustalony z giełdy podanej w pliku (kolumna '
+                .'"Giełda referencyjna", a gdy jej nie ma - "Miejsce wykonania"). To kraj notowania '
+                .'papieru, a nie zawsze kraj źródła dochodu - sprawdź kolumnę "Kraj" przed obliczeniem.',
+            );
+        }
+
+        // Reported from here rather than from matchTrades(): that method only
+        // walks closed positions, so a lot that has not been sold yet would
+        // reach the workbench with a blank country and no explanation.
+        if ([] !== $unresolvedVenues) {
+            $messages[] = ImportMessage::warning($source->name, sprintf(
+                'Nie rozpoznano kodu giełdy: %s. Dla tych pozycji kraj pozostał pusty - uzupełnij '
+                .'kolumnę "Kraj" ręcznie przed obliczeniem.',
+                implode(', ', array_keys($unresolvedVenues)),
+            ));
+        }
+
+        if ($rowsWithoutVenue > 0) {
+            $messages[] = ImportMessage::warning($source->name, sprintf(
+                'Plik nie podaje giełdy dla %d wiersz(y), więc kraju nie da się zaproponować. '
+                .'Uzupełnij kolumnę "Kraj" ręcznie przed obliczeniem.',
+                $rowsWithoutVenue,
             ));
         }
 
@@ -280,15 +362,20 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
 
         $fifo = $this->fifoMatcher->match($trades);
 
+        [$countryByIsin, $venueMessages] = self::venueCountries($trades);
+
         $positions = [];
-        $messages = [];
-        $inferred = false;
+        $messages = $venueMessages;
         $unknownCountry = false;
 
         foreach ($fifo->matches as $match) {
             $isin = $match->symbol;
             $instrument = $match->instrument();
-            $country = null === $instrument ? '' : $instrument->countryCode;
+            // The country comes from the per-ISIN consensus, never from this
+            // match's own instrument: FifoMatch::instrument() prefers the sell
+            // leg, so a buy on one exchange closed by a sell on another would
+            // otherwise settle under whichever leg happened to be later.
+            $country = $countryByIsin[$isin] ?? '';
             $name = null === $instrument || '' === $instrument->displayName ? $isin : $instrument->displayName;
 
             $buyCurrency = $match->buyCost->currency();
@@ -331,6 +418,16 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
                     $match->quantity,
                     PositionSource::describe($match->buySource, $match->sellSource, CsvFormat::DegiroTransactions),
                     $match->lineageKey(),
+                    $match->buyCommission,
+                    $match->sellCommission,
+                    $match->buyAutoFx,
+                    $match->sellAutoFx,
+                    $match->broker,
+                    $isin,
+                    $match->buyTradeId,
+                    $match->sellTradeId,
+                    $match->buyUnitPrice,
+                    $match->sellUnitPrice,
                 );
             } catch (InvalidRecordException $e) {
                 $messages[] = ImportMessage::error('Import', sprintf(
@@ -344,7 +441,9 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
                 continue;
             }
 
-            '' === $country ? $unknownCountry = true : $inferred = true;
+            if ('' === $country) {
+                $unknownCountry = true;
+            }
         }
 
         foreach ($fifo->unmatchedSells as $unmatched) {
@@ -362,24 +461,76 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
             ));
         }
 
-        if ($inferred) {
-            $messages[] = ImportMessage::warning(
-                'Import',
-                'Kraj uzyskania dochodu został ustalony z dwóch pierwszych znaków numeru ISIN. '
-                .'To kraj rejestracji papieru, a nie zawsze kraj źródła dochodu - sprawdź kolumnę "Kraj" '
-                .'przed obliczeniem, zwłaszcza dla ETF-ów i spółek notowanych poza krajem rejestracji.',
-            );
-        }
-
         if ($unknownCountry) {
             $messages[] = ImportMessage::warning(
                 'Import',
-                'Dla części pozycji nie dało się ustalić kraju z numeru ISIN (prefiks nie jest kodem kraju). '
+                'Dla części pozycji nie dało się ustalić kraju z giełdy podanej w pliku. '
                 .'Uzupełnij kolumnę "Kraj" ręcznie przed obliczeniem.',
             );
         }
 
         return new ImportResult($positions, [], $messages);
+    }
+
+    /**
+     * The listing country proposed for each instrument, agreed across every
+     * trade of that instrument in the whole batch.
+     *
+     * Resolved per ISIN rather than per row on purpose. A closed position holds
+     * one country, and {@see \App\Fifo\FifoMatch::instrument()} returns the
+     * sell leg first - so a per-row country would let the later leg decide in
+     * silence. When two legs of one paper name different countries the proposal
+     * is withdrawn: a blank country fails closed in
+     * {@see \App\Report\TaxReportBuilder}, while a guess would reach PIT/ZG.
+     *
+     * @param list<Trade> $trades
+     *
+     * @return array{array<string, string>, list<ImportMessage>}
+     */
+    private static function venueCountries(array $trades): array
+    {
+        /** @var array<string, array<string, array<string, true>>> $seen ISIN => country => venue codes */
+        $seen = [];
+        foreach ($trades as $trade) {
+            $instrument = $trade->instrument;
+            if (null === $instrument || '' === $instrument->countryCode) {
+                continue;
+            }
+
+            $seen[$trade->symbol][$instrument->countryCode][$instrument->exchangeCode] = true;
+        }
+
+        $countries = [];
+        $messages = [];
+        foreach ($seen as $isin => $byCountry) {
+            if (1 === count($byCountry)) {
+                $countries[$isin] = (string) array_key_first($byCountry);
+
+                continue;
+            }
+
+            $codes = [];
+            foreach ($byCountry as $country => $venueCodes) {
+                foreach (array_keys($venueCodes) as $code) {
+                    $codes[] = sprintf('%s -> %s', $code, $country);
+                }
+            }
+
+            $messages[] = ImportMessage::warning('Import', sprintf(
+                'Instrument %s ma w pliku różne giełdy notowania (%s), więc kraju nie da się ustalić '
+                .'automatycznie. Uzupełnij kolumnę "Kraj" ręcznie.',
+                $isin,
+                implode(', ', $codes),
+            ));
+        }
+
+        // The listing country disagreeing with the ISIN registration country is
+        // deliberately *not* reported. Both are accepted readings of where the
+        // income from a disposal arose, so it is a setting the user picks
+        // ({@see \App\Web\CountrySource}), and repeating it as a finding would
+        // put a permanent item in the attention panel that nothing can clear.
+
+        return [$countries, $messages];
     }
 
     /**
@@ -509,7 +660,216 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
     {
         $id = $table->value($row, $index);
 
+        if ('' === $id && null !== $index) {
+            $neighbor = $index + 1;
+            if ($neighbor === $table->header->count() - 1 && '' === $table->header->columns[$neighbor]) {
+                $id = $table->value($row, $neighbor);
+            }
+        }
+
         return '' === $id ? null : $id;
     }
 
+    /**
+     * Which venue code answers for a row, and the country it names.
+     *
+     * The reference exchange is consulted first: it is the *listing* venue, and
+     * the listing country is what the user asked the proposal to follow. The
+     * execution venue MIC is only a fallback, because a multi-venue order can
+     * fill on a pan-European MTF that names no market at all.
+     *
+     * A blank cell or an unresolvable code does not stop the walk - otherwise a
+     * fill on `CEUX` would throw away the `XAMS` sitting in the next column.
+     * When nothing resolves, the first code that was actually printed is
+     * returned with a blank country so it can be reported verbatim.
+     *
+     * @return array{string, string} venue code and the country it names
+     */
+    private static function resolveVenue(string $reference, string $venue): array
+    {
+        foreach ([$reference, $venue] as $code) {
+            if ('' !== $code && '' !== ExchangeCountry::country($code)) {
+                return [$code, ExchangeCountry::country($code)];
+            }
+        }
+
+        foreach ([$reference, $venue] as $code) {
+            if ('' !== $code) {
+                return [$code, ''];
+            }
+        }
+
+        return ['', ''];
+    }
+
+    /**
+     * Removes DEGIRO's zero-sum rename correction, never an ordinary trade.
+     * Every stated condition is required; a plausible but incomplete pair is
+     * an error because leaving just one side in FIFO would create or consume a
+     * lot that never economically existed.
+     *
+     * @param list<Trade> $trades
+     *
+     * @return array{list<Trade>, int, list<ImportMessage>}
+     */
+    private static function removeNeutralProductChanges(array $trades, string $source): array
+    {
+        /** @var array<string, list<int>> $groups */
+        $groups = [];
+        foreach ($trades as $index => $trade) {
+            if ('00:00:00' !== $trade->date->format('H:i:s')
+                || $trade->externalIdReported
+                || '' !== trim($trade->executionVenue)
+                || null === $trade->unitPrice) {
+                continue;
+            }
+
+            $groups[implode('|', [
+                $trade->symbol,
+                $trade->date->format('Y-m-d H:i:s'),
+                $trade->grossAmount->currency(),
+                $trade->unitPrice->currency(),
+                (string) $trade->unitPrice->value(),
+            ])][] = $index;
+        }
+
+        $drop = [];
+        $incomplete = [];
+
+        foreach ($groups as $indexes) {
+            foreach ($indexes as $left) {
+                if (isset($drop[$left])) {
+                    continue;
+                }
+
+                $leftTrade = $trades[$left];
+                foreach ($indexes as $right) {
+                    if ($right <= $left || isset($drop[$right])) {
+                        continue;
+                    }
+
+                    $rightTrade = $trades[$right];
+                    if ($leftTrade->isBuy() === $rightTrade->isBuy()
+                        || self::productName($leftTrade) === self::productName($rightTrade)) {
+                        continue;
+                    }
+
+                    $incomplete[$left] = true;
+                    $incomplete[$right] = true;
+
+                    if (0 !== $leftTrade->quantity->abs()->compareTo($rightTrade->quantity->abs())
+                        || 0 !== $leftTrade->grossAmount->compareTo($rightTrade->grossAmount)) {
+                        continue;
+                    }
+
+                    $drop[$left] = true;
+                    $drop[$right] = true;
+                    unset($incomplete[$left], $incomplete[$right]);
+                    break;
+                }
+            }
+        }
+
+        $messages = [];
+        if ([] !== $incomplete) {
+            $messages[] = ImportMessage::error(
+                $source,
+                'Wykryto niepełną korektę zmiany produktu o północy: przeciwne wpisy mają różne ilości lub kwoty. '
+                .'Nie można bezpiecznie usunąć tylko jednej strony; zweryfikuj te operacje ręcznie.',
+            );
+        }
+
+        $kept = [];
+        foreach ($trades as $index => $trade) {
+            if (!isset($drop[$index])) {
+                $kept[] = $trade;
+            }
+        }
+
+        return [$kept, intdiv(count($drop), 2), $messages];
+    }
+
+    private static function productName(Trade $trade): string
+    {
+        return DegiroHeader::normalize($trade->instrument->displayName ?? '');
+    }
+
+    /**
+     * Read an audit fee only from its explicit column. Blank cells remain null,
+     * while an explicit zero remains an Amount(0). Its adjacent/header currency
+     * must agree with Total; guessing or deriving the fee is forbidden.
+     *
+     * @param list<string> $row
+     * @param array{int, string|null}|null $column
+     */
+    private static function optionalFee(
+        DegiroTable $table,
+        array $row,
+        ?array $column,
+        string $totalCurrency,
+        string $label,
+    ): ?Amount {
+        if (null === $column) {
+            return null;
+        }
+
+        [$amountIndex, $headerCurrency] = $column;
+        $raw = $table->value($row, $amountIndex);
+        if ('' === $raw) {
+            return null;
+        }
+
+        $adjacent = mb_strtoupper($table->value($row, $amountIndex + 1));
+        $currency = $headerCurrency
+            ?? (1 === preg_match('/^[A-Z]{3}$/', $adjacent) ? $adjacent : $totalCurrency);
+        if ($currency !== $totalCurrency) {
+            throw new InvalidRecordException(sprintf(
+                'Waluta pola %s (%s) nie zgadza się z walutą Total (%s).',
+                $label,
+                '' === $currency ? 'brak' : $currency,
+                $totalCurrency,
+            ));
+        }
+
+        return Amount::fromDecimal(
+            NumberParser::parseLocalizedOrZero($raw, $table->decimalComma())->abs(),
+            $currency,
+        );
+    }
+
+    /**
+     * Price and its currency form one optional audit value. Unlike fees, the
+     * currency is never inferred from Total: DEGIRO can execute a trade in a
+     * different currency than the settled cash amount.
+     *
+     * @param list<string> $row
+     * @param array{int, string|null} $column
+     */
+    private static function optionalPrice(DegiroTable $table, array $row, array $column): ?Amount
+    {
+        [$priceIndex, $headerCurrency] = $column;
+        $raw = $table->value($row, $priceIndex);
+        $adjacent = mb_strtoupper($table->value($row, $priceIndex + 1));
+        $currency = $headerCurrency ?? $adjacent;
+
+        // The adjacent currency cell can be populated by DEGIRO even when the
+        // optional price itself is blank. In that case there is no partial
+        // audit value to reject: the price is simply unavailable.
+        if ('' === $raw) {
+            return null;
+        }
+        if ('' === $currency) {
+            throw new InvalidRecordException('Cena wykonania i waluta ceny muszą być podane razem.');
+        }
+
+        $price = Amount::fromDecimal(
+            NumberParser::parseLocalizedOrZero($raw, $table->decimalComma()),
+            $currency,
+        );
+        if (!$price->isPositive()) {
+            throw InvalidRecordException::amountMustBePositive('cena wykonania', $price);
+        }
+
+        return $price;
+    }
 }

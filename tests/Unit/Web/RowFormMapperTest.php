@@ -4,9 +4,12 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Web;
 
+use App\Fifo\InstrumentDetails;
+use App\Fifo\Trade;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
 use App\Money\Amount;
+use App\Money\Decimal;
 use App\Web\RowFormMapper;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -96,6 +99,61 @@ final class RowFormMapperTest extends TestCase
         self::assertSame('AAA', $result->positions[0]->name);
     }
 
+    public function testRoundTripsATradeWithAnIndependentExecutionPriceCurrency(): void
+    {
+        $mapper = new RowFormMapper();
+        $trade = new Trade(
+            'US000ALFA001',
+            new DateTimeImmutable('2024-05-04 09:15:00'),
+            Decimal::of('3'),
+            Amount::of('1400.00', 'EUR'),
+            'order-1',
+            'plik.csv',
+            new InstrumentDetails('ALFA', 'US'),
+            unitPrice: Amount::of('507.578200', 'USD'),
+            broker: 'DEGIRO',
+            stableId: 'trade-1',
+            fifoPool: 'US000ALFA001',
+        );
+
+        $form = $mapper->tradeToForm($trade);
+        $result = $mapper->mapTrades([$form]);
+
+        self::assertSame([], $result->errors);
+        self::assertSame('507.578200', $form['unit_price']);
+        self::assertSame('USD', $form['price_currency']);
+        self::assertSame('507.578200', (string) $result->trades[0]->unitPrice?->value());
+        self::assertSame('USD', $result->trades[0]->unitPrice?->currency());
+        self::assertSame('1400.00', (string) $result->trades[0]->grossAmount->value());
+    }
+
+    public function testExecutionPriceAndCurrencyMustBothBePresent(): void
+    {
+        $row = (new RowFormMapper())->tradeToForm(self::trade());
+        $row['unit_price'] = '10.50';
+        $row['price_currency'] = '';
+
+        $result = (new RowFormMapper())->mapTrades([$row]);
+
+        self::assertSame([], $result->trades);
+        self::assertCount(1, $result->errors);
+        self::assertStringContainsString('muszą być podane razem', $result->errors[0]);
+        self::assertSame('trade.invalid', $result->diagnostics[0]->code);
+    }
+
+    public function testExecutionPriceMustBePositiveAndUseAnIsoCurrency(): void
+    {
+        $mapper = new RowFormMapper();
+        $row = $mapper->tradeToForm(self::trade());
+        $row['unit_price'] = '0';
+        $row['price_currency'] = 'USD';
+        self::assertNotEmpty($mapper->mapTrades([$row])->errors);
+
+        $row['unit_price'] = '10';
+        $row['price_currency'] = 'DOLLARS';
+        self::assertNotEmpty($mapper->mapTrades([$row])->errors);
+    }
+
     public function testInvalidRowBecomesAnErrorInsteadOfAnException(): void
     {
         $result = (new RowFormMapper())->mapPositions([[
@@ -141,6 +199,7 @@ final class RowFormMapperTest extends TestCase
 
         self::assertCount(3, $result->positions);
         self::assertNotEmpty($result->errors);
+        self::assertSame('position.row_limit', $result->diagnostics[0]->code);
     }
 
     public function testNonArrayInputIsIgnoredRatherThanFatal(): void
@@ -164,6 +223,21 @@ final class RowFormMapperTest extends TestCase
             Amount::of('20.00', 'USD'),
             null,
             'test',
+        );
+    }
+
+    private static function trade(): Trade
+    {
+        return new Trade(
+            'AAA',
+            new DateTimeImmutable('2024-01-01'),
+            Decimal::of('1'),
+            Amount::of('10.00', 'USD'),
+            source: 'test',
+            instrument: new InstrumentDetails('AAA', 'US'),
+            broker: 'IBKR',
+            stableId: 'trade-1',
+            fifoPool: 'AAA@USD',
         );
     }
 }

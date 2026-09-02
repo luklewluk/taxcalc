@@ -21,14 +21,28 @@ final readonly class DegiroCashRow
     public function __construct(
         public bool $isTax,
         /**
-         * Instrument, currency and *value date* - the three things that identify
-         * the payment this row belongs to.
+         * What identifies the payment this row belongs to: instrument, currency, the *value date* and
+         * the *year of the booking date*.
+         *
+         * The value date says which payment a row describes, so DEGIRO's
+         * corrections keep netting against the payment they correct - it
+         * reverses one on one day and re-posts it on the next. The booking year
+         * is in the key as well, because a reversal posted in a later year must
+         * not reach back and empty the year the original was settled in: within
+         * one year corrections net, across years the parts stay apart.
          */
         public string $paymentKey,
         public string $name,
         public string $isin,
         public string $currency,
+        /** The day the cash reached the account, i.e. DEGIRO's booking date. */
         public DateTimeImmutable $date,
+        /**
+         * The issuer's payable date, when the export names it separately.
+         * Audit-only: it never settles a year, but a reversal needs it to say
+         * which year the correction belongs to.
+         */
+        public ?DateTimeImmutable $valueDate,
         public Decimal $amount,
         public string $source,
         public int $line,

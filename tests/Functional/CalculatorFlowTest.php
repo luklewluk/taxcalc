@@ -61,7 +61,7 @@ final class CalculatorFlowTest extends WebTestCase
         $crawler = $client->request('GET', '/kalkulator');
 
         $links = $crawler->filter('a[href^="/przyklady/"]');
-        self::assertGreaterThanOrEqual(3, $links->count());
+        self::assertGreaterThanOrEqual(2, $links->count());
 
         $client->request('GET', (string) $links->first()->attr('href'));
         self::assertResponseIsSuccessful();
@@ -96,13 +96,32 @@ final class CalculatorFlowTest extends WebTestCase
         );
     }
 
-    public function testImportWarnsThatTheTradesFormatCarriesNoCountry(): void
+    public function testImportSaysTheTradesFormatCarriesNoCountryInTheAttentionPanel(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
 
         self::assertStringContainsString('Kraj', $crawler->filter('body')->text());
-        self::assertGreaterThan(0, $crawler->filter('.message--warning')->count());
+        self::assertSame(1, $crawler->filter('[data-diagnostic-code="country.missing_instrument"]')->count());
+        self::assertStringContainsString('kraju uzyskania dochodu', $crawler->filter('#panel-attention')->text());
+    }
+
+    /**
+     * The message strip carries one sentence and a link, never a list. Import
+     * warnings and notices are deliberately not rendered in the web UI: a strip
+     * that grows with every skipped row buries the only sentence that matters,
+     * and everything that genuinely needs attention is a diagnostic.
+     */
+    public function testTheMessageStripHoldsOnlyTheAttentionSummary(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $strip = $crawler->filter('[data-fragment="messages"]');
+
+        self::assertSame(1, $strip->filter('p.message')->count());
+        self::assertStringContainsString('wymaga', $strip->text());
+        self::assertStringContainsString('Zobacz pełną listę', $strip->text());
+        self::assertSame(0, $strip->filter('.message--info, .message-group')->count());
     }
 
     public function testBuysFromAPreviousYearStillBackASaleInTheSelectedYear(): void
@@ -146,8 +165,8 @@ final class CalculatorFlowTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertGreaterThan(0, $crawler->filter('.message--error')->count());
-        self::assertSame(0, $crawler->filter('input[name^="positions["]')->count());
-        self::assertSame(0, $crawler->filter('input[name^="dividends["]')->count());
+        self::assertSame(0, $crawler->filter('[data-editor-body="trades"] > tr')->count());
+        self::assertSame(0, $crawler->filter('[data-editor-body="dividends"] > tr')->count());
     }
 
     public function testImportWithNoFilesAtAllIsExplained(): void

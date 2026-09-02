@@ -9,14 +9,7 @@ use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
-/**
- * Guards the shape of the four screens rather than their wording.
- *
- * Every one of these assertions protects a decision that is easy to undo by
- * accident: that reference material stays collapsed, that the flow says where
- * the user is, that technical columns are hidden but still submitted, and that
- * the printable report never hides anything.
- */
+/** Guards the single-screen workbench and its progressive enhancement hooks. */
 final class UiSurfacesTest extends WebTestCase
 {
     private const string DIVIDENDS = <<<'CSV'
@@ -32,8 +25,16 @@ final class UiSurfacesTest extends WebTestCase
         CSV;
 
     /**
-     * @var list<string>
+     * Single-lot DEGIRO position with a reported sell fee, so the revenue/cost
+     * split is actually made: 3 bought and 3 sold, fee 1,25 on each leg.
      */
+    private const string DEGIRO_WITH_FEE = <<<'CSV'
+        Date,Time,Product,ISIN,Reference Exchange,Execution Venue,Quantity,Price,,Value,,Transaction and/or third,,Total,,Order ID
+        03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,3,507.5782,USD,-1522.73,USD,-1.25,USD,-1523.98,USD,buy-1
+        27-02-2025,15:41,ALFA CORP,US000ALFA001,NDQ,XNAS,-3,1493.3333,USD,4480.00,USD,-1.25,USD,4478.75,USD,sell-1
+        CSV;
+
+    /** @var list<string> */
     private array $tempFiles = [];
 
     protected function tearDown(): void
@@ -48,85 +49,38 @@ final class UiSurfacesTest extends WebTestCase
         parent::tearDown();
     }
 
-    /* Landing ------------------------------------------------------------- */
-
-    public function testLandingOffersOneNamedCallToActionAndTheTrustLine(): void
+    public function testLandingExplainsTheTwoStageFlowAndPrivacy(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/');
         $text = $crawler->filter('body')->text();
 
-        self::assertGreaterThan(
-            0,
-            $crawler->filter('a.button--primary[href="/kalkulator"]')->count(),
-            'the landing page must lead with a primary action',
-        );
-        self::assertStringContainsString('Oblicz podatek', $text);
+        self::assertSame(['Wgraj', 'Pracuj z wynikiem'], $crawler->filter('.flow__title')->each(
+            static fn (Crawler $node): string => $node->text(),
+        ));
         self::assertStringContainsString('Bez konta', $text);
         self::assertStringContainsString('Bez bazy danych', $text);
         self::assertStringContainsString('Bez śledzenia', $text);
-        self::assertStringContainsString('Działa z IBKR, DEGIRO i własnym CSV', $text);
+        self::assertStringContainsString('IBKR i DEGIRO', $text);
+        self::assertStringNotContainsString('Sprawdź →', $text);
     }
 
-    public function testLandingNamesTheThreeStepsOfTheFlow(): void
-    {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/');
-        $steps = $crawler->filter('.flow .flow__title');
-
-        self::assertSame(3, $steps->count());
-        self::assertSame(['Wgraj', 'Sprawdź', 'Pobierz wynik'], $steps->each(
-            static fn (Crawler $node): string => $node->text(),
-        ));
-    }
-
-    public function testLandingKeepsReferenceTablesOutOfTheDefaultView(): void
-    {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/');
-
-        self::assertSame(
-            0,
-            $crawler->filterXPath('//table[not(ancestor::details)]')->count(),
-            'reference tables belong in collapsed help, not in the default view',
-        );
-
-        // The raw column reference is documentation, not a landing-page asset.
-        $text = $crawler->filter('body')->text();
-        self::assertStringNotContainsString('buy_total_amount', $text);
-        self::assertStringNotContainsString('CurrencyPrimary', $text);
-    }
-
-    public function testLandingHidesPrivacyAndMethodBehindClosedDisclosures(): void
-    {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/');
-
-        $summaries = $crawler->filter('details > summary')->each(
-            static fn (Crawler $node): string => $node->text(),
-        );
-
-        self::assertContains('Co się dzieje z moimi danymi', $summaries);
-        self::assertContains('Jak liczy kalkulator', $summaries);
-        self::assertSame([], self::openDisclosures($crawler));
-    }
-
-    /* Upload -------------------------------------------------------------- */
-
-    public function testUploadPageShowsTheFlowWithTheFirstStepActive(): void
+    public function testUploadPageHasNoStepperAndOffersOnlySupportedYears(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/kalkulator');
 
-        self::assertSame(['Wgraj', 'Sprawdź', 'Wynik'], self::stepLabels($crawler));
-        self::assertSame('Wgraj', self::currentStep($crawler));
+        self::assertSame(0, $crawler->filter('.progress, .stepper')->count());
+        self::assertSame(['2026', '2025', '2024', '2023', '2022', '2021'], $crawler
+            ->filter('select[name="tax_year"] option')
+            ->extract(['value']));
+        self::assertSame(1, $crawler->filter('[data-role="dropzone"] input[type="file"][multiple]')->count());
     }
 
-    public function testBrokerHelpAndSamplesStayCollapsedUntilAskedFor(): void
+    public function testBrokerHelpAndPublicSamplesStayCollapsed(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/kalkulator');
-
         $summaries = $crawler->filter('details > summary')->each(
             static fn (Crawler $node): string => $node->text(),
         );
@@ -134,365 +88,413 @@ final class UiSurfacesTest extends WebTestCase
         self::assertContains('Jak pobrać pliki z IBKR', $summaries);
         self::assertContains('Jak pobrać pliki z DEGIRO', $summaries);
         self::assertContains('Przykładowe pliki', $summaries);
+        self::assertSame(2, $crawler->filterXPath('//details//a[starts-with(@href, "/przyklady/")]')->count());
         self::assertSame([], self::openDisclosures($crawler));
-
-        // The sample downloads live inside that collapsed section, not loose on the page.
-        self::assertSame(
-            0,
-            $crawler->filterXPath('//a[starts-with(@href, "/przyklady/")][not(ancestor::details)]')->count(),
-        );
-        self::assertGreaterThanOrEqual(
-            3,
-            $crawler->filterXPath('//details//a[starts-with(@href, "/przyklady/")]')->count(),
-        );
+        self::assertStringNotContainsString('pozycje-zamkniete.csv', $crawler->filter('body')->text());
     }
 
-    public function testUploadPageKeepsTheConstraintsAndTheOneObviousAction(): void
-    {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/kalkulator');
-        $text = $crawler->filter('body')->text();
-
-        self::assertMatchesRegularExpression('/Do 10 plików CSV, każdy do 5 MB, w kodowaniu UTF-8/u', $text);
-        self::assertSame(1, $crawler->filter('form .button--primary')->count());
-        // Progressive-enhancement hooks for the file summary must be present.
-        self::assertSame(1, $crawler->filter('[data-role="dropzone"] input[type="file"]')->count());
-        self::assertSame(1, $crawler->filter('[data-role="file-summary"]')->count());
-    }
-
-    /* Review -------------------------------------------------------------- */
-
-    public function testReviewPageMarksTheSecondStepAndSummarisesTheImport(): void
+    public function testFirstImportGoesStraightToTheSevenTabWorkbench(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
 
-        self::assertSame('Sprawdź', self::currentStep($crawler));
-
-        $summary = $crawler->filter('.review-bar')->text();
-        self::assertStringContainsString('2', $summary);
-        self::assertStringContainsString('dywidend', $summary);
-        self::assertSame(1, $crawler->filter('.review-bar select[name="tax_year"]')->count());
-    }
-
-    public function testReviewHidesTechnicalMetadataBehindAProgressiveControl(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
-
-        // A real checkbox and label, so the columns can be revealed without JavaScript.
-        self::assertSame(1, $crawler->filter('input.tech-toggle__input#show_tech')->count());
-        self::assertSame(1, $crawler->filter('label[for="show_tech"]')->count());
-        self::assertSame('', (string) $crawler->filter('input#show_tech')->attr('name'));
-
-        // Quantity and source are marked as technical, yet remain in the form.
-        self::assertGreaterThan(0, $crawler->filter('td.cell--tech')->count());
+        self::assertResponseIsSuccessful();
+        self::assertSame(1, $crawler->filter('form[data-workbench]')->count());
+        self::assertSame(0, $crawler->filter('.progress, .stepper')->count());
         self::assertSame(
-            1,
-            $crawler->filter('td.cell--tech input[name="positions[0][quantity]"]')->count(),
+            ['PIT-38 / PIT-ZG', 'Wymaga uwagi 0', 'Transakcje', 'FIFO', 'Dywidendy', 'Opłaty', 'Ustawienia'],
+            $crawler->filter('[role="tablist"] [role="tab"]')->each(static fn (Crawler $node): string => $node->text()),
         );
-        self::assertSame(
-            1,
-            $crawler->filter('td.cell--tech input[name="positions[0][source]"]')->count(),
-        );
-    }
-
-    public function testTheEssentialColumnsAreTheOnlyVisibleOnes(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
-
-        $headers = $crawler->filter('.table--editable')->first()->filter('thead th')->each(
-            static fn (Crawler $node): string => $node->text().('' !== (string) $node->attr('class') ? ' [tech]' : ''),
-        );
-
-        self::assertSame(
-            ['Instrument', 'Kraj', 'Zakup', 'Sprzedaż', 'Liczba [tech]', 'Źródło [tech]', 'Usuń'],
-            $headers,
-        );
-    }
-
-    public function testTheReviewFormStillCarriesEveryFieldOfEveryRow(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, [
-            'trades.csv' => self::IBKR_TRADES,
-            'dividends.csv' => self::DIVIDENDS,
-        ]);
-
-        $values = $crawler->filter('form[data-role="review"]')->form()->getPhpValues();
-
-        self::assertIsArray($values['positions']);
-        self::assertIsArray($values['dividends']);
-
-        foreach ($values['positions'] as $row) {
-            self::assertIsArray($row);
-            self::assertSame(
-                ['name', 'currency', 'country', 'buy_date', 'buy_amount', 'sell_date', 'sell_amount', 'quantity', 'source'],
-                array_keys($row),
-            );
-        }
-
-        foreach ($values['dividends'] as $row) {
-            self::assertIsArray($row);
-            self::assertSame(
-                ['name', 'currency', 'country', 'date', 'gross', 'tax_paid', 'source'],
-                array_keys($row),
-            );
-        }
-    }
-
-    public function testTheReviewActionsRankTheOneThatMatters(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
-        $bar = $crawler->filter('.action-bar');
-
-        self::assertSame(1, $bar->count());
-        self::assertSame('Oblicz podatek', $bar->filter('.button--primary')->text());
-        self::assertSame('Pobierz CSV', $bar->filter('.button--quiet')->text());
-        self::assertSame('Wgraj inne pliki', $bar->filter('a.button--plain')->text());
-    }
-
-    /* Result and print ---------------------------------------------------- */
-
-    public function testResultPageMarksTheThirdStepAndLeadsWithTheAmount(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->calculate($client);
-
-        self::assertSame('Wynik', self::currentStep($crawler));
-        self::assertStringContainsString('Twój wynik za 2025', $crawler->filter('h1')->text());
-
-        // Both readings, side by side, above everything explanatory.
-        $verdict = $crawler->filter('.verdict');
-        self::assertSame(1, $verdict->count());
-        self::assertStringContainsString('KIS', $verdict->text());
-        self::assertStringContainsString('NSA', $verdict->text());
-        self::assertSame(2, $verdict->filter('.verdict__amount')->count());
-
-        // Four figures, not the whole tax mechanism.
-        self::assertSame(4, $crawler->filter('.figures-grid .figure')->count());
-    }
-
-    public function testResultPagePutsEveryDetailedTableInAClosedDisclosure(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->calculate($client);
-
-        self::assertSame(
-            0,
-            $crawler->filterXPath('//table[not(ancestor::details)]')->count(),
-            'detailed tables must sit inside a disclosure',
-        );
-        self::assertSame([], self::openDisclosures($crawler));
-
-        $summaries = $crawler->filter('details > summary')->each(
-            static fn (Crawler $node): string => $node->text(),
-        );
-
-        self::assertContains('Dlaczego są dwa warianty?', $summaries);
-        self::assertContains('Rozbicie na kraje (PIT/ZG)', $summaries);
-        self::assertContains('Jak to policzyliśmy', $summaries);
-    }
-
-    public function testDownloadsSitDirectlyUnderTheSummary(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->calculate($client);
-
-        self::assertSame(
-            0,
-            $crawler->filterXPath('//form[.//button[@formaction]][ancestor::details]')->count(),
-            'the download form must not be hidden behind a disclosure',
-        );
-        self::assertGreaterThan(0, $crawler->filter('.download-actions .button--primary')->count());
+        self::assertSame(7, $crawler->filter('[role="tabpanel"]')->count());
+        self::assertSame(0, $crawler->filter('[role="tabpanel"][hidden]')->count(), 'without JavaScript all panels stay visible');
+        self::assertStringContainsString('Wkład z zaimportowanych danych', $crawler->filter('#panel-summary')->text());
     }
 
     /**
-     * Nothing but a script can open the browser's print dialog. The page
-     * therefore ships the button hidden and states the shortcut instead, and the
-     * script swaps the two - so whichever way the page is loaded, the user never
-     * meets a visible control that does nothing.
+     * The settings panel deliberately sits outside every `data-fragment`
+     * container: a control inside one would be wiped by the debounce the moment
+     * the user changed anything else, taking their choice with it.
      */
-    public function testThePrintButtonIsRevealedByScriptAndReplacedByAShortcutWithoutIt(): void
+    public function testSettingsPanelOffersBothChoicesAndIsNotAnAjaxFragment(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
-        $crawler = $client->request('POST', '/kalkulator/raport', $this->payload($crawler));
+        $panel = $crawler->filter('#panel-settings');
 
-        $button = $crawler->filter('button[data-action="print"]');
-        self::assertSame(1, $button->count());
-        self::assertNotNull(
-            $button->getNode(0)?->attributes->getNamedItem('hidden'),
-            'the print button must ship hidden, because only JavaScript can make it work',
-        );
+        self::assertSame(1, $panel->filter('select[name="country_source"]')->count());
+        self::assertSame(1, $panel->filter('select[name="credit_method"]')->count());
+        self::assertSame(0, $panel->filter('[data-fragment]')->count());
 
-        $fallback = $crawler->filter('[data-role="print-fallback"]');
-        self::assertSame(1, $fallback->count(), 'without the button there has to be an instruction');
-        self::assertNull(
-            $fallback->getNode(0)?->attributes->getNamedItem('hidden'),
-            'the instruction is the no-JavaScript state and must be visible as delivered',
-        );
+        // Defaults: listing exchange, conservative (KIS) variant.
+        self::assertSame('exchange', $panel->filter('select[name="country_source"] option[selected]')->attr('value'));
+        self::assertSame('conservative', $panel->filter('select[name="credit_method"] option[selected]')->attr('value'));
 
-        $text = $fallback->text();
-        self::assertMatchesRegularExpression('/Ctrl/u', $text);
-        self::assertMatchesRegularExpression('/⌘/u', $text);
-        self::assertMatchesRegularExpression('/przegląda/iu', $text);
+        // Both readings have to be explained where the choice is made.
+        self::assertStringContainsString('giełd', $panel->text());
+        self::assertStringContainsString('ISIN', $panel->text());
+        self::assertStringContainsString('II FSK 1171/22', $panel->text());
     }
 
-    public function testTheScriptLooksForExactlyTheHooksThePrintPageShips(): void
+    /**
+     * The editor tables are not AJAX fragments, so a setting that changes what
+     * is in them must submit for real - otherwise Transakcje would keep showing
+     * the old countries while the summary already used the new ones.
+     */
+    public function testChangingASettingSubmitsForRealInsteadOfRecalculatingInTheBackground(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
+        $panel = $crawler->filter('#panel-settings');
+        $button = $panel->filter('[data-apply-settings]');
+
+        self::assertSame(1, $button->count());
+        self::assertNotNull($button->attr('formnovalidate'));
+        self::assertStringContainsString('/kalkulator/wynik', (string) $button->attr('formaction'));
+        self::assertSame(2, $panel->filter('select[data-full-reload]')->count());
+
+        $script = (string) file_get_contents(\dirname(__DIR__, 2).'/public/js/app.js');
+        self::assertStringContainsString('data-full-reload', $script);
+        self::assertStringContainsString('data-apply-settings', $script);
+    }
+
+    public function testASelectedSettingSurvivesTheRoundTrip(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
+        $payload = $this->payload($crawler);
+        $payload['country_source'] = 'isin';
+        $payload['credit_method'] = 'nsa';
+
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+        $panel = $crawler->filter('#panel-settings');
+
+        self::assertSame('isin', $panel->filter('select[name="country_source"] option[selected]')->attr('value'));
+        self::assertSame('nsa', $panel->filter('select[name="credit_method"] option[selected]')->attr('value'));
+    }
+
+    public function testTransactionsEditorCarriesTheCompleteLogicalTradeState(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $form = $crawler->filter('form[data-workbench]')->form()->getPhpValues();
+
+        self::assertCount(2, $form['trades']);
+        foreach ($form['trades'] as $trade) {
+            self::assertIsArray($trade);
+            foreach (['id', 'broker', 'pool', 'symbol', 'name', 'country', 'date', 'time', 'side', 'quantity', 'currency', 'total', 'unit_price', 'price_currency', 'commission', 'autofx', 'external_id', 'source'] as $field) {
+                self::assertArrayHasKey($field, $trade);
+            }
+        }
+        self::assertSame('507.5782', $form['trades'][0]['unit_price']);
+        self::assertSame('USD', $form['trades'][0]['price_currency']);
+        self::assertSame(1, $crawler->filter('[data-editor-body="trades"] label.remove-toggle input[name="trades[0][remove]"]')->count());
+    }
+
+    public function testWorkbenchBarKeepsYearCountsPrivacyUploadsAndExportsAvailable(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
+        $bar = $crawler->filter('.workbench-bar');
+
+        self::assertSame(1, $bar->filter('select[name="tax_year"]')->count());
+        self::assertSame(1, $bar->filter('input[type="file"][multiple]')->count());
+        self::assertSame(1, $bar->filter('button[formaction$="/import"]')->count());
+        self::assertSame(1, $bar->filter('button[formaction$="raport.csv"]')->count());
+        self::assertSame(1, $bar->filter('button[formaction$="raport"]')->count());
+        self::assertStringContainsString('Dane tylko w tej karcie', $crawler->filter('.workbench-heading')->text());
+    }
+
+    public function testAjaxRecalculationReturnsVersionedReplaceableFragments(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
+        $payload = $this->payload($crawler);
+        $payload['revision'] = '17';
+
+        $client->request('POST', '/kalkulator/wynik', $payload, [], [
+            'HTTP_ACCEPT' => 'application/json',
+            'HTTP_X_REQUESTED_WITH' => 'XMLHttpRequest',
+        ]);
+
+        self::assertResponseIsSuccessful();
+        $json = json_decode((string) $client->getResponse()->getContent(), true, flags: JSON_THROW_ON_ERROR);
+        self::assertSame(17, $json['version']);
+        self::assertTrue($json['ok']);
+        self::assertSame(
+            ['summary', 'fifo', 'attention', 'attentionCounter', 'dividendResults', 'messages', 'counters'],
+            array_keys($json['fragments']),
+        );
+    }
+
+    public function testFifoCsvAndPrintCarryAuditPricesWithoutMovingTheTradeEditor(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $payload = $this->payload($crawler);
+        foreach ($payload['trades'] as &$trade) {
+            $trade['country'] = 'US';
+        }
+        unset($trade);
+
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+        self::assertSame(0, $crawler->filter('#panel-fifo [data-editor-body="trades"]')->count());
+        self::assertSame(1, $crawler->filter('#panel-transactions [data-editor-body="trades"]')->count());
+        $fifo = $crawler->filter('#panel-fifo')->text();
+        self::assertStringContainsString('507,5782 USD', $fifo);
+        self::assertStringContainsString('560,00 USD', $fifo);
+
+        $payload = $this->payload($crawler);
+        $client->request('POST', '/kalkulator/raport.csv', $payload);
+        $csv = (string) $client->getResponse()->getContent();
+        self::assertStringContainsString('Cena/szt. zakupu', $csv);
+        self::assertStringContainsString('507.5782', $csv);
+        self::assertStringContainsString('AKTUALNY STAN - LOGICZNE TRANSAKCJE FIFO', $csv);
+
+        $crawler = $client->request('POST', '/kalkulator/raport', $payload);
+        self::assertStringContainsString('507,5782 USD', $crawler->filter('body')->text());
+    }
+
+    /**
+     * The two leg columns used to be headed just "PLN", which said nothing about
+     * which one was the cost and which the revenue - and after the sell fee
+     * moved into the costs the buy-leg conversion is no longer the cost anyway.
+     *
+     * The leaf column count stays 17 either way, so a forgotten colspan would
+     * misalign the two header rows with nothing to catch it. Hence the colspans
+     * are asserted, not just the labels.
+     */
+    public function testFifoNamesTheRevenueAndCostColumnsAndKeepsTheHeaderAligned(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['degiro.csv' => self::DEGIRO_WITH_FEE]);
+        $fifo = $crawler->filter('#panel-fifo');
+
+        self::assertStringContainsString('Przychód PLN', $fifo->text());
+        self::assertStringContainsString('Koszt PLN', $fifo->text());
+        self::assertSame(0, $fifo->filter('thead th')->reduce(
+            static fn ($th): bool => 'PLN' === trim($th->text()),
+        )->count());
+
+        $groups = $fifo->filter('thead tr')->eq(0)->filter('th[colspan]');
+        self::assertSame(2, $groups->count());
+        foreach ($groups as $group) {
+            self::assertSame('6', $group->getAttribute('colspan'));
+        }
+        self::assertSame(6, $fifo->filter('thead tr')->eq(1)->filter('th')->count() / 2);
+
+        // The "Total" cell must keep showing the settled cash from the file, not
+        // the grossed-up revenue - 4478,75 next to a 1,25 fee, never 4480,00.
+        self::assertStringContainsString("4\u{00A0}478,75 USD", $fifo->text());
+        self::assertStringNotContainsString("4\u{00A0}480,00 USD", $fifo->text());
+    }
+
+    public function testFifoFootnoteGivesTheFormulaInsteadOfTheOldAuditOnlyClaim(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['degiro.csv' => self::DEGIRO_WITH_FEE]);
+        $note = $crawler->filter('#panel-fifo [data-fragment="fifo"] .note')->first()->text();
+
+        self::assertStringContainsString('Total + prowizja + AutoFX', $note);
+        self::assertStringContainsString('prowizja zakupu jest już w', $note);
+        self::assertStringNotContainsString('opłat nie doliczono drugi raz', $note);
+    }
+
+    /**
+     * Every flat-IBKR row has a null disposal cost, so this exercises the branch
+     * that would be a 500 if a template added the two costs itself.
+     */
+    public function testAPositionWithoutAReportedSellFeeStillRenders(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $payload = $this->payload($crawler);
+        foreach ($payload['trades'] as &$trade) {
+            $trade['country'] = 'US';
+        }
+        unset($trade);
+
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+
+        self::assertSame(0, $crawler->filter('.message--error')->count());
+        self::assertGreaterThan(0, $crawler->filter('#panel-fifo tbody tr')->count());
+        self::assertStringContainsString('nie zgłasza prowizji', $crawler->filter('#panel-fifo [data-fragment="fifo"] .note')->last()->text());
+    }
+
+    /**
+     * Without the date column the NBP rate date is unexplainable: a payment
+     * booked on the 30th legitimately carries a rate from the 29th, and over a
+     * holiday run it can be days earlier. The reader has to see both.
+     */
+    public function testDividendResultsShowTheDateTheRateWasTakenFrom(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['div.csv' => self::DIVIDENDS]);
+        $results = $crawler->filter('.dividend-results');
+
+        self::assertStringContainsString('Data', $results->filter('thead')->text());
+        self::assertStringContainsString('2025-04-02', $results->filter('tbody tr')->first()->text());
+    }
+
+    /**
+     * The dispute is live, so the setting may pick which reading fills the PIT
+     * fields but neither may disappear - see DualScenarioOutputTest.
+     */
+    public function testTheChosenVariantFillsThePitFieldsAndTheOtherStaysVisible(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['div.csv' => self::DIVIDENDS]);
+        $payload = $this->payload($crawler);
+        $payload['credit_method'] = 'nsa';
+
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+        $summary = $crawler->filter('#panel-summary');
+
+        self::assertStringContainsString('wg NSA', $summary->text());
+        self::assertStringContainsString('wariant alternatywny', mb_strtolower($summary->text()));
+        // Both readings remain reachable on the page.
+        self::assertStringContainsString('II FSK 1171/22', $summary->text());
+        self::assertStringContainsString('zachowawcz', mb_strtolower($summary->text()));
+    }
+
+    public function testTheTreatyRateWarningDisappearsUnderNsa(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['unknown.csv' => <<<'CSV'
+            name,country,currency,date,amount,tax_paid
+            AAA,ZZ,USD,2025-04-02,100.00,5.00
+            CSV]);
+
+        self::assertSame(1, $crawler->filter('[data-diagnostic-code="dividend.treaty_rate_missing"]')->count());
+
+        $payload = $this->payload($crawler);
+        $payload['credit_method'] = 'nsa';
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+
+        // Under the NSA reading the treaty cap plays no part, so the item is
+        // noise rather than something to act on.
+        self::assertSame(0, $crawler->filter('[data-diagnostic-code="dividend.treaty_rate_missing"]')->count());
+    }
+
+    public function testDividendTabSummarySumsWhatFeedsThePitFields(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['div.csv' => self::DIVIDENDS]);
+        $summary = $crawler->filter('[data-fragment="dividendResults"] .dividend-summary');
+
+        self::assertSame(1, $summary->count());
+        $text = $summary->text();
+
+        // The four PIT-38 dividend fields for 2025.
+        foreach (['47', '48', '49', '51'] as $field) {
+            self::assertStringContainsString('Pole '.$field, $text);
+        }
+        self::assertStringContainsString('Przychód brutto', $text);
+        self::assertStringContainsString('Podatek polski 19%', $text);
+        self::assertStringContainsString('Podatek pobrany za granicą', $text);
+    }
+
+    public function testDividendSummaryShowsThePerCountryBreakdown(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['div.csv' => self::DIVIDENDS]);
+        $table = $crawler->filter('[data-fragment="dividendResults"] .dividend-countries');
+
+        self::assertSame(1, $table->count());
+        self::assertSame(2, $table->filter('tbody tr')->count(), 'US and IE');
+        self::assertStringContainsString('bez PIT/ZG', $table->text());
+    }
+
+    public function testMissingExecutionPriceRendersAsADashInFifo(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['trades.csv' => <<<'CSV'
+            Date,Time,Product,ISIN,Reference Exchange,Execution Venue,Quantity,Price,,Value,,Transaction and/or third,,Total,,Order ID
+            15-03-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,1,,USD,-10.00,USD,0.00,USD,-10.00,USD,buy-1
+            20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-1,15.0000,USD,15.00,USD,0.00,USD,15.00,USD,sell-1
+            CSV]);
+
+        $fifo = $crawler->filter('#panel-fifo');
+        self::assertSame(1, $fifo->filter('tbody tr')->count());
+        self::assertStringContainsString('—', $fifo->text());
+        self::assertStringContainsString('15,0000 USD', $fifo->text());
+    }
+
+    public function testDividendResultsExplainBothCreditsNumericallyWithoutTheOldLongWarning(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
+        $text = $crawler->filter('[data-fragment="dividendResults"]')->text();
+
+        foreach (['Stawka umowna', 'Pobrany PLN', 'Podatek PL', 'Odliczenie KIS', 'Odliczenie NSA', 'Różnica odliczeń', 'KIS do zapłaty', 'NSA do zapłaty'] as $heading) {
+            self::assertStringContainsString($heading, $text);
+        }
+        self::assertStringContainsString('15%', $text);
+        self::assertStringNotContainsString('Pobrano podatek wyższy niż stawka umowna', $crawler->filter('body')->text());
+    }
+
+    public function testUnknownTreatyRateIsReviewOnlyAndKeepsThePitResultVisible(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['unknown.csv' => <<<'CSV'
+            name,country,currency,date,amount,tax_paid
+            AAA,ZZ,USD,2025-04-02,100.00,5.00
+            CSV]);
+
+        self::assertSame(1, $crawler->filter('[data-diagnostic-code="dividend.treaty_rate_missing"].attention-item--review')->count());
+        self::assertSame(0, $crawler->filter('.result-unavailable')->count());
+        self::assertSame('true', $crawler->filter('#tab-summary')->attr('aria-selected'));
+        self::assertStringContainsString('Brak skonfigurowanej stawki umownej', $crawler->filter('#panel-attention')->text());
+    }
+
+    public function testImportDiagnosticsUseAnExplicitDestinationInsteadOfMessageText(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['broken-dividend.csv' => <<<'CSV'
+            name,country,currency,date,amount,tax_paid
+            AAA,US,USD,nie-data,100.00,15.00
+            CSV]);
+
+        $issue = $crawler->filter('[data-diagnostic-code="import.invalid"]');
+        self::assertSame(1, $issue->count());
+        self::assertSame('dividends', $issue->filter('[data-attention-target]')->attr('data-attention-target'));
+        self::assertSame('true', $crawler->filter('#tab-attention')->attr('aria-selected'));
+    }
+
+    public function testTabAndDebounceScriptIncludesKeyboardAndStaleResponseGuards(): void
     {
         $script = self::assetContents('js/app.js');
 
-        // Renaming one side of this contract would silently restore the dead button.
-        self::assertStringContainsString('[data-action="print"][hidden]', $script);
-        self::assertStringContainsString('[data-role="print-fallback"]', $script);
-
-        // A `hidden` attribute must outrank the flex layout of `.button`.
-        self::assertMatchesRegularExpression(
-            '/\[hidden\]\s*\{\s*display:\s*none\s*!important;\s*\}/',
-            self::assetContents('css/app.css'),
-        );
+        foreach (['ArrowRight', 'ArrowLeft', 'Home', 'End', 'hashchange', 'AbortController', 'payload.version !== revision', 'recalculate(false)', 'recalculate(true)', '450'] as $needle) {
+            self::assertStringContainsString($needle, $script);
+        }
     }
 
-    /* Touch targets ------------------------------------------------------- */
-
-    /**
-     * The review screen is the one surface a phone user has to work in, and its
-     * controls are deliberately compact. The 44x44 minimum therefore lives in the
-     * narrow-screen block only: applying it to the desktop table would push a
-     * single row past the fold.
-     */
-    public function testNarrowScreensGiveEveryReviewControlAFullTouchTarget(): void
+    public function testWideWorkbenchAndMobilePrintRulesArePresent(): void
     {
         $css = self::assetContents('css/app.css');
+        $print = self::assetContents('css/print.css');
 
-        self::assertMatchesRegularExpression('/--tap:\s*44px;/', $css, 'the token has to be the real minimum');
-
-        $mobile = self::cssBlock($css, '@media (max-width: 47.99rem)');
-
-        foreach ([
-            '.table--editable input[type="text"]' => 'the compact editable fields',
-            '.remove-toggle' => 'the delete toggle',
-            '.tech-toggle__label' => 'the technical-details switch',
-        ] as $selector => $what) {
-            self::assertMatchesRegularExpression(
-                '/'.preg_quote($selector, '/').'[^{]*\{[^}]*min-height:\s*var\(--tap\)/s',
-                $mobile,
-                $what.' must reach the minimum touch target on a phone',
-            );
-        }
-
-        // A checkbox is square, so its target needs the width as well.
-        self::assertMatchesRegularExpression(
-            '/\.remove-toggle\s*\{[^}]*min-width:\s*var\(--tap\)/s',
-            $mobile,
-        );
-
-        // Desktop density is the other half of the decision. Buttons and
-        // disclosure summaries are 44px everywhere; these three are not.
-        self::assertDoesNotMatchRegularExpression(
-            '/\.(table--editable|remove-toggle|tech-toggle__label)[^{}]*\{[^}]*var\(--tap\)/s',
-            str_replace($mobile, '', $css),
-            'growing these controls outside the narrow-screen block would cost desktop density',
-        );
+        self::assertMatchesRegularExpression('/\.container--workbench\s*\{[^}]*max-width:\s*112rem/s', $css);
+        self::assertMatchesRegularExpression('/\.workbench-panel[^}]*width:\s*100%/s', $css);
+        self::assertStringContainsString('@media (max-width: 54rem)', $css);
+        self::assertStringContainsString('details:not([open]) > *:not(summary)', $print);
     }
 
-    public function testTheDeleteCheckboxSitsInsideItsOwnLabel(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, [
-            'trades.csv' => self::IBKR_TRADES,
-            'dividends.csv' => self::DIVIDENDS,
-        ]);
-
-        foreach (['positions[0][remove]', 'dividends[0][remove]'] as $name) {
-            $checkbox = $crawler->filter('label.remove-toggle input[name="'.$name.'"]');
-            self::assertSame(1, $checkbox->count(), $name.' must be wrapped by its own label');
-        }
-
-        // The label carries the name, so the row is identified without an aria-label.
-        self::assertStringContainsString(
-            'Usuń pozycję 1',
-            $crawler->filter('label.remove-toggle')->first()->text(),
-        );
-    }
-
-    public function testThePrintableReportOpensEveryDisclosure(): void
+    public function testPrintableReportIsReadOnlyAndExpandsItsDisclosure(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
         $crawler = $client->request('POST', '/kalkulator/raport', $this->payload($crawler));
 
         self::assertResponseIsSuccessful();
-
-        $all = $crawler->filter('details')->count();
-        self::assertGreaterThan(0, $all);
-        self::assertCount(
-            $all,
-            self::openDisclosures($crawler),
-            'nothing may be collapsed on a printed report',
-        );
+        self::assertSame(0, $crawler->filter('input, select, textarea')->count());
+        self::assertGreaterThan(0, $crawler->filter('details[open]')->count());
+        self::assertStringContainsString('Wersja tylko do odczytu', $crawler->filter('body')->text());
+        self::assertSame(1, $crawler->filter('button[data-action="print"][hidden]')->count());
+        self::assertMatchesRegularExpression('/Ctrl\+P.*⌘\+P/u', $crawler->filter('[data-role="print-fallback"]')->text());
     }
 
-    /* Helpers ------------------------------------------------------------- */
-
-    /**
-     * @return list<string>
-     */
-    private static function stepLabels(Crawler $crawler): array
-    {
-        return $crawler->filter('.progress__step .progress__label')->each(
-            static fn (Crawler $node): string => $node->text(),
-        );
-    }
-
-    private static function currentStep(Crawler $crawler): string
-    {
-        $current = $crawler->filter('.progress__step[aria-current="step"]');
-        self::assertSame(1, $current->count(), 'exactly one step is the current one');
-
-        return $current->filter('.progress__label')->text();
-    }
-
-    private static function assetContents(string $path): string
-    {
-        $file = dirname(__DIR__, 2).'/public/'.$path;
-        self::assertFileExists($file);
-
-        return (string) file_get_contents($file);
-    }
-
-    /**
-     * The body of a CSS block, braces balanced, so a rule can be asserted to sit
-     * inside one media query and outside every other.
-     */
-    private static function cssBlock(string $css, string $header): string
-    {
-        $start = strpos($css, $header.' {');
-        self::assertIsInt($start, $header.' must exist in the stylesheet');
-
-        $open = $start + strlen($header) + 2;
-        $depth = 1;
-        for ($i = $open; $i < strlen($css); ++$i) {
-            $depth += match ($css[$i]) {
-                '{' => 1,
-                '}' => -1,
-                default => 0,
-            };
-
-            if (0 === $depth) {
-                return substr($css, $open, $i - $open);
-            }
-        }
-
-        self::fail($header.' is not closed');
-    }
-
-    /**
-     * @return list<string>
-     */
+    /** @return list<string> */
     private static function openDisclosures(Crawler $crawler): array
     {
         $open = [];
@@ -505,21 +507,26 @@ final class UiSurfacesTest extends WebTestCase
         return $open;
     }
 
-    /**
-     * @param array<string, string> $files filename => content
-     */
+    private static function assetContents(string $path): string
+    {
+        $file = dirname(__DIR__, 2).'/public/'.$path;
+        self::assertFileExists($file);
+
+        return (string) file_get_contents($file);
+    }
+
+    /** @param array<string, string> $files filename => content */
     private function import(KernelBrowser $client, array $files, string $year = '2025'): Crawler
     {
         $crawler = $client->request('GET', '/kalkulator');
         $token = (string) $crawler->filter('input[name="_token"]')->attr('value');
-
         $uploads = [];
+
         foreach ($files as $name => $content) {
             $path = tempnam(sys_get_temp_dir(), 'pitui');
             self::assertIsString($path);
             file_put_contents($path, $content);
             $this->tempFiles[] = $path;
-
             $uploads[] = new UploadedFile($path, $name, 'text/csv', null, true);
         }
 
@@ -531,18 +538,9 @@ final class UiSurfacesTest extends WebTestCase
         );
     }
 
-    private function calculate(KernelBrowser $client): Crawler
-    {
-        $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
-
-        return $client->request('POST', '/kalkulator/wynik', $this->payload($crawler));
-    }
-
-    /**
-     * @return array<string, mixed>
-     */
+    /** @return array<string, mixed> */
     private function payload(Crawler $crawler): array
     {
-        return $crawler->filter('form[data-role="review"]')->form()->getPhpValues();
+        return $crawler->filter('form[data-workbench]')->form()->getPhpValues();
     }
 }

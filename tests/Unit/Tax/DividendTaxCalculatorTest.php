@@ -46,7 +46,9 @@ final class DividendTaxCalculatorTest extends TestCase
         self::assertSame('120.00', (string) $calculated->withheldTax->pln->value());
         self::assertSame('60.00', (string) $calculated->conservative->creditableTax->toScale(2)->value());
         self::assertSame('16.00', (string) $calculated->conservative->taxDue->toScale(2)->value());
-        self::assertNotNull($calculated->warning);
+        self::assertNull($calculated->warning);
+        self::assertSame('16.00', (string) $calculated->creditDifference()->toScale(2)->value());
+        self::assertSame([], $result->warnings());
     }
 
     public function testCreditBelowTheTreatyRateIsTakenAtItsActualValue(): void

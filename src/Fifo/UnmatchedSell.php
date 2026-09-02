@@ -20,6 +20,7 @@ final readonly class UnmatchedSell
         public string $symbol,
         public DateTimeImmutable $date,
         public Decimal $quantity,
+        public string $tradeId = '',
     ) {
     }
 }

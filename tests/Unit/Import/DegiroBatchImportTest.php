@@ -321,11 +321,56 @@ final class DegiroBatchImportTest extends TestCase
         self::assertSame(['599.60', '899.40'], $proceeds);
     }
 
-    /**
-     * Two executions of one order that happen to be identical are still two
-     * trades. Collapsing them would halve the taxable gain.
-     */
-    public function testTwoIdenticalFillsOfOneOrderAreBothKeptEvenWhenTheFileIsUploadedTwice(): void
+    public function testFillsOfOneReportedOrderAtTheExactSameTimeAreAggregated(): void
+    {
+        $result = $this->import([
+            'degiro.csv' => self::degiro([
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,6,100.00,USD,-600.00,USD,-1.00,USD,-601.00,USD,buy-1',
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,4,100.00,USD,-400.00,USD,-1.00,USD,-401.00,USD,buy-1',
+                '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,sell-1',
+            ]),
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('10', (string) $result->positions[0]->quantity);
+        self::assertSame('1002.00', (string) $result->positions[0]->buyAmount->value());
+        self::assertStringContainsString('zagreg', mb_strtolower(implode(' ', $result->infos())));
+    }
+
+    public function testAggregatedOrderUsesQuantityWeightedExecutionPrice(): void
+    {
+        $result = $this->import([
+            'degiro.csv' => self::degiro([
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,6,100.00,USD,-600.00,USD,-1.00,USD,-601.00,USD,buy-1',
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,4,110.00,USD,-440.00,USD,-1.00,USD,-441.00,USD,buy-1',
+                '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,sell-1',
+            ]),
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('104.00000000', (string) $result->positions[0]->buyUnitPrice?->value());
+        self::assertSame('USD', $result->positions[0]->buyUnitPrice?->currency());
+        self::assertSame('1042.00', (string) $result->positions[0]->buyAmount->value());
+    }
+
+    public function testDifferentPriceCurrenciesInOneAggregatedOrderAbortTheBatch(): void
+    {
+        $result = $this->import([
+            'degiro.csv' => self::degiro([
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,6,100.00,USD,-600.00,USD,-1.00,USD,-601.00,USD,buy-1',
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,4,110.00,EUR,-440.00,USD,-1.00,USD,-441.00,USD,buy-1',
+                '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,sell-1',
+            ]),
+        ]);
+
+        self::assertSame([], $result->positions);
+        self::assertStringContainsString('różne waluty ceny wykonania', implode(' ', $result->errors()));
+    }
+
+    /** Two rows of one reported order at one instant form one logical trade. */
+    public function testTwoIdenticalFillsOfOneOrderAreAggregatedEvenWhenTheFileIsUploadedTwice(): void
     {
         $file = self::degiro([
             '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,5,100.00,USD,-500.00,USD,-1.00,USD,-501.00,USD,buy-1',
@@ -338,8 +383,9 @@ final class DegiroBatchImportTest extends TestCase
         $twice = $this->import(['a.csv' => $file, 'b.csv' => $file]);
 
         self::assertSame([], $once->errors());
-        self::assertCount(2, $once->positions);
-        self::assertCount(2, $twice->positions);
+        self::assertCount(1, $once->positions);
+        self::assertCount(1, $twice->positions);
+        self::assertSame('10', (string) $once->positions[0]->quantity);
     }
 
     public function testAnOrderIdReusedForAnotherInstrumentAbortsTheImport(): void

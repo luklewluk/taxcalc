@@ -1,0 +1,131 @@
+{% if report is null %}
+    <div class="result-unavailable" role="status">
+        <h2>Wartości PIT są chwilowo niedostępne</h2>
+        <p>Popraw wskazane dane. Kalkulator celowo nie pokazuje starego ani częściowego wyniku.</p>
+    </div>
+{% else %}
+    <p class="visually-hidden">Szacowany podatek</p>
+    {% set stock = report.stock %}
+    {% set dividends = report.dividends %}
+    <p class="eyebrow">Wkład z zaimportowanych danych</p>
+    <h2>PIT-38({{ form_map.pit38_version }}) za {{ report.taxYear }}</h2>
+    <p class="note">
+        To nie jest kompletne zeznanie. Połącz te wartości z innymi PIT-8C, stratami z lat ubiegłych,
+        kryptowalutami i pozostałymi danymi, których kalkulator nie zna. Sprawdź aktualne wzory
+        <a href="https://www.gov.pl/web/finanse/pit-38" rel="noopener noreferrer">PIT-38</a> i
+        <a href="https://www.gov.pl/web/finanse/pitzg" rel="noopener noreferrer">PIT/ZG</a>.
+    </p>
+
+    {% if form_map.provisional %}
+        <p class="message message--warning">
+            Oficjalny wzór PIT-38 za 2026 r. nie został jeszcze opublikowany. Numery pól są prowizorycznie
+            takie jak dla 2025 r. i mogą się zmienić.
+        </p>
+    {% endif %}
+
+    <div class="pit-grid">
+        <section class="pit-card" aria-labelledby="pit-akcje">
+            <h3 id="pit-akcje">Akcje i ETF-y</h3>
+            <dl class="pit-fields">
+                <div><dt>Pole {{ form_map.stock_revenue }} — Przychód</dt><dd>{{ stock.totalRevenue|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.stock_cost }} — Koszty uzyskania przychodu</dt><dd>{{ stock.totalCost|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.total_revenue }} — Przychód razem</dt><dd>{{ stock.totalRevenue|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.total_cost }} — Koszty razem</dt><dd>{{ stock.totalCost|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.stock_income }} — Dochód</dt><dd>{{ stock.isLoss ? '0,00' : (stock.income|money) }} zł</dd></div>
+                <div><dt>Pole {{ form_map.stock_loss }} — Strata</dt><dd>{{ stock.loss|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.tax_basis }} — podstawa</dt><dd>{{ stock.isLoss ? '0,00' : (stock.income|money) }} zł</dd></div>
+                <div><dt>Pole {{ form_map.tax_rate }} — stawka</dt><dd>19%</dd></div>
+                <div><dt>Pole {{ form_map.stock_tax }} — podatek</dt><dd>{{ stock.taxRoundedToZloty|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.foreign_stock_tax }} — podatek zapłacony za granicą</dt><dd>brak danych</dd></div>
+                <div><dt>Pole {{ form_map.stock_tax_due }} — podatek należny (wkład)</dt><dd>{{ stock.taxRoundedToZloty|money }} zł</dd></div>
+            </dl>
+            {# .zero would resolve to the static Amount::zero() factory, not isZero(). #}
+            {% if not stock.disposalCost.isZero %}
+                <p class="reconciliation">
+                    W przychodzie i w kosztach: <strong>{{ stock.disposalCost|money }} zł</strong>
+                    prowizji i opłat AutoFX od sprzedaży. Przychodem jest kwota należna, a te opłaty
+                    są kosztem odpłatnego zbycia — dochód jest ten sam.
+                </p>
+            {% endif %}
+            {% if stock.accountingFees is not empty %}
+                <p class="reconciliation">
+                    W kosztach: <strong>{{ stock.accountingFeesCost|money }} zł</strong> kosztów rachunkowych
+                    nieprzypisanych do żadnego kraju PIT/ZG.
+                </p>
+            {% endif %}
+        </section>
+
+        <section class="pit-card" aria-labelledby="pit-dywidendy">
+            <h3 id="pit-dywidendy">Dywidendy zagraniczne</h3>
+            <dl class="pit-fields">
+                <div><dt>Pole {{ form_map.dividend_polish_tax }} — polski podatek 19%</dt><dd>{{ dividends.totalPolishTax|money }} zł</dd></div>
+                <div><dt>Pole {{ form_map.dividend_foreign_tax }} — pobrany za granicą</dt><dd>{{ dividends.totalWithheldTax|money }} zł</dd></div>
+                {# The setting picks which reading fills the field; the other one
+                   stays right next to it, because the dispute is live and hiding
+                   a figure would take a side in it. #}
+                {% set chosen = settings.creditMethod %}
+                {% set other = settings.alternativeCreditMethod %}
+                <div>
+                    <dt>Pole {{ form_map.dividend_tax_due }} — do zapłaty</dt>
+                    <dd>
+                        {{ dividends.scenarioFor(chosen).taxDue|money }} zł
+                        <span class="cell-note">{{ chosen.shortLabel }} — wariant użyty w polach PIT</span>
+                        <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ dividends.scenarioFor(other).taxDue|money }} zł</span>
+                    </dd>
+                </div>
+                <div>
+                    <dt>Pole {{ form_map.total_tax }} — podatek łącznie</dt>
+                    <dd>
+                        {{ report.totalTaxRoundedFor(chosen)|money }} zł
+                        <span class="cell-note">{{ chosen.shortLabel }}</span>
+                        <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ report.totalTaxRoundedFor(other)|money }} zł</span>
+                    </dd>
+                </div>
+            </dl>
+        </section>
+    </div>
+
+    <section class="pit-card pit-card--wide" aria-labelledby="pit-zg">
+        <h3 id="pit-zg">PIT/ZG({{ form_map.pitzg_version }}) — {{ stock.pitZgCountries|length }} załącznik(i)</h3>
+        <p>Pole {{ form_map.pitzg_count }} PIT-38: <strong>{{ stock.pitZgCountries|length }}</strong>.</p>
+        {% if stock.pitZgCountries is empty %}
+            <p class="note">Brak kraju z dodatnim dochodem z art. 30b. Dywidendy nie tworzą tu PIT/ZG.</p>
+        {% else %}
+            <div class="table-wrapper">
+                <table class="table table--compact">
+                    <thead><tr><th>Kraj</th><th>Pole {{ form_map.pitzg_income }} — dochód</th><th>Pole {{ form_map.pitzg_tax }} — podatek zapłacony za granicą</th></tr></thead>
+                    <tbody>
+                    {% for country in stock.pitZgCountries %}
+                        <tr><th>{{ country.countryCode }} — {{ country.countryName }}</th><td>{{ country.income|money }} zł</td><td>brak danych</td></tr>
+                    {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        {% endif %}
+        {% for country in stock.countries %}
+            {% if country.income.negative %}
+                <p class="message message--warning">
+                    {{ country.countryCode }}: strata {{ country.income|money }} zł pozostaje w audycie FIFO,
+                    ale nie tworzy załącznika PIT/ZG.
+                </p>
+            {% endif %}
+        {% endfor %}
+    </section>
+
+    {% include '_partials/credit_scenarios.html.twig' %}
+
+    <details class="disclosure disclosure--card">
+        <summary>Dane spoza kalkulacji</summary>
+        <div class="disclosure__body">
+            <dl class="pit-fields">
+                <div><dt>Straty z lat ubiegłych</dt><dd>brak danych</dd></div>
+                <div><dt>Inne PIT-8C</dt><dd>brak danych</dd></div>
+                <div><dt>Kryptowaluty</dt><dd>brak danych</dd></div>
+                <div><dt>Podatek od zysków kapitałowych zapłacony za granicą</dt><dd>brak danych</dd></div>
+            </dl>
+        </div>
+    </details>
+    {% if report.hasExclusions %}
+        <p class="message message--info">Pominięto dane poza wybranym rokiem {{ report.taxYear }}.</p>
+    {% endif %}
+{% endif %}

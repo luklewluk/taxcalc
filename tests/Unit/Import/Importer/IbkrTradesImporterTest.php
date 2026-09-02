@@ -33,6 +33,10 @@ final class IbkrTradesImporterTest extends TestCase
         self::assertSame('2025-02-27', $position->sellDate->format('Y-m-d'));
         self::assertSame('1680.00', (string) $position->sellAmount->value());
         self::assertSame('3', (string) $position->quantity);
+        self::assertSame('507.5782', (string) $position->buyUnitPrice?->value());
+        self::assertSame('EUR', $position->buyUnitPrice?->currency());
+        self::assertSame('560.00', (string) $position->sellUnitPrice?->value());
+        self::assertSame('EUR', $position->sellUnitPrice?->currency());
     }
 
     public function testBuyFromAPreviousYearIsKeptForASaleInTheReportedYear(): void
@@ -110,6 +114,28 @@ final class IbkrTradesImporterTest extends TestCase
 
         self::assertSame([], $result->positions);
         self::assertCount(1, $result->errors());
+    }
+
+    public function testBlankTradePriceRemainsMissingAuditData(): void
+    {
+        $result = $this->import([
+            '"STK","AAA","20240101","1","","-10.00","1","USD"',
+            '"STK","AAA","20240601","-1","15","15.00","2","USD"',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertNull($result->positions[0]->buyUnitPrice);
+        self::assertSame('15', (string) $result->positions[0]->sellUnitPrice?->value());
+    }
+
+    public function testNonPositiveTradePriceIsReportedAsAnError(): void
+    {
+        $result = $this->import(['"STK","AAA","20240101","1","0","-10.00","1","USD"']);
+
+        self::assertSame([], $result->positions);
+        self::assertCount(1, $result->errors());
+        self::assertStringContainsString('TradePrice', $result->errors()[0]);
     }
 
     public function testMissingRequiredColumnIsAFileLevelError(): void

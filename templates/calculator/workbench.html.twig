@@ -1,0 +1,117 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Rozliczenie {{ selected_year }} — {{ app_name }}{% endblock %}
+{% block container_class %}container container--workbench{% endblock %}
+
+{% block body %}
+    <div class="workbench-heading">
+        <div>
+            <p class="eyebrow">Ekran roboczy</p>
+            <h1>Rozliczenie za {{ selected_year }}</h1>
+        </div>
+        <p class="workbench-heading__privacy">Dane tylko w tej karcie przeglądarki</p>
+    </div>
+
+    <form action="{{ path('app_calculator_result') }}" method="post" enctype="multipart/form-data"
+          data-role="review" data-workbench>
+        <input type="hidden" name="_token" value="{{ csrf_token(csrf_token_id) }}">
+        <input type="hidden" name="expected_trades" value="{{ expected_trades }}">
+        <input type="hidden" name="expected_dividends" value="{{ expected_dividends }}">
+        <input type="hidden" name="expected_fees" value="{{ expected_fees }}">
+        <input type="hidden" name="expected_positions" value="{{ expected_positions }}">
+        <input type="hidden" name="revision" value="0" data-revision>
+        {% for id in tombstones %}<input type="hidden" name="tombstones[]" value="{{ id }}">{% endfor %}
+
+        {# Compatibility echo for old clients; current calculations always use logical trades. #}
+        <div hidden aria-hidden="true">
+            {% for index, row in compat_position_rows %}
+                {% for key, value in row %}{% if key != 'country' %}<input type="hidden" name="positions[{{ index }}][{{ key }}]" value="{{ value }}">{% endif %}{% endfor %}
+                <select name="positions[{{ index }}][country]" required aria-required="true">
+                    <option value="" {{ row.country == '' ? 'selected' : '' }}></option>
+                    {% for code, name in country_options %}<option value="{{ code }}" {{ row.country == code ? 'selected' : '' }}>{{ code }}</option>{% endfor %}
+                </select>
+                <input type="hidden" name="positions[{{ index }}][legacy]" value="0">
+            {% endfor %}
+            {% for index, row in legacy_rows %}
+                {% for key, value in row %}<input type="hidden" name="positions[legacy_{{ index }}][{{ key }}]" value="{{ value }}">{% endfor %}
+                <input type="hidden" name="positions[legacy_{{ index }}][legacy]" value="1">
+            {% endfor %}
+        </div>
+
+        <div class="workbench-bar">
+            <div class="field--inline">
+                <label for="tax_year">Rok</label>
+                <select id="tax_year" name="tax_year">
+                    {% for year in tax_years %}<option value="{{ year }}" {{ year == selected_year ? 'selected' : '' }}>{{ year }}</option>{% endfor %}
+                </select>
+            </div>
+            <p class="workbench-counts" data-fragment="counters">
+                {% include '_partials/workbench_counters.html.twig' %}
+            </p>
+            <label class="button button--plain file-button">
+                <span>Wybierz kolejne pliki</span>
+                <input type="file" name="files[]" accept=".csv,.txt,text/csv,text/plain" multiple>
+            </label>
+            <button class="button" type="submit" formaction="{{ path('app_calculator_import') }}" formnovalidate>Dodaj pliki</button>
+            <button class="button button--quiet" type="submit" formaction="{{ path('app_calculator_report_csv') }}" formnovalidate>Eksport CSV</button>
+            <button class="button button--plain" type="submit" formaction="{{ path('app_calculator_report_print') }}" formnovalidate>Wydruk</button>
+            <button class="button button--primary" type="submit" formnovalidate>Przelicz</button>
+        </div>
+
+        <div data-fragment="messages">{% include '_partials/workbench_messages.html.twig' %}</div>
+
+        <div class="workbench-tabs" data-tabs data-initial-tab="{{ active_tab }}">
+            <div class="tablist" role="tablist" aria-label="Dane rozliczenia">
+                <button type="button" role="tab" id="tab-summary" aria-controls="panel-summary" aria-selected="{{ active_tab == 'summary' ? 'true' : 'false' }}" tabindex="{{ active_tab == 'summary' ? '0' : '-1' }}" data-tab="summary">PIT-38 / PIT-ZG</button>
+                <button type="button" role="tab" id="tab-attention" aria-controls="panel-attention" aria-selected="{{ active_tab == 'attention' ? 'true' : 'false' }}" tabindex="{{ active_tab == 'attention' ? '0' : '-1' }}" data-tab="attention">Wymaga uwagi <span data-fragment="attentionCounter">{% include '_partials/workbench_attention_counter.html.twig' %}</span></button>
+                <button type="button" role="tab" id="tab-transactions" aria-controls="panel-transactions" aria-selected="false" tabindex="-1" data-tab="transactions">Transakcje</button>
+                <button type="button" role="tab" id="tab-fifo" aria-controls="panel-fifo" aria-selected="false" tabindex="-1" data-tab="fifo">FIFO</button>
+                <button type="button" role="tab" id="tab-dividends" aria-controls="panel-dividends" aria-selected="false" tabindex="-1" data-tab="dividends">Dywidendy</button>
+                <button type="button" role="tab" id="tab-fees" aria-controls="panel-fees" aria-selected="false" tabindex="-1" data-tab="fees">Opłaty</button>
+                <button type="button" role="tab" id="tab-settings" aria-controls="panel-settings" aria-selected="false" tabindex="-1" data-tab="settings">Ustawienia</button>
+            </div>
+
+            <section id="panel-summary" role="tabpanel" aria-labelledby="tab-summary" data-panel="summary" class="workbench-panel">
+                <div data-fragment="summary">{% include '_partials/workbench_summary.html.twig' %}</div>
+            </section>
+
+            <section id="panel-attention" role="tabpanel" aria-labelledby="tab-attention" data-panel="attention" class="workbench-panel">
+                <div data-fragment="attention">{% include '_partials/workbench_attention.html.twig' %}</div>
+            </section>
+
+            <section id="panel-transactions" role="tabpanel" aria-labelledby="tab-transactions" data-panel="transactions" class="workbench-panel">
+                <div class="panel-heading">
+                    <div><h2>Logiczne kupna i sprzedaże</h2><p class="note">Każda zmiana uruchamia FIFO ponownie.</p></div>
+                    <button type="button" class="button" data-add-row="trades">Dodaj transakcję</button>
+                </div>
+                {% include '_partials/trade_editor.html.twig' %}
+                {% if legacy_rows is not empty %}
+                    <details class="disclosure disclosure--card">
+                        <summary>Legacy: gotowe pary z własnego CSV ({{ legacy_rows|length }})</summary>
+                        <div class="disclosure__body"><p>Format jest przestarzały. Pary pozostają w obliczeniu, lecz nie są ponownie dopasowywane przez FIFO.</p></div>
+                    </details>
+                {% endif %}
+            </section>
+
+            <section id="panel-fifo" role="tabpanel" aria-labelledby="tab-fifo" data-panel="fifo" class="workbench-panel">
+                <div class="panel-heading"><div><h2>Dopasowania FIFO</h2><p class="note">Tabela wynikowa tylko do odczytu. Dane wejściowe edytujesz w karcie „Transakcje”.</p></div></div>
+                <div data-fragment="fifo">{% include '_partials/fifo_matches.html.twig' %}</div>
+            </section>
+
+            <section id="panel-dividends" role="tabpanel" aria-labelledby="tab-dividends" data-panel="dividends" class="workbench-panel">
+                <div class="panel-heading"><h2>Dywidendy</h2><button type="button" class="button" data-add-row="dividends">Dodaj dywidendę</button></div>
+                {% include '_partials/dividend_editor.html.twig' %}
+                <div data-fragment="dividendResults">{% include '_partials/dividend_results.html.twig' %}</div>
+            </section>
+
+            <section id="panel-fees" role="tabpanel" aria-labelledby="tab-fees" data-panel="fees" class="workbench-panel">
+                <div class="panel-heading"><div><h2>Samodzielne opłaty rachunkowe</h2><p class="note">Prowizje transakcyjne i AutoFX nie są osobnymi opłatami — wchodzą w koszt nabycia albo w koszt zbycia, a zobaczysz je w zakładce FIFO.</p></div><button type="button" class="button" data-add-row="fees">Dodaj opłatę</button></div>
+                {% include '_partials/fee_editor.html.twig' %}
+            </section>
+
+            <section id="panel-settings" role="tabpanel" aria-labelledby="tab-settings" data-panel="settings" class="workbench-panel">
+                {% include '_partials/workbench_settings.html.twig' %}
+            </section>
+        </div>
+    </form>
+{% endblock %}

@@ -71,10 +71,22 @@ final class InvalidRecordException extends InvalidArgumentException
         ));
     }
 
-    public static function countryRequired(string $name): self
+    /**
+     * Why the country is needed depends on what the record is.
+     *
+     * A closed position is settled under art. 30b and does go on the PIT/ZG
+     * attachment. A dividend does not: it is taxed under art. 30a and reported
+     * in part G of PIT-38 itself, and its country is needed only to pick the
+     * treaty withholding cap that limits the foreign-tax credit. Telling the
+     * user otherwise sends them looking for an attachment they must not file.
+     */
+    public static function countryRequired(string $name, bool $forPitZg = true): self
     {
         return new self(sprintf(
-            'Uzupełnij kraj uzyskania dochodu dla "%s" - jest wymagany do rozliczenia i do załącznika PIT/ZG.',
+            $forPitZg
+                ? 'Uzupełnij kraj uzyskania dochodu dla "%s" - jest wymagany do rozliczenia i do załącznika PIT/ZG.'
+                : 'Uzupełnij kraj uzyskania dochodu dla "%s" - jest wymagany do ustalenia limitu stawki umownej '
+                    .'przy odliczeniu podatku pobranego u źródła.',
             $name,
         ));
     }

@@ -15,6 +15,7 @@ use Symfony\Component\Console\Attribute\AsCommand;
 #[AsCommand(
     name: 'app:convert-dividends-interactivebrokers',
     description: 'Konwertuje zestawienie dywidend z Interactive Brokers na format własny',
+    hidden: true,
 )]
 final class ConvertDividendsInteractivebrokersCommand extends AbstractConvertCommand
 {

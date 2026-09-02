@@ -1,0 +1,63 @@
+{% if report is null %}
+    <p class="note">Pary wynikowe pojawią się po poprawnym przeliczeniu wszystkich danych.</p>
+{% elseif report.stock.positions is empty %}
+    <p class="note">Brak zamkniętych pozycji w wybranym roku.</p>
+{% else %}
+    <div class="table-wrapper">
+        <table class="table table--detail">
+            <thead>
+            <tr>
+                <th rowspan="2">Instrument</th><th rowspan="2">Liczba</th>
+                <th colspan="6">Zakup</th><th colspan="6">Sprzedaż</th>
+                <th rowspan="2">Przychód PLN</th><th rowspan="2">Koszt PLN</th><th rowspan="2">Wynik PLN</th>
+            </tr>
+            <tr>
+                <th>Data</th><th>Cena/szt.</th><th>Total</th><th>Prowizja</th><th>AutoFX</th><th>Kurs NBP</th>
+                <th>Data</th><th>Cena/szt.</th><th>Total</th><th>Prowizja</th><th>AutoFX</th><th>Kurs NBP</th>
+            </tr>
+            </thead>
+            <tbody>
+            {% for item in report.stock.positions %}
+                <tr>
+                    <th>{{ item.position.name }}</th>
+                    <td>{{ item.position.quantity ?: '—' }}</td>
+                    <td>{{ item.position.buyDate|date('Y-m-d') }}</td>
+                    <td>{{ item.position.buyUnitPrice is null ? '—' : (item.position.buyUnitPrice|money_with_currency) }}</td>
+                    {# Settled cash from the file, not item.cost.original - the two
+                       are the same on this leg, but the sell leg's are not. #}
+                    <td>{{ item.position.buyAmount|money_with_currency }}</td>
+                    <td>{{ item.position.buyCommission is null ? '—' : (item.position.buyCommission|money) }}</td>
+                    <td>{{ item.position.buyAutoFx is null ? '—' : (item.position.buyAutoFx|money) }}</td>
+                    <td>{{ item.cost.rate }}<span class="cell-note">{{ item.cost.rateDate ? item.cost.rateDate|date('Y-m-d') : 'PLN' }}</span></td>
+                    <td>{{ item.position.sellDate|date('Y-m-d') }}</td>
+                    <td>{{ item.position.sellUnitPrice is null ? '—' : (item.position.sellUnitPrice|money_with_currency) }}</td>
+                    {# Deliberately the record, not item.revenue.original: revenue is
+                       the grossed-up amount, and printing it under a header that
+                       names the broker's own column would read as a double count. #}
+                    <td>{{ item.position.sellAmount|money_with_currency }}</td>
+                    <td>{{ item.position.sellCommission is null ? '—' : (item.position.sellCommission|money) }}</td>
+                    <td>{{ item.position.sellAutoFx is null ? '—' : (item.position.sellAutoFx|money) }}</td>
+                    <td>{{ item.revenue.rate }}<span class="cell-note">{{ item.revenue.rateDate ? item.revenue.rateDate|date('Y-m-d') : 'PLN' }}</span></td>
+                    <td>{{ item.revenue.pln|money }}</td>
+                    <td>{{ item.totalCost|money }}</td>
+                    <td class="{{ item.isLoss ? 'figure--negative' : '' }}">{{ item.income|money }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    <p class="note">
+        Przychód to kwota należna, czyli <strong>(Total + prowizja + AutoFX) × kurs</strong> ze strony
+        sprzedaży. Koszt to <strong>Total × kurs</strong> ze strony zakupu (prowizja zakupu jest już w
+        tym Total) powiększony o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> ze
+        strony sprzedaży. Kolumny „Total” pokazują kwotę rozliczoną z pliku brokera.
+    </p>
+    {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}
+        <p class="note">
+            Część pozycji nie zgłasza prowizji sprzedaży (płaski eksport IBKR, format własny, pusta
+            kolumna opłaty, sklejone zlecenie o niespójnych transzach). Dla nich przychód pozostaje
+            kwotą rozliczoną, bo prowizji nie da się z niej wydzielić — pola PIT-38 22 i 23 są o tę
+            opłatę zaniżone, ale podatek jest ten sam.
+        </p>
+    {% endif %}
+{% endif %}

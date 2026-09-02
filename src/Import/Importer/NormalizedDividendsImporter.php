@@ -89,7 +89,7 @@ final class NormalizedDividendsImporter extends AbstractCsvImporter
             $messages[] = ImportMessage::warning(
                 $source->name,
                 sprintf(
-                    'Nieznany kod kraju "%s" - brak skonfigurowanej stawki umownej, do odliczenia zostanie przyjęty podatek faktycznie pobrany.',
+                    'Nieznany kod kraju "%s" - brak skonfigurowanej stawki umownej; sposób odliczenia wymaga weryfikacji.',
                     $country,
                 ),
             );

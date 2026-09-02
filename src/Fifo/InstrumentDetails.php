@@ -14,13 +14,22 @@ namespace App\Fifo;
  * sell without splitting the position in two.
  *
  * The country is optional and, where a source only lets it be inferred, a
- * proposal for the user to confirm rather than a fact.
+ * proposal for the user to confirm rather than a fact. {@see $exchangeCode}
+ * records where that proposal came from, so the disagreement between the
+ * listing venue and the paper's registration country can be reported instead of
+ * being resolved by a guess.
  */
 final readonly class InstrumentDetails
 {
     public function __construct(
         public string $displayName,
         public string $countryCode = '',
+        /**
+         * The venue code the country proposal was read from, when a source
+         * names one. Audit-only: it never takes part in matching and never
+         * reaches a settlement record.
+         */
+        public string $exchangeCode = '',
     ) {
     }
 }

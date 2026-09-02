@@ -1,0 +1,41 @@
+{# Inside the dividendResults fragment on purpose: the AJAX fragment list is a
+   pinned contract, and the summary has to refresh with the numbers it sums. #}
+{% include '_partials/dividend_summary.html.twig' %}
+{% if report is null %}
+    <p class="note">Przeliczenia pojawią się po poprawnym przeliczeniu wszystkich danych.</p>
+{% elseif report.dividends.dividends is empty %}
+    <p class="note">Brak dywidend w wybranym roku.</p>
+{% else %}
+    <h3>Przeliczenia dywidend</h3>
+    <div class="table-wrapper">
+        <table class="table table--detail dividend-results">
+            <thead><tr>
+                <th>Instrument</th><th>Data uzyskania</th><th>Brutto</th><th>Kurs NBP / data</th><th>Brutto PLN</th>
+                <th>Stawka umowna</th><th>Pobrany PLN</th><th>Podatek PL</th>
+                <th>Odliczenie KIS</th><th>Odliczenie NSA</th><th>Różnica odliczeń</th>
+                <th>KIS do zapłaty</th><th>NSA do zapłaty</th>
+            </tr></thead>
+            <tbody>
+            {% for item in report.dividends.dividends %}
+                <tr id="dividend-result-{{ item.dividend.id }}">
+                    <th>{{ item.dividend.name }} ({{ item.dividend.countryCode }})</th>
+                    {# The rate is D-1 from this date; without it the rate date
+                       cannot be checked against anything. #}
+                    <td>{{ item.dividend.date|date('Y-m-d') }}</td>
+                    <td>{{ item.gross.original|money_with_currency }}</td>
+                    <td>{{ item.gross.rate }} / {{ item.gross.rateDate ? item.gross.rateDate|date('Y-m-d') : 'PLN' }}</td>
+                    <td>{{ item.gross.pln|money(2) }}</td>
+                    <td>{{ item.treatyPercent is null ? '—' : item.treatyPercent ~ '%' }}</td>
+                    <td>{{ item.withheldTax.pln|money(2) }}</td>
+                    <td>{{ item.polishTax|money(2) }}</td>
+                    <td>{{ item.conservative.creditableTax|money(2) }}</td>
+                    <td>{{ item.nsa.creditableTax|money(2) }}</td>
+                    <td>{{ item.creditDifference|money(2) }}</td>
+                    <td>{{ item.conservative.taxDue|money(2) }}</td>
+                    <td>{{ item.nsa.taxDue|money(2) }}</td>
+                </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+{% endif %}

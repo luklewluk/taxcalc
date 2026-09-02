@@ -23,24 +23,18 @@ final readonly class DegiroTable
         public DegiroHeader $header,
         public array $rows,
         public string $delimiter = ',',
+        private ?bool $decimalComma = null,
     ) {
     }
 
     /**
-     * Whether numbers in this file use the comma as their decimal separator.
-     *
-     * The delimiter answers this without guessing. DEGIRO does not quote
-     * numbers, so a comma inside a value simply cannot occur in a
-     * comma-separated file - the field would have been split in two. A
-     * semicolon-separated export is the continental one, where `1.431,00` means
-     * one thousand four hundred and thirty-one.
-     *
-     * Values carrying both separators are unambiguous on their own and are
-     * resolved by {@see \App\Import\Parser\NumberParser} either way.
+     * The convention inferred from unambiguous numbers throughout the file.
+     * `null` means every number was integral or ambiguous on its own; a caller
+     * may still parse integers, but must refuse a value such as `1,234`.
      */
-    public function decimalComma(): bool
+    public function decimalComma(): ?bool
     {
-        return ',' !== $this->delimiter;
+        return $this->decimalComma;
     }
 
     /**

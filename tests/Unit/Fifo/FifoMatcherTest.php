@@ -140,6 +140,44 @@ final class FifoMatcherTest extends TestCase
         self::assertSame('400.00', (string) $result->matches[0]->buyCost->value());
     }
 
+    public function testExecutionPricesAreCarriedUnchangedAcrossPartialFifoMatches(): void
+    {
+        $buy = new Trade(
+            'AAA',
+            new DateTimeImmutable('2024-01-01'),
+            Decimal::of('10'),
+            Amount::of('1001.00', 'EUR'),
+            unitPrice: Amount::of('12.345600', 'USD'),
+        );
+        $sell = new Trade(
+            'AAA',
+            new DateTimeImmutable('2024-06-01'),
+            Decimal::of('-6'),
+            Amount::of('899.00', 'EUR'),
+            unitPrice: Amount::of('18.9000', 'USD'),
+        );
+
+        $result = (new FifoMatcher())->match([$buy, $sell]);
+
+        self::assertCount(1, $result->matches);
+        self::assertSame('12.345600', (string) $result->matches[0]->buyUnitPrice?->value());
+        self::assertSame('USD', $result->matches[0]->buyUnitPrice?->currency());
+        self::assertSame('18.9000', (string) $result->matches[0]->sellUnitPrice?->value());
+        self::assertSame('600.60', (string) $result->matches[0]->buyCost->value());
+        self::assertSame('899.00', (string) $result->matches[0]->sellProceeds->value());
+    }
+
+    public function testMissingExecutionPricesRemainNullInFifo(): void
+    {
+        $result = (new FifoMatcher())->match([
+            self::buy('2024-01-01', '1', '10.00'),
+            self::sell('2024-06-01', '1', '15.00'),
+        ]);
+
+        self::assertNull($result->matches[0]->buyUnitPrice);
+        self::assertNull($result->matches[0]->sellUnitPrice);
+    }
+
     public function testDifferentSymbolsAreMatchedIndependently(): void
     {
         $result = (new FifoMatcher())->match([

@@ -6,6 +6,8 @@ namespace App\Import;
 
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
+use App\Fifo\Trade;
+use App\Model\AccountFee;
 
 final readonly class ImportResult
 {
@@ -13,11 +15,17 @@ final readonly class ImportResult
      * @param list<ClosedPosition> $positions
      * @param list<Dividend>       $dividends
      * @param list<ImportMessage>  $messages
+     * @param list<Trade>          $trades logical transactions entering FIFO
+     * @param list<AccountFee>     $fees standalone account charges
+     * @param list<ClosedPosition> $legacyPositions deprecated ready-made pairs
      */
     public function __construct(
         public array $positions = [],
         public array $dividends = [],
         public array $messages = [],
+        public array $trades = [],
+        public array $fees = [],
+        public array $legacyPositions = [],
     ) {
     }
 
@@ -27,6 +35,9 @@ final readonly class ImportResult
             [...$this->positions, ...$other->positions],
             [...$this->dividends, ...$other->dividends],
             [...$this->messages, ...$other->messages],
+            [...$this->trades, ...$other->trades],
+            [...$this->fees, ...$other->fees],
+            [...$this->legacyPositions, ...$other->legacyPositions],
         );
     }
 
@@ -35,7 +46,14 @@ final readonly class ImportResult
      */
     public function withMessages(array $messages): self
     {
-        return new self($this->positions, $this->dividends, [...$this->messages, ...$messages]);
+        return new self(
+            $this->positions,
+            $this->dividends,
+            [...$this->messages, ...$messages],
+            $this->trades,
+            $this->fees,
+            $this->legacyPositions,
+        );
     }
 
     /**
@@ -51,7 +69,10 @@ final readonly class ImportResult
      */
     public function warnings(): array
     {
-        return $this->describe(MessageLevel::Warning);
+        // Review-level findings are warnings too as far as every text surface
+        // is concerned - the level only decides whether the web panel gets an
+        // item as well, and the CLI has no panel to point at.
+        return $this->describe(MessageLevel::Warning, MessageLevel::Review);
     }
 
     /**
@@ -69,17 +90,17 @@ final readonly class ImportResult
 
     public function isEmpty(): bool
     {
-        return [] === $this->positions && [] === $this->dividends;
+        return [] === $this->positions && [] === $this->dividends && [] === $this->trades && [] === $this->fees;
     }
 
     /**
      * @return list<string>
      */
-    private function describe(MessageLevel $level): array
+    private function describe(MessageLevel ...$levels): array
     {
         $result = [];
         foreach ($this->messages as $message) {
-            if ($message->level === $level) {
+            if (in_array($message->level, $levels, true)) {
                 $result[] = $message->describe();
             }
         }

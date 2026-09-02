@@ -1,0 +1,49 @@
+{% if diagnostics is empty %}
+    <div class="attention-empty" role="status">
+        <h2>Nic nie wymaga uwagi</h2>
+        <p>W bieżących danych nie wykryto problemów blokujących ani punktów do weryfikacji.</p>
+    </div>
+{% else %}
+    <div class="panel-heading">
+        <div>
+            <h2>Wymaga uwagi</h2>
+            <p class="note">Problemy blokujące ukrywają wynik PIT. Punkty do weryfikacji pozostawiają obliczenie widoczne.</p>
+        </div>
+    </div>
+    <ol class="attention-list">
+        {% for issue in diagnostics %}
+            {% set target = issue.rowId ? 'row-' ~ issue.rowId : 'panel-' ~ issue.targetTab %}
+            <li class="attention-item attention-item--{{ issue.level.value }}"
+                data-diagnostic-code="{{ issue.code }}"{% if issue.groupId %} data-group-id="{{ issue.groupId }}"{% endif %}>
+                <span class="attention-item__level">{{ issue.level.value == 'blocking' ? 'Blokuje wynik' : 'Do weryfikacji' }}</span>
+                <p>{{ issue.message }}</p>
+                {% set action = issue.groupId ? country_group_actions[issue.groupId] ?? null : null %}
+                {% if action and issue.code in ['country.missing_instrument', 'country.conflict_instrument'] %}
+                    {% set overwrite = issue.code == 'country.conflict_instrument' %}
+                    <div class="attention-action">
+                        <label class="visually-hidden" for="cg-{{ issue.code }}-{{ action.groupId }}">Kraj dla {{ action.label }}</label>
+                        <select id="cg-{{ issue.code }}-{{ action.groupId }}"
+                                name="country_group_value[{{ action.groupId }}]"
+                                data-country-group-select="{{ action.groupId }}" data-no-recalc>
+                            <option value="" selected>— wybierz kraj —</option>
+                            {% for code, name in country_options %}<option value="{{ code }}">{{ code }} — {{ name }}</option>{% endfor %}
+                        </select>
+                        {% if overwrite %}<input type="hidden" name="country_group_overwrite[{{ action.groupId }}]" value="1">{% endif %}
+                        <button type="submit" class="button button--link"
+                                name="country_group_apply" value="{{ action.groupId }}"
+                                formaction="{{ path('app_calculator_result') }}" formnovalidate
+                                data-country-group-apply="{{ action.groupId }}"
+                                data-country-group-overwrite="{{ overwrite ? '1' : '' }}">
+                            {{ overwrite
+                                ? 'Ujednolić kraj we wszystkich (' ~ action.rowCount ~ ')'
+                                : 'Zastosuj do wszystkich (' ~ action.blankCount ~ ')' }}
+                        </button>
+                    </div>
+                {% endif %}
+                <a href="#{{ target }}" data-attention-target="{{ issue.targetTab }}"{% if issue.rowId %} data-row-target="{{ issue.rowId }}"{% endif %}>
+                    Przejdź do {{ issue.targetTab == 'transactions' ? 'transakcji' : (issue.targetTab == 'dividends' ? 'dywidend' : (issue.targetTab == 'fees' ? 'opłat' : (issue.targetTab == 'fifo' ? 'FIFO' : 'wyniku'))) }}
+                </a>
+            </li>
+        {% endfor %}
+    </ol>
+{% endif %}

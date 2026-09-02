@@ -1,0 +1,35 @@
+<div class="table-wrapper table-wrapper--editable">
+    <table class="table table--editable">
+        <thead><tr><th>Opis</th><th>Kategoria</th><th>Data waluty</th><th>Waluta</th><th>Kwota</th><th>Korekta / zwrot</th><th>Uwzględnij w kosztach</th><th>Źródło</th><th>Usuń</th></tr></thead>
+        <tbody data-editor-body="fees">
+        {% for index, row in fee_rows %}
+            <tr id="row-{{ row.id }}" data-row-id="{{ row.id }}">
+                <td><input type="hidden" name="fees[{{ index }}][id]" value="{{ row.id }}"><input name="fees[{{ index }}][description]" value="{{ row.description }}" required></td>
+                <td><input name="fees[{{ index }}][category]" value="{{ row.category }}" required></td>
+                <td><input type="date" name="fees[{{ index }}][value_date]" value="{{ row.value_date }}" required></td>
+                <td><input name="fees[{{ index }}][currency]" value="{{ row.currency }}" size="4" required></td>
+                <td><input name="fees[{{ index }}][amount]" value="{{ row.amount }}" size="10" inputmode="decimal" required></td>
+                <td><label class="toggle-label"><input type="hidden" name="fees[{{ index }}][correction]" value="0"><input type="checkbox" name="fees[{{ index }}][correction]" value="1" {{ row.correction == '1' ? 'checked' : '' }}> Tak</label></td>
+                <td><label class="toggle-label"><input type="hidden" name="fees[{{ index }}][included]" value="0"><input type="checkbox" name="fees[{{ index }}][included]" value="1" {{ row.included == '1' ? 'checked' : '' }}> Tak</label></td>
+                <td class="cell--source">{{ row.source ?: 'ręcznie' }}<input type="hidden" name="fees[{{ index }}][source]" value="{{ row.source }}"></td>
+                <td><label class="remove-toggle"><input type="checkbox" name="fees[{{ index }}][remove]" value="1"><span class="visually-hidden">Usuń opłatę {{ index + 1 }}</span></label></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% if fee_rows is empty %}<p class="note">Brak samodzielnych opłat rachunkowych.</p>{% endif %}
+{% if report is not null and report.stock.accountingFees is not empty %}
+    <h3>Przeliczenia uwzględnionych opłat</h3>
+    <div class="table-wrapper"><table class="table table--compact"><thead><tr><th>Opis</th><th>Data</th><th>Kwota</th><th>Kurs NBP / data</th><th>Wpływ na koszt PLN</th></tr></thead><tbody>
+    {% for item in report.stock.accountingFees %}<tr><th>{{ item.fee.description }}</th><td>{{ item.fee.valueDate|date('Y-m-d') }}</td><td>{{ item.exchanged.original|money_with_currency }}</td><td>{{ item.exchanged.rate }} / {{ item.exchanged.rateDate ? item.exchanged.rateDate|date('Y-m-d') : 'PLN' }}</td><td>{{ item.costImpact|money }}</td></tr>{% endfor %}
+    </tbody></table></div>
+{% endif %}
+<p class="note">
+    Dodatnia korekta zmniejsza koszt. Opłaty ogólne nie są przypisywane do konkretnego PIT/ZG.
+    Zobacz <a href="https://www.podatki.gov.pl/media/11079/broszura-do-pit-38-za-2025-r.pdf" rel="noopener noreferrer">broszurę MF do PIT-38 za 2025 r.</a>
+</p>
+<template data-row-template="fees"><tr data-row-id="">
+    <td><input type="hidden" name="fees[__INDEX__][id]" value=""><input name="fees[__INDEX__][description]" required></td><td><input name="fees[__INDEX__][category]" value="Inna opłata rachunkowa" required></td><td><input type="date" name="fees[__INDEX__][value_date]" required></td><td><input name="fees[__INDEX__][currency]" size="4" required></td><td><input name="fees[__INDEX__][amount]" size="10" inputmode="decimal" required></td>
+    <td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][correction]" value="0"><input type="checkbox" name="fees[__INDEX__][correction]" value="1"> Tak</label></td><td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][included]" value="0"><input type="checkbox" name="fees[__INDEX__][included]" value="1" checked> Tak</label></td><td class="cell--source">ręcznie<input type="hidden" name="fees[__INDEX__][source]" value="ręcznie"></td><td><label class="remove-toggle"><input type="checkbox" name="fees[__INDEX__][remove]" value="1"><span class="visually-hidden">Usuń opłatę</span></label></td>
+</tr></template>

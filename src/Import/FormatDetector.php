@@ -76,7 +76,8 @@ final class FormatDetector
             return CsvFormat::DegiroTransactions;
         }
 
-        if ($header->has(DegiroHeader::VALUE_DATE) && $header->has(DegiroHeader::DESCRIPTION)) {
+        if ($header->has(DegiroHeader::DESCRIPTION)
+            && ($header->has(DegiroHeader::VALUE_DATE) || count($header->indexesOf(DegiroHeader::DATE)) >= 2)) {
             return CsvFormat::DegiroAccount;
         }
 

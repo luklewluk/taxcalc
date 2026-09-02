@@ -1,0 +1,12 @@
+{# One line, and the tab holds the list. Import warnings and notices are not
+   repeated here: a strip that grows with every skipped row buries the only
+   sentence that matters, and anything that genuinely needs attention is a
+   diagnostic in the "Wymaga uwagi" panel. #}
+{% if diagnostics is not empty %}
+    <div class="messages" aria-live="polite">
+        <p class="message {{ has_blocking ? 'message--error' : 'message--warning' }}">
+            <strong>{{ attention_count }} {{ attention_count == 1 ? 'punkt wymaga' : 'punkty wymagają' }} uwagi.</strong>
+            <a href="#panel-attention" data-attention-target="attention">Zobacz pełną listę</a>.
+        </p>
+    </div>
+{% endif %}

@@ -22,6 +22,8 @@ final readonly class Dividend
         public Amount $grossAmount,
         public Amount $withheldTax,
         public string $source,
+        /** Stable browser-form identity; the content fingerprint remains available for import deduplication. */
+        public string $stableId = '',
     ) {
         if ($grossAmount->currency() !== $currency) {
             throw InvalidRecordException::currencyMismatch('kwota brutto', $currency, $grossAmount->currency());
@@ -69,5 +71,10 @@ final readonly class Dividend
             (string) $this->grossAmount->value(),
             (string) $this->withheldTax->value(),
         ]));
+    }
+
+    public function id(): string
+    {
+        return '' === $this->stableId ? $this->fingerprint() : $this->stableId;
     }
 }

@@ -32,8 +32,11 @@ use App\Money\Amount;
  * the CLI convert command uses.
  *
  * `NetCash` is used rather than `TradePrice * Quantity` so broker commissions
- * end up in the cost basis and in the proceeds, which is what Polish rules
- * require.
+ * end up in the acquisition cost, which is what Polish rules want on the buy
+ * leg. This format reports no commission column of its own, so on the *sell*
+ * leg the fee cannot be separated out of the settled cash: such positions keep
+ * a przychód equal to that cash, and PIT-38 fields 22/23 are both understated
+ * by the fee (the income, and therefore the tax, is unaffected).
  *
  * The format carries no country of origin, so imported rows are flagged for the
  * user to complete on the review screen.
@@ -101,6 +104,7 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
                 $currency = strtoupper($row['currencyprimary'] ?? '');
                 $quantity = NumberParser::parse($row['quantity'] ?? '');
                 $netCash = NumberParser::parse($row['netcash'] ?? '');
+                $tradePrice = self::optionalTradePrice($row, $currency);
                 $date = DateParser::parse($row['tradedate'] ?? '');
                 $symbol = trim($row['symbol'] ?? '');
 
@@ -116,15 +120,18 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
                     continue;
                 }
 
+                $externalId = self::externalId($row);
                 $trades[] = new Trade(
-                    // Currency is part of the identity: the same ticker quoted in
-                    // two currencies must not share a FIFO queue.
-                    $symbol.'@'.$currency,
+                    $symbol,
                     $date,
                     $quantity,
                     Amount::fromDecimal($netCash->abs(), $currency),
-                    self::externalId($row),
-                    $source->name,
+                    $externalId,
+                    sprintf('%s (%s)', $source->name, CsvFormat::IbkrTrades->label()),
+                    externalIdReported: null !== $externalId,
+                    unitPrice: $tradePrice,
+                    broker: 'IBKR',
+                    fifoPool: $symbol.'@'.$currency,
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
                 $messages[] = ImportMessage::error($source->name, $e->getMessage(), $line);
@@ -153,7 +160,8 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         $messages = [];
 
         foreach ($fifo->matches as $match) {
-            [$symbol, $currency] = self::splitKey($match->symbol);
+            $symbol = $match->symbol;
+            $currency = $match->buyCost->currency();
 
             // A zero-value leg only becomes visible once FIFO has prorated it,
             // so the record invariants are enforced here rather than per row.
@@ -170,6 +178,16 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
                     $match->quantity,
                     PositionSource::describe($match->buySource, $match->sellSource, CsvFormat::IbkrTrades),
                     $match->lineageKey(),
+                    $match->buyCommission,
+                    $match->sellCommission,
+                    $match->buyAutoFx,
+                    $match->sellAutoFx,
+                    $match->broker,
+                    $symbol,
+                    $match->buyTradeId,
+                    $match->sellTradeId,
+                    $match->buyUnitPrice,
+                    $match->sellUnitPrice,
                 );
             } catch (InvalidRecordException $e) {
                 $messages[] = ImportMessage::error('Import', sprintf(
@@ -183,7 +201,7 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         }
 
         foreach ($fifo->unmatchedSells as $unmatched) {
-            [$symbol] = self::splitKey($unmatched->symbol);
+            $symbol = $unmatched->symbol;
 
             // Fatal, not a warning: without its buy leg a sale has no cost
             // basis, so its whole proceeds would read as gain. Settling the
@@ -211,18 +229,6 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
     }
 
     /**
-     * @return array{string, string} symbol and currency
-     */
-    private static function splitKey(string $key): array
-    {
-        $at = strrpos($key, '@');
-
-        return false === $at
-            ? [$key, '']
-            : [substr($key, 0, $at), substr($key, $at + 1)];
-    }
-
-    /**
      * @param array<string, string> $row
      */
     private static function externalId(array $row): ?string
@@ -230,5 +236,21 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         $id = trim($row['transactionid'] ?? '');
 
         return '' === $id ? null : $id;
+    }
+
+    /** @param array<string, string> $row */
+    private static function optionalTradePrice(array $row, string $currency): ?Amount
+    {
+        $raw = trim($row['tradeprice'] ?? '');
+        if ('' === $raw) {
+            return null;
+        }
+
+        $price = Amount::fromDecimal(NumberParser::parse($raw), $currency);
+        if (!$price->isPositive()) {
+            throw InvalidRecordException::amountMustBePositive('TradePrice', $price);
+        }
+
+        return $price;
     }
 }

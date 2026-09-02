@@ -35,6 +35,16 @@ final readonly class FifoMatch
         public int $sequence = 0,
         public ?InstrumentDetails $buyInstrument = null,
         public ?InstrumentDetails $sellInstrument = null,
+        public ?Amount $buyCommission = null,
+        public ?Amount $sellCommission = null,
+        public ?Amount $buyAutoFx = null,
+        public ?Amount $sellAutoFx = null,
+        public string $broker = '',
+        public string $buyTradeId = '',
+        public string $sellTradeId = '',
+        /** Audit-only broker execution prices; FIFO amounts still come from Total/NetCash. */
+        public ?Amount $buyUnitPrice = null,
+        public ?Amount $sellUnitPrice = null,
     ) {
     }
 
@@ -67,6 +77,7 @@ final readonly class FifoMatch
         }
 
         return implode('|', [
+            $this->broker,
             $this->symbol,
             $this->buyExternalId,
             $this->sellExternalId,

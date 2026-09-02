@@ -11,6 +11,8 @@ final readonly class ImportMessage
         public string $file,
         public ?int $line,
         public string $message,
+        /** Explicit workbench destination; never inferred from message text. */
+        public ?string $targetTab = null,
     ) {
     }
 
@@ -22,6 +24,16 @@ final readonly class ImportMessage
     public static function warning(string $file, string $message, ?int $line = null): self
     {
         return new self(MessageLevel::Warning, $file, $line, $message);
+    }
+
+    /**
+     * A non-fatal finding the user has to act on, which therefore earns a place
+     * in the workbench's attention panel. Pair it with {@see forTab()} to say
+     * where the user should go.
+     */
+    public static function review(string $file, string $message, ?int $line = null): self
+    {
+        return new self(MessageLevel::Review, $file, $line, $message);
     }
 
     public static function info(string $file, string $message, ?int $line = null): self
@@ -36,5 +48,10 @@ final readonly class ImportMessage
         }
 
         return sprintf('%s (wiersz %d): %s', $this->file, $this->line, $this->message);
+    }
+
+    public function forTab(string $targetTab): self
+    {
+        return new self($this->level, $this->file, $this->line, $this->message, $targetTab);
     }
 }

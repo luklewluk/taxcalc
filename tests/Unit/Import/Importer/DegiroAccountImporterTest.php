@@ -60,10 +60,14 @@ final class DegiroAccountImporterTest extends TestCase
     }
 
     /**
-     * The booking date and the value date fall in different years around the
-     * turn of the year, and it is the value date that decides the tax year.
+     * Income exists on the day the money is received or placed at the
+     * taxpayer's disposal (art. 11 ust. 1), and the NBP rate comes from the
+     * last business day before *that* day (art. 11a). DEGIRO books a dividend
+     * once the custodian confirms it has the cash, so the booking date is when
+     * the balance actually changed; the value date is the issuer's payable
+     * date and does not prove the money was available.
      */
-    public function testTheValueDateDecidesTheTaxYearNotTheBookingDate(): void
+    public function testTheBookingDateSettlesTheYearBecauseThatIsWhenTheCashLanded(): void
     {
         $result = self::import([
             '02-01-2025,00:00,29-12-2024,ALFA CORP,US000ALFA001,Dividend,,USD,10.00,USD,500.00,',
@@ -71,8 +75,188 @@ final class DegiroAccountImporterTest extends TestCase
         ]);
 
         self::assertCount(1, $result->dividends);
+        self::assertSame('2025-01-02', $result->dividends[0]->date->format('Y-m-d'));
+        self::assertSame(2025, $result->dividends[0]->taxYear());
+    }
+
+    public function testTheFirstGenericDateColumnIsTheBookingDate(): void
+    {
+        $content = "Data,Czas,Data,Produkt,ISIN,Opis,Kurs,Zmiana,,Saldo,,Identyfikator zlecenia\n"
+            ."02-01-2025,00:00,29-12-2024,ALFA CORP,US000ALFA001,Dywidenda,,USD,10.00,USD,500.00,\n";
+
+        $result = (new DegiroAccountImporter())->import(new CsvSource('rachunek.csv', $content));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
+        self::assertSame('2025-01-02', $result->dividends[0]->date->format('Y-m-d'));
+    }
+
+    public function testTheValueDateIsOnlyAFallbackWhenTheExportHasNoBookingColumn(): void
+    {
+        $content = "Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
+            ."29-12-2024,ALFA CORP,US000ALFA001,Dividend,,USD,10.00,USD,500.00,\n";
+
+        $result = (new DegiroAccountImporter())->import(new CsvSource('rachunek.csv', $content));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
         self::assertSame('2024-12-29', $result->dividends[0]->date->format('Y-m-d'));
-        self::assertSame(2024, $result->dividends[0]->taxYear());
+    }
+
+    /**
+     * DEGIRO reverses an old payment by posting the opposite entries *today*
+     * against the original value date. Keying the payment group on the booking
+     * date keeps the two apart, so the original stays in the year it was paid
+     * instead of being netted to zero and vanishing from that year's return.
+     */
+    public function testAReversalDoesNotCancelTheOriginalPaymentItCorrects(): void
+    {
+        $result = self::import([
+            '15-11-2024,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend,,USD,0.40,USD,10.00,',
+            '15-11-2024,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend Tax,,USD,-0.06,USD,9.94,',
+            '12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend,,USD,-0.40,USD,9.54,',
+            '12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend Tax,,USD,0.06,USD,9.60,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
+        self::assertSame('2024-11-15', $result->dividends[0]->date->format('Y-m-d'));
+        self::assertSame('0.40', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('0.06', (string) $result->dividends[0]->withheldTax->value());
+    }
+
+    /**
+     * DEGIRO also corrects a payment *within* the year: it reverses it on one
+     * day and re-posts it on the next. Those bookings describe one payment, so
+     * they have to net - keying purely on the booking date would settle both the
+     * original and the re-post and count the dividend twice.
+     */
+    public function testCorrectionsPostedInTheSameYearNetIntoOnePayment(): void
+    {
+        $result = self::import([
+            '12-09-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend,,USD,6.00,USD,10.00,',
+            '12-09-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend Tax,,USD,-0.90,USD,9.25,',
+            '03-12-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend,,USD,-6.00,USD,4.27,',
+            '03-12-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend Tax,,USD,0.90,USD,5.02,',
+            '04-12-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend,,USD,6.00,USD,10.00,',
+            '04-12-2025,00:00,11-09-2025,OMEGA SOFT,US000OMEGA01,Dividend Tax,,USD,-0.90,USD,9.25,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
+        self::assertSame('6.00', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('0.90', (string) $result->dividends[0]->withheldTax->value());
+        // The day the cash first landed, so the rate is D-1 from it.
+        self::assertSame('2025-09-12', $result->dividends[0]->date->format('Y-m-d'));
+        self::assertStringNotContainsString('storn', mb_strtolower(implode(' ', $result->warnings())));
+    }
+
+    /**
+     * A reversal on its own is not a negative dividend: `Dividend` refuses a
+     * non-positive gross, so building one would fail the whole batch on a
+     * perfectly ordinary statement.
+     */
+    public function testAStandaloneReversalIsReportedRatherThanSettled(): void
+    {
+        $result = self::import([
+            '12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend,,USD,-0.40,USD,9.54,',
+            '12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend Tax,,USD,0.06,USD,9.60,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->dividends);
+
+        $warnings = implode(' ', $result->warnings());
+        self::assertStringContainsString('ZETA TRUST', $warnings);
+        self::assertStringContainsString('2024', $warnings, 'komunikat musi wskazać rok korekty');
+        self::assertStringContainsString('storn', mb_strtolower($warnings));
+    }
+
+    public function testAWithholdingRefundLargerThanTheGroupTaxIsReportedNotSettled(): void
+    {
+        $result = self::import([
+            '12-12-2025,00:00,12-12-2025,ALFA CORP,US000ALFA001,Dividend,,USD,10.00,USD,500.00,',
+            '12-12-2025,00:00,12-12-2025,ALFA CORP,US000ALFA001,Dividend Tax,,USD,1.50,USD,501.50,',
+        ]);
+
+        self::assertSame([], $result->dividends);
+        self::assertNotEmpty($result->errors());
+    }
+
+    public function testRecognisesTheCurrentPolishDividendTaxDescription(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dywidenda,,USD,10.00,USD,500.00,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Podatek Dywidendowy,,USD,-1.50,USD,498.50,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame('1.50', (string) $result->dividends[0]->withheldTax->value());
+    }
+
+    public function testBrokerCurrencyAbbreviationsAreNormalised(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,NORDIC CORP,NO000NORD001,Dywidenda,,NO,10.00,NO,500.00,',
+            '16-05-2025,00:00,16-05-2025,SINGAPORE CORP,SG000SING002,Dywidenda,,SG,20.00,SG,500.00,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame(['NOK', 'SGD'], array_map(static fn ($dividend): string => $dividend->currency, $result->dividends));
+    }
+
+    public function testAReversedPaymentNettedToZeroIsSkippedWithInformation(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dywidenda,,USD,10.00,USD,500.00,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dywidenda (korekta),,USD,-10.00,USD,490.00,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Podatek Dywidendowy,,USD,-1.50,USD,488.50,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Podatek Dywidendowy (korekta),,USD,1.50,USD,490.00,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->dividends);
+        self::assertStringContainsString('zero', mb_strtolower(implode(' ', $result->infos())));
+    }
+
+    public function testZeroGrossWithNonZeroTaxAfterCorrectionIsFatal(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dywidenda,,USD,10.00,USD,500.00,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dywidenda (korekta),,USD,-10.00,USD,490.00,',
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Podatek Dywidendowy,,USD,-1.50,USD,488.50,',
+        ]);
+
+        self::assertSame([], $result->dividends);
+        self::assertNotEmpty($result->errors());
+    }
+
+    public function testBuyDescriptionContainingDividendIsClassifiedAsATradeFirst(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,DIVIDEND GROWTH ETF,IE000BETA002,Buy 10 DIVIDEND GROWTH ETF,,EUR,-100.00,EUR,400.00,',
+            '15-05-2025,00:00,15-05-2025,DIVIDEND GROWTH ETF,IE000BETA002,Product Change DIVIDEND GROWTH ETF,,EUR,0.00,EUR,400.00,',
+            '16-05-2025,00:00,16-05-2025,ALFA CORP,US000ALFA001,Dividend,,USD,2.50,USD,500.00,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
+        self::assertSame('ALFA CORP', $result->dividends[0]->name);
+    }
+
+    public function testUnsupportedCapitalDistributionsAreWarnedAndNotCalculated(): void
+    {
+        $result = self::import([
+            '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Capital Return,,USD,10.00,USD,500.00,',
+            '16-05-2025,00:00,16-05-2025,BETA ETF,IE000BETA002,QIE Distribution Capital Gain,,EUR,7.00,EUR,507.00,',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->dividends);
+        $warnings = mb_strtolower(implode(' ', $result->warnings()));
+        self::assertStringContainsString('capital return', $warnings);
+        self::assertStringContainsString('qie distribution capital gain', $warnings);
+        self::assertStringContainsString('ręczn', $warnings);
     }
 
     public function testSeveralRowsOfOnePaymentAreSummedIntoOneRecord(): void
@@ -113,14 +297,20 @@ final class DegiroAccountImporterTest extends TestCase
         self::assertNotEmpty($result->errors());
     }
 
-    public function testANegativeGrossDividendIsRefusedRatherThanTaxed(): void
+    /**
+     * Still never taxed - but reported instead of fatal. A lone negative gross
+     * is DEGIRO reversing an earlier payment, which is an ordinary entry in a
+     * long statement; failing the batch over it would block every other year.
+     */
+    public function testANegativeGrossDividendIsReportedRatherThanTaxed(): void
     {
         $result = self::import([
             '15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dividend,,USD,-10.00,USD,490.00,',
         ]);
 
         self::assertSame([], $result->dividends);
-        self::assertNotEmpty($result->errors());
+        self::assertSame([], $result->errors());
+        self::assertStringContainsString('storn', mb_strtolower(implode(' ', $result->warnings())));
     }
 
     public function testWithholdingWithNoDividendIsFatalBecauseTheGrossIncomeIsMissing(): void

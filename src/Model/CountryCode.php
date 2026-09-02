@@ -45,14 +45,17 @@ final class CountryCode
     }
 
     /**
+     * @param bool $forPitZg whether this record feeds the PIT/ZG attachment,
+     *                       which decides how the message explains itself
+     *
      * @throws InvalidRecordException when blank or malformed
      */
-    public static function normalizeRequired(string $code, string $recordName): string
+    public static function normalizeRequired(string $code, string $recordName, bool $forPitZg = true): string
     {
         $normalized = strtoupper(trim($code));
 
         if ('' === $normalized) {
-            throw InvalidRecordException::countryRequired($recordName);
+            throw InvalidRecordException::countryRequired($recordName, $forPitZg);
         }
 
         if (!self::isValid($normalized)) {

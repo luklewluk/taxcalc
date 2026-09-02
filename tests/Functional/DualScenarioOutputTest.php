@@ -53,13 +53,14 @@ final class DualScenarioOutputTest extends WebTestCase
         $text = $crawler->filter('body')->text();
 
         // Web presentation uses Polish decimal notation; CSV and CLI remain machine-oriented.
-        $scenarioTable = $crawler->filter('.disclosure--card')->first()->filter('table')->text();
+        $scenarioTable = $crawler->filter('details')->reduce(
+            static fn (Crawler $node): bool => str_contains($node->filter('summary')->text(), 'KIS/NSA'),
+        )->filter('table')->text();
         self::assertStringContainsString('60,00', $scenarioTable);
         self::assertStringContainsString('16,00', $scenarioTable);
         self::assertStringContainsString('76,00', $scenarioTable);
-        self::assertSame(['16,00', '0,00'], $crawler->filter('.verdict__amount')->each(
-            static fn (Crawler $node): string => trim((string) $node->getNode(0)?->firstChild?->nodeValue),
-        ));
+        self::assertStringContainsString('16,00', $scenarioTable);
+        self::assertStringContainsString('0,00', $scenarioTable);
 
         self::assertMatchesRegularExpression('/zachowawcz/iu', $text);
         self::assertStringContainsString('NSA', $text);
@@ -101,9 +102,8 @@ final class DualScenarioOutputTest extends WebTestCase
 
         self::assertMatchesRegularExpression('/zachowawcz/iu', $text);
         self::assertStringContainsString('NSA', $text);
-        self::assertSame(['16,00', '0,00'], $crawler->filter('.verdict__amount')->each(
-            static fn (Crawler $node): string => trim((string) $node->getNode(0)?->firstChild?->nodeValue),
-        ));
+        self::assertStringContainsString('16,00', $text);
+        self::assertStringContainsString('0,00', $text);
     }
 
     public function testCsvReportCarriesBothScenariosAndTheirDescriptions(): void

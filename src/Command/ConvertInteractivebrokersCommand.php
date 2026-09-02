@@ -15,6 +15,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(
     name: 'app:convert-interactivebrokers',
     description: 'Konwertuje zestawienie transakcji z Interactive Brokers na format własny',
+    hidden: true,
 )]
 final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
 {
@@ -42,9 +43,9 @@ final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
      * Which reminder the user gets depends on what the input could tell us.
      *
      * Flat IBKR exports carry no country at all, so the column comes out blank.
-     * DEGIRO carries an ISIN, so the column comes out filled with the country
-     * the *security is registered in* - which still has to be checked, and
-     * saying it is empty would be plainly wrong.
+     * DEGIRO names the exchange, so the column comes out filled with the country
+     * the paper is *listed* in - which still has to be checked, and saying it is
+     * empty would be plainly wrong.
      */
     protected function afterWrite(SymfonyStyle $io, ImportResult $result): void
     {
@@ -59,8 +60,8 @@ final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
         }
 
         $io->note(
-            'Kolumna "country" została wypełniona na podstawie prefiksu numeru ISIN. To kraj rejestracji '
-            .'papieru, nie zawsze kraj źródła dochodu - sprawdź ją przed rozliczeniem PIT/ZG.',
+            'Kolumna "country" została wypełniona na podstawie giełdy notowania podanej w pliku. To kraj '
+            .'notowania papieru, nie zawsze kraj źródła dochodu - sprawdź ją przed rozliczeniem PIT/ZG.',
         );
     }
 }

@@ -50,13 +50,18 @@ final class DegiroTransactionsImporterTest extends TestCase
         self::assertSame('2025-09-20', $position->sellDate->format('Y-m-d'));
         self::assertSame('10', (string) $position->quantity);
 
-        // The transaction fee is part of DEGIRO's Total, so the cost basis is
-        // 1755.00 + 1.00 and the proceeds are 1950.00 - 1.00.
+        // The transaction fee is part of DEGIRO's Total, so the settled cash is
+        // 1755.00 + 1.00 on the buy and 1950.00 - 1.00 on the sell. That is what
+        // this record holds; the *declared* przychód grosses the sell fee back up
+        // and counts it as a cost of disposal, in the tax layer.
         self::assertSame('1756.00', (string) $position->buyAmount->value());
         self::assertSame('1949.00', (string) $position->sellAmount->value());
+        self::assertSame('175.50', (string) $position->buyUnitPrice?->value());
+        self::assertSame('USD', $position->buyUnitPrice?->currency());
+        self::assertSame('195.00', (string) $position->sellUnitPrice?->value());
     }
 
-    public function testCountryIsInferredFromTheIsinPrefixAndFlaggedForReview(): void
+    public function testCountryIsProposedFromTheListingExchangeAndFlaggedForReview(): void
     {
         $result = self::import([
             '15-03-2025,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
@@ -66,20 +71,116 @@ final class DegiroTransactionsImporterTest extends TestCase
         self::assertSame('US', $result->positions[0]->countryCode);
 
         $warnings = mb_strtolower(implode(' ', $result->warnings()));
-        self::assertStringContainsString('isin', $warnings);
+        self::assertStringContainsString('giełd', $warnings);
         self::assertStringContainsString('sprawdź', $warnings);
     }
 
-    public function testIsinPrefixesThatAreNotCountriesLeaveTheCountryBlank(): void
+    /**
+     * The registration country of the paper no longer decides: an American
+     * company would keep US, but the listing exchange is what the user asked
+     * the calculator to follow.
+     */
+    public function testTheListingExchangeWinsOverTheIsinRegistrationCountry(): void
     {
-        // XS is Euroclear/Clearstream, not a jurisdiction.
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,EAM,XAMS,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+            '20-09-2025,14:30,ALFA CORP,US000ALFA001,EAM,XAMS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
+        ]);
+
+        self::assertSame('NL', $result->positions[0]->countryCode);
+    }
+
+    public function testANonCountryIsinPrefixNoLongerMattersWhenTheExchangeIsKnown(): void
+    {
+        // XS is Euroclear/Clearstream, not a jurisdiction - but Amsterdam is.
         $result = self::import([
             '15-03-2025,09:15,DELTA BOND,XS000DELTA02,EAM,XAMS,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
             '20-09-2025,14:30,DELTA BOND,XS000DELTA02,EAM,XAMS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
         ]);
 
         self::assertCount(1, $result->positions);
+        self::assertSame('NL', $result->positions[0]->countryCode);
+    }
+
+    public function testTheExecutionVenueIsUsedOnlyWhenTheReferenceExchangeIsUnusable(): void
+    {
+        // CEUX is a pan-European MTF: it names no listing country, so the MIC
+        // of the venue the order filled on has to answer instead.
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,CEUX,XAMS,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+            '20-09-2025,14:30,ALFA CORP,US000ALFA001,CEUX,XAMS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
+        ]);
+
+        self::assertSame('NL', $result->positions[0]->countryCode);
+    }
+
+    /**
+     * Picking either side would be a guess, and FifoMatch::instrument() would
+     * silently let the sell leg win - so the country stays blank and the user
+     * is told which exchanges disagreed.
+     */
+    public function testAnIsinTradedOnTwoDifferentExchangesLeavesTheCountryBlank(): void
+    {
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,EAM,XAMS,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+            '20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
         self::assertSame('', $result->positions[0]->countryCode);
+
+        $warnings = implode(' ', $result->warnings());
+        self::assertStringContainsString('EAM', $warnings);
+        self::assertStringContainsString('NDQ', $warnings);
+    }
+
+    /**
+     * matchTrades() only sees closed positions, so a lot that has not been sold
+     * would otherwise reach the workbench with a blank country and no message.
+     */
+    public function testAnUnrecognisedExchangeCodeIsReportedEvenForAnOpenLot(): void
+    {
+        $result = self::import([
+            '15-03-2025,09:15,GAMMA SA,PL000GAMMA01,ZZZ,QQQQ,10,175.50,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->positions);
+        self::assertStringContainsString('ZZZ', implode(' ', $result->warnings()));
+    }
+
+    public function testAFileWithoutAnyExchangeColumnProposesNoCountry(): void
+    {
+        $content = "Date,Time,Product,ISIN,Quantity,Price,,Total,,Order ID\n"
+            ."15-03-2025,09:15,ALFA CORP,US000ALFA001,10,175.50,USD,-1756.00,USD,aaa-111\n"
+            ."20-09-2025,14:30,ALFA CORP,US000ALFA001,-10,195.00,USD,1949.00,USD,bbb-222\n";
+
+        $result = self::importer()->import(new CsvSource('degiro.csv', $content));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('', $result->positions[0]->countryCode);
+        self::assertStringContainsString('giełd', mb_strtolower(implode(' ', $result->warnings())));
+    }
+
+    /**
+     * The Dutch export names the reference exchange with the bare word `Beurs`.
+     */
+    public function testTheDutchBeursColumnIsRecognisedAsTheReferenceExchange(): void
+    {
+        $content = "Datum,Tijd,Product,ISIN,Beurs,Uitvoeringsplaats,Aantal,Koers,,Lokale waarde,,Waarde,,"
+            ."Wisselkoers,Transactiekosten en/of,,Totaal,,Order ID\n"
+            ."15-03-2025,09:15,ALFA CORP,US000ALFA001,EAM,XNAS,10,175.50,USD,-1755.00,USD,-1755.00,USD,,"
+            ."-1.00,USD,-1756.00,USD,aaa-111\n"
+            ."20-09-2025,14:30,ALFA CORP,US000ALFA001,EAM,XNAS,-10,195.00,USD,1950.00,USD,1950.00,USD,,"
+            ."-1.00,USD,1949.00,USD,bbb-222\n";
+
+        $result = self::importer()->import(new CsvSource('degiro.csv', $content));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('NL', $result->positions[0]->countryCode);
     }
 
     public function testReadsTheContinentalNotationFromASemicolonExport(): void
@@ -98,9 +199,8 @@ final class DegiroTransactionsImporterTest extends TestCase
     }
 
     /**
-     * A continental amount below a thousand has nothing to disambiguate it, so
-     * the file's delimiter has to decide: a semicolon-separated DEGIRO export
-     * uses the comma as its decimal separator. Reading `-95,50` as -9550 would
+     * A continental amount below a thousand is established by its two decimal
+     * places and must not be read as grouping. Reading `-95,50` as -9550 would
      * inflate a cost basis a hundredfold.
      */
     public function testASmallContinentalAmountIsNotReadAsThousands(): void
@@ -118,6 +218,63 @@ final class DegiroTransactionsImporterTest extends TestCase
         self::assertSame('119.50', (string) $result->positions[0]->sellAmount->value());
     }
 
+    public function testQuotedDecimalCommasAreReadInACommaDelimitedExport(): void
+    {
+        $content = "Data,Czas,Produkt,ISIN,Giełda referencyjna,Miejsce wykonania,Liczba,Kurs,,Wartość lokalna,,"
+            ."Wartość EUR,Kurs wymiany,Opłaty AutoFX,Opłata transakcyjna DEGIRO i/lub opłata stron,"
+            ."Razem EUR,Identyfikator zlecenia,\n"
+            ."03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,\"100,0000\",EUR,\"-1000,00\",EUR,"
+            ."\"-1000,00\",,\"-2,00\",\"-1,00\",\"-1003,00\",,buy-1\n"
+            ."27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,\"150,0000\",EUR,\"1500,00\",EUR,"
+            ."\"1500,00\",,\"-2,00\",\"-1,00\",\"1497,00\",sell-1\n";
+
+        $importer = self::importer();
+        $source = new CsvSource('degiro.csv', $content);
+        $extraction = $importer->extractTrades($source);
+
+        self::assertSame(['buy-1', 'sell-1'], array_map(static fn ($trade): ?string => $trade->externalId, $extraction->trades));
+        self::assertTrue($extraction->trades[0]->externalIdReported);
+        self::assertTrue($extraction->trades[1]->externalIdReported);
+
+        $result = $importer->import($source);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('1003.00', (string) $result->positions[0]->buyAmount->value());
+        self::assertSame('1497.00', (string) $result->positions[0]->sellAmount->value());
+        self::assertStringNotContainsString('nie ma kolumny autofx', mb_strtolower(implode(' ', $result->infos())));
+    }
+
+    public function testAnAmbiguousNumberUsesTheConventionEstablishedByOtherCells(): void
+    {
+        $content = "Date,Time,Product,ISIN,Reference Exchange,Execution Venue,Quantity,Price,,Value,,"
+            ."Transaction and/or third,,Total,,Order ID\n"
+            ."03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,\"1,234\",\"100,00\",USD,\"-123,40\",USD,"
+            ."\"0,00\",USD,\"-123,40\",USD,buy-1\n"
+            ."27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,\"-1,234\",\"120,00\",USD,\"148,08\",USD,"
+            ."\"0,00\",USD,\"148,08\",USD,sell-1\n";
+
+        $result = self::importer()->import(new CsvSource('degiro.csv', $content));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('1.234', (string) $result->positions[0]->quantity);
+    }
+
+    public function testConflictingDecimalConventionsInOneFileAreRefused(): void
+    {
+        $content = "Date,Time,Product,ISIN,Reference Exchange,Execution Venue,Quantity,Price,,Value,,"
+            ."Transaction and/or third,,Total,,Order ID\n"
+            ."03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,\"100,00\",USD,\"-1000,00\",USD,"
+            ."\"-1,00\",USD,\"-1001,00\",USD,buy-1\n"
+            ."27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,sell-1\n";
+
+        $result = self::importer()->import(new CsvSource('degiro.csv', $content));
+
+        self::assertSame([], $result->positions);
+        self::assertStringContainsString('sprzeczn', mb_strtolower(implode(' ', $result->errors())));
+    }
+
     public function testReadsTheLayoutWhoseTotalHeaderCarriesTheCurrency(): void
     {
         $content = "Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,"
@@ -132,7 +289,48 @@ final class DegiroTransactionsImporterTest extends TestCase
         self::assertSame('EUR', $result->positions[0]->currency);
         self::assertSame('2645.00', (string) $result->positions[0]->buyAmount->value());
         self::assertSame('2998.00', (string) $result->positions[0]->sellAmount->value());
-        self::assertSame('IE', $result->positions[0]->countryCode);
+        // EAM/XAMS is Amsterdam. The Irish registration country is not reported
+        // as a divergence: which of the two readings applies is a setting, not
+        // a finding.
+        self::assertSame('NL', $result->positions[0]->countryCode);
+        self::assertStringNotContainsString('ISIN', implode(' ', $result->warnings()));
+    }
+
+    public function testExecutionPriceKeepsItsOwnCurrencyAndSourcePrecision(): void
+    {
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,175.5000,USD,-1600.00,EUR,-1.00,EUR,-1601.00,EUR,aaa-111',
+            '20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,195.125000,USD,1800.00,EUR,-1.00,EUR,1799.00,EUR,bbb-222',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame('EUR', $result->positions[0]->currency);
+        self::assertSame('175.5000', (string) $result->positions[0]->buyUnitPrice?->value());
+        self::assertSame('USD', $result->positions[0]->buyUnitPrice?->currency());
+        self::assertSame('195.125000', (string) $result->positions[0]->sellUnitPrice?->value());
+    }
+
+    public function testInvalidExecutionPriceCurrencyIsReportedAsAnError(): void
+    {
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,175.50,DOLLARS,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+        ]);
+
+        self::assertSame([], $result->positions);
+        self::assertCount(1, $result->errors());
+        self::assertStringContainsString('DOLLARS', $result->errors()[0]);
+    }
+
+    public function testBlankExecutionPriceIsAcceptedEvenWhenDegiroLeavesTheCurrencyCellFilled(): void
+    {
+        $result = self::import([
+            '15-03-2025,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,,USD,-1755.00,USD,-1.00,USD,-1756.00,USD,aaa-111',
+            '20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertNull($result->positions[0]->buyUnitPrice);
+        self::assertSame('195.00', (string) $result->positions[0]->sellUnitPrice?->value());
     }
 
     public function testARenamedProductStillMatchesUnderTheSameIsinAndKeepsTheCurrentName(): void
@@ -209,6 +407,43 @@ final class DegiroTransactionsImporterTest extends TestCase
         $errors = mb_strtolower(implode(' ', $result->errors()));
         self::assertStringContainsString('korporacyjn', $errors);
         self::assertStringContainsString('ręcznie', $errors);
+    }
+
+    public function testACompleteNeutralProductRenameIsRemovedBeforeFifo(): void
+    {
+        $result = self::import([
+            '01-07-2024,00:00,ALFA OLD,US000ALFA001,,,10,100.00,USD,-1000.00,USD,0.00,USD,-1000.00,USD,',
+            '01-07-2024,00:00,ALFA NEW,US000ALFA001,,,-10,100.00,USD,1000.00,USD,0.00,USD,1000.00,USD,',
+            '02-07-2024,09:00,ALFA NEW,US000ALFA001,NDQ,XNAS,5,110.00,USD,-550.00,USD,0.00,USD,-550.00,USD,buy-1',
+            '02-07-2025,09:00,ALFA NEW,US000ALFA001,NDQ,XNAS,-5,150.00,USD,750.00,USD,0.00,USD,750.00,USD,sell-1',
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+        self::assertSame('550.00', (string) $result->positions[0]->buyAmount->value());
+        self::assertStringContainsString('zmian', mb_strtolower(implode(' ', $result->infos())));
+    }
+
+    public function testAnIncompleteProductRenameCorrectionRemainsFatal(): void
+    {
+        $result = self::import([
+            '01-07-2024,00:00,ALFA OLD,US000ALFA001,,,10,100.00,USD,-1000.00,USD,0.00,USD,-1000.00,USD,',
+            '01-07-2024,00:00,ALFA NEW,US000ALFA001,,,-9,100.00,USD,900.00,USD,0.00,USD,900.00,USD,',
+        ]);
+
+        self::assertSame([], $result->positions);
+        self::assertNotEmpty($result->errors());
+    }
+
+    public function testAnOrdinarySameMinuteRoundTripIsNotDiscardedAsAProductRename(): void
+    {
+        $result = self::import([
+            '01-07-2024,00:00,ALFA CORP,US000ALFA001,,,10,100.00,USD,-1000.00,USD,0.00,USD,-1000.00,USD,',
+            '01-07-2024,00:00,ALFA CORP,US000ALFA001,,,-10,100.00,USD,1000.00,USD,0.00,USD,1000.00,USD,',
+        ]);
+
+        self::assertSame([], $result->positions);
+        self::assertMatchesRegularExpression('/minut|kolejno/iu', implode(' ', $result->errors()));
     }
 
     public function testABuyWithPositiveCashAbortsTheImportInsteadOfGuessing(): void

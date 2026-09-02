@@ -25,6 +25,7 @@ use Symfony\Component\Console\Style\SymfonyStyle;
 #[AsCommand(
     name: 'app:calculate-from-file',
     description: 'Oblicza podatek PIT-38 (akcje i dywidendy) na podstawie plików CSV',
+    hidden: true,
 )]
 final class CalculateFromFileCommand extends Command
 {
@@ -67,6 +68,7 @@ final class CalculateFromFileCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $io->warning('Polecenie app:* jest przestarzałe i zostanie usunięte w przyszłej wersji; użyj workbencha WWW.');
         $paths = $input->getArgument('filepath');
 
         [$sources, $fileErrors] = $this->fileLoader->load($paths);

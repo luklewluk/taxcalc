@@ -22,6 +22,17 @@ final class DegiroFlowTest extends WebTestCase
         27-02-2025,15:41,ALFA CORP,US000ALFA001,NDQ,XNAS,-8,560.0000,USD,4480.00,USD,4480.00,USD,,-1.25,USD,4478.75,USD,aaa-0003
         CSV;
 
+    /**
+     * An Irish-registered ETF listed in Amsterdam: the listing exchange says NL
+     * while the ISIN says IE, which is exactly the disagreement the workbench
+     * has to keep showing.
+     */
+    private const string CROSS_LISTED = <<<'CSV'
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        02-01-2024,09:05,BETA ETF,IE000BETA002,EAM,XAMS,10,264.30,EUR,-2643.00,EUR,-2643.00,EUR,,-2.00,EUR,-2645.00,EUR,bbb-1
+        03-06-2025,10:05,BETA ETF,IE000BETA002,EAM,XAMS,-10,300.00,EUR,3000.00,EUR,3000.00,EUR,,-2.00,EUR,2998.00,EUR,bbb-2
+        CSV;
+
     private const string ACCOUNT = <<<'CSV'
         Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
         13-02-2025,06:32,13-02-2025,ALFA CORP,US000ALFA001,Dividend,,USD,82.00,USD,82.00,
@@ -103,16 +114,23 @@ final class DegiroFlowTest extends WebTestCase
         self::assertStringContainsString('DEGIRO - transakcje giełdowe', $crawler->filter('body')->text());
     }
 
-    public function testReviewWarnsThatTheCountryWasOnlyInferredFromTheIsin(): void
+    /**
+     * The proposal note itself is not shown in the web UI - only in the CLI,
+     * which has no attention panel to point at. What the workbench guarantees
+     * instead is that a proposal is never presented as settled: the country is
+     * editable, and any disagreement with the ISIN is a review item.
+     */
+    public function testTheProposalNoteIsNotRepeatedInTheMessageStrip(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro-transakcje.csv' => self::TRANSACTIONS]);
 
-        self::assertGreaterThan(0, $crawler->filter('.message--warning')->count());
-        self::assertMatchesRegularExpression(
-            '/ISIN/u',
-            $crawler->filter('.message--warning')->text(),
+        self::assertSame(0, $crawler->filter('[data-fragment="messages"] .message--info')->count());
+        self::assertStringNotContainsString(
+            'ustalony z giełdy',
+            $crawler->filter('[data-fragment="messages"]')->text(''),
         );
+        self::assertSame('US', self::selectedCountry($crawler, 'trades[0][country]'));
     }
 
     public function testBuysFromAnEarlierYearBackASaleInTheSettledYear(): void
@@ -193,6 +211,91 @@ final class DegiroFlowTest extends WebTestCase
         self::assertIsString($serialized);
         self::assertStringNotContainsString('ALFA CORP', $serialized);
         self::assertStringNotContainsString('US000ALFA001', $serialized);
+    }
+
+    /**
+     * An Irish ETF listed in Amsterdam: the listing exchange and the ISIN
+     * registration country disagree, and that is a *choice* between two
+     * accepted readings - never a finding. The workbench proposes the listing
+     * country, keeps the venue code so the choice stays reversible, and says
+     * nothing in the attention panel.
+     */
+    public function testTheListingCountryIsProposedWithoutReportingTheIsinDisagreement(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['cross.csv' => self::CROSS_LISTED]);
+
+        self::assertSame('NL', self::selectedCountry($crawler, 'trades[0][country]'));
+        self::assertSame('EAM', $crawler->filter('input[name="trades[0][exchange]"]')->attr('value'));
+        self::assertSame(0, $crawler->filter('[data-diagnostic-code="country.exchange_isin_divergence"]')->count());
+        self::assertSame(1, $crawler->filter('#panel-attention .attention-empty')->count());
+
+        // Switching the setting re-derives the proposal from the ISIN instead.
+        $payload = $this->payload($crawler);
+        $payload['country_source'] = 'isin';
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+
+        self::assertSame('IE', self::selectedCountry($crawler, 'trades[0][country]'));
+        self::assertSame(0, $crawler->filter('.result-unavailable')->count());
+
+        // And back again, because the venue code round-trips.
+        $payload = $this->payload($crawler);
+        $payload['country_source'] = 'exchange';
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+
+        self::assertSame('NL', self::selectedCountry($crawler, 'trades[0][country]'));
+    }
+
+    /**
+     * The 8-share sell consumes a 3-share and a 5-share lot, so the 1,25 sell
+     * fee is prorated to 0,47 and 0,78 - the split has to survive that and the
+     * totals still have to gross up by the whole 1,25 (5,00 PLN at rate 4,0).
+     */
+    public function testTheSellFeeIsGrossedIntoRevenueAndAddedToCostAcrossBothLots(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['degiro-transakcje.csv' => self::TRANSACTIONS]);
+        $summary = $crawler->filter('#panel-summary')->text();
+
+        // Settled proceeds are 4478,75 -> 17 915,00 PLN; the declared przychód
+        // is the kwota należna, 4480,00 -> 17 920,00 PLN.
+        self::assertStringContainsString("17\u{00A0}920,00", $summary);
+        self::assertStringContainsString("15\u{00A0}504,88", $summary);
+        self::assertStringContainsString("2\u{00A0}415,12", $summary);
+        self::assertStringContainsString('kosztem odpłatnego zbycia', mb_strtolower($summary));
+        self::assertStringNotContainsString("17\u{00A0}915,00", $summary);
+    }
+
+    /**
+     * The strip renders no import warnings any more, so a reversal - the one
+     * import notice the user must act on - has to reach the attention panel.
+     * Only messages the importer explicitly tags with a tab are promoted.
+     */
+    public function testAReversalReachesTheAttentionPanel(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->import($client, ['rachunek.csv' => <<<'CSV'
+            Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+            12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend,,USD,-0.40,USD,9.54,
+            12-12-2025,00:00,14-11-2024,ZETA TRUST,US000ZETA001,Dividend Tax,,USD,0.06,USD,9.60,
+            15-05-2025,00:00,15-05-2025,ALFA CORP,US000ALFA001,Dividend,,USD,10.00,USD,10.00,
+            CSV]);
+
+        $item = $crawler->filter('[data-diagnostic-code="import.review"]');
+
+        self::assertSame(1, $item->count());
+        self::assertStringContainsString('ZETA TRUST', $item->text());
+        self::assertStringContainsString('2024', $item->text());
+        self::assertSame('dividends', $item->filter('[data-attention-target]')->attr('data-attention-target'));
+        // A reversal must not block the rest of the statement.
+        self::assertSame(0, $crawler->filter('.result-unavailable')->count());
+        self::assertSame(1, $crawler->filter('[data-editor-body="dividends"] > tr')->count());
+    }
+
+    /** @return array<string, mixed> */
+    private function payload(Crawler $crawler): array
+    {
+        return $crawler->filter('form[data-workbench]')->form()->getPhpValues();
     }
 
     private static function sample(string $filename): string

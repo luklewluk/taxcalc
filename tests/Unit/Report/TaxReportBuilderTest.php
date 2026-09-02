@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Report;
 
 use App\CurrencyRate\ExchangeInterface;
+use App\Model\AccountFee;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
 use App\Money\Amount;
@@ -113,6 +114,54 @@ final class TaxReportBuilderTest extends TestCase
 
         self::assertTrue($report->isEmpty());
         self::assertSame('0.00', (string) $report->totalTaxConservative->value());
+    }
+
+    public function testAccountFeeUsesValueDateYearAndPreviousDayRate(): void
+    {
+        $fee = new AccountFee(
+            'DEGIRO Exchange Connection Fee',
+            'Połączenie z giełdą',
+            new DateTimeImmutable('2024-12-31'),
+            'EUR',
+            Amount::of('2.50', 'EUR'),
+            false,
+            'account.csv',
+            'fee-1',
+        );
+
+        $report = self::builder(FixedExchange::create())->build([], [], 2024, [$fee]);
+
+        self::assertSame('10.75', (string) $report->stock->totalCost->value());
+        self::assertSame('2024-12-30', $report->stock->accountingFees[0]->exchanged->rateDate?->format('Y-m-d'));
+        self::assertSame(0, $report->excludedFees);
+    }
+
+    public function testFullyReversedManualFeeGroupIsOmittedWithAWarning(): void
+    {
+        $fees = [
+            new AccountFee('fee', 'account', new DateTimeImmutable('2024-02-01'), 'USD', Amount::of('2', 'USD'), false, 'manual', 'fee-1'),
+            new AccountFee('refund', 'account', new DateTimeImmutable('2024-02-02'), 'USD', Amount::of('2', 'USD'), true, 'manual', 'fee-2'),
+        ];
+
+        $report = self::builder(FixedExchange::create())->build([], [], 2024, $fees);
+
+        self::assertSame([], $report->errors);
+        self::assertSame([], $report->stock->accountingFees);
+        self::assertStringContainsString('wyzerowan', mb_strtolower(implode(' ', $report->warnings)));
+    }
+
+    public function testRefundAboveManualFeesFailsClosed(): void
+    {
+        $fees = [
+            new AccountFee('fee', 'account', new DateTimeImmutable('2024-02-01'), 'USD', Amount::of('2', 'USD'), false, 'manual', 'fee-1'),
+            new AccountFee('refund', 'account', new DateTimeImmutable('2024-02-02'), 'USD', Amount::of('3', 'USD'), true, 'manual', 'fee-2'),
+        ];
+
+        $report = self::builder(FixedExchange::create())->build([], [], 2024, $fees);
+
+        self::assertNotEmpty($report->errors);
+        self::assertSame([], $report->stock->accountingFees);
+        self::assertSame('0.00', (string) $report->stock->totalCost->value());
     }
 
     /**

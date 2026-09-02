@@ -111,6 +111,22 @@ final class CsvReportWriterTest extends TestCase
         return (new CsvReportWriter())->write($builder->build($positions, $dividends, 2024));
     }
 
+    public function testThePositionRowSeparatesTheGrossAmountFromTheSettledCash(): void
+    {
+        $csv = $this->write([
+            self::position('AAA', 'US', '2024-05-04', '100.00', '2024-12-16', '150.00', sellCommission: '1.00'),
+        ], []);
+
+        self::assertStringContainsString('Kwota nalezna (brutto)', $csv);
+        self::assertStringContainsString('Koszt zbycia (PLN)', $csv);
+        // Settled cash 150.00 next to the gross 151.00; rate 4.0 gives a
+        // przychód of 604.00 and a disposal cost of 4.00 on top of the 400.00
+        // acquisition cost.
+        self::assertStringContainsString('150.00,151.00', $csv);
+        self::assertStringContainsString('604.00,4.00', $csv);
+        self::assertStringContainsString('"Koszty zbycia",4.00', $csv);
+    }
+
     private static function position(
         string $name,
         string $country,
@@ -118,6 +134,7 @@ final class CsvReportWriterTest extends TestCase
         string $buyAmount,
         string $sellDate,
         string $sellAmount,
+        ?string $sellCommission = null,
     ): ClosedPosition {
         return new ClosedPosition(
             $name,
@@ -129,6 +146,7 @@ final class CsvReportWriterTest extends TestCase
             Amount::of($sellAmount, 'USD'),
             null,
             'test',
+            sellCommission: null === $sellCommission ? null : Amount::of($sellCommission, 'USD'),
         );
     }
 

@@ -2,10 +2,11 @@ parameters:
     app.examples_dir: '%kernel.project_dir%/examples'
     app.upload.max_files: 10
     app.upload.max_bytes: 5242880
-    app.tax_year.first: 2018
+    app.tax_year.first: 2021
 
-    # Maximum normalized records (positions + dividends) one import may produce.
-    # The review form has to fit inside PHP's max_input_vars - see docker/php.ini.
+    # Maximum editable records (trades + legacy positions + dividends + fees)
+    # one import may produce. The workbench form has to fit inside PHP's
+    # max_input_vars - see docker/php.ini.
     app.rows.max: 5000
 
     # Maximum data rows read from a single file, applied while iterating so an

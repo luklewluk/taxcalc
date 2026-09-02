@@ -46,6 +46,29 @@ final readonly class Trade
          * and 2 and both survive.
          */
         public int $fillOrdinal = 1,
+        /** Whether externalId was reported by the broker, rather than synthesized. */
+        public bool $externalIdReported = false,
+        /** Broker-reported execution price, audit-only and independent from Total/NetCash. */
+        public ?Amount $unitPrice = null,
+        /** Execution venue, likewise retained only for safe correction recognition. */
+        public string $executionVenue = '',
+        /** Broker/account pool. FIFO queues from different brokers never meet. */
+        public string $broker = '',
+        /**
+         * Explicit broker fees, when the source reports them separately.
+         *
+         * Never added to `$grossAmount` - Total/NetCash already includes them.
+         * They are not merely audit data either: on the *sell* leg the settled
+         * cash has these taken out of it, and Polish rules declare the gross
+         * amount due with the fee counted as a cost of disposal instead. See
+         * {@see \App\Model\ClosedPosition::disposalFee()}.
+         */
+        public ?Amount $commission = null,
+        public ?Amount $autoFx = null,
+        /** Stable browser-form identity, independent from later manual edits. */
+        public string $stableId = '',
+        /** Optional explicit FIFO pool key when the display symbol is ambiguous. */
+        public string $fifoPool = '',
     ) {
     }
 
@@ -57,5 +80,18 @@ final readonly class Trade
     public function isSell(): bool
     {
         return $this->quantity->isNegative();
+    }
+
+    public function id(): string
+    {
+        if ('' !== $this->stableId) {
+            return $this->stableId;
+        }
+
+        return hash('sha256', implode('|', [
+            'trade', $this->broker, $this->fifoPool, $this->symbol, $this->date->format('Y-m-d H:i:s'),
+            (string) $this->quantity, (string) $this->grossAmount->value(),
+            $this->grossAmount->currency(), $this->externalId ?? '', (string) $this->fillOrdinal,
+        ]));
     }
 }

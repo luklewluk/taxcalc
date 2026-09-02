@@ -24,7 +24,8 @@ enum TradeIdScope
     /**
      * One identifier, one *order*, which the exchange may fill in several rows -
      * DEGIRO's `Order ID`. Rows sharing an ID are parts of that order as long as
-     * they agree on the instrument and the day; anything else is a contradiction.
+     * they agree on the instrument, currency and direction. Fills with the exact
+     * same timestamp are aggregated; fills at different times remain separate.
      */
     case Order;
 }

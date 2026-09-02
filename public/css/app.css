@@ -164,6 +164,7 @@ body {
 }
 
 .container--wide { max-width: var(--page-wide); }
+.container--workbench { max-width: 112rem; }
 
 /* Specificity has to match `.container`, which owns the horizontal padding. */
 main.container {
@@ -815,6 +816,7 @@ code {
 }
 
 .disclosure__body > :last-child { margin-bottom: 0; }
+.container--workbench .disclosure__body { max-width: none; }
 .disclosure__body h3 { color: var(--ink); margin-top: 1.75rem; }
 .disclosure__body h3:first-child { margin-top: 0; }
 .disclosure__body strong { color: var(--ink); font-weight: 650; }
@@ -2031,4 +2033,313 @@ kbd {
     details:not([open]) > *:not(summary) { display: block !important; }
 
     .cell--tech { display: table-cell !important; }
+}
+
+/* Unified calculator workbench ------------------------------------------- */
+
+.workbench-heading,
+.panel-heading,
+.workbench-bar,
+.tablist {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 0.75rem 1.25rem;
+}
+
+.workbench-heading { margin-bottom: 1.25rem; }
+.workbench-heading__privacy {
+    margin: 0;
+    color: var(--ink-2);
+    font-size: 0.875rem;
+}
+
+.workbench-bar {
+    position: sticky;
+    top: 4rem;
+    z-index: 8;
+    margin-bottom: 1.25rem;
+    padding: 0.875rem 1rem;
+    border-radius: var(--r-2);
+    background: color-mix(in srgb, var(--surface) 94%, transparent);
+    box-shadow: var(--shadow-2), 0 0 0 1px var(--hairline);
+    backdrop-filter: blur(16px);
+}
+
+.workbench-counts {
+    display: flex;
+    flex: 1 1 22rem;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+    margin: 0;
+}
+
+.workbench-counts span {
+    padding: 0.2rem 0.65rem;
+    border-radius: var(--r-pill);
+    background: var(--surface-sunken);
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+}
+
+.file-button { position: relative; overflow: hidden; }
+.file-button input { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+.tablist {
+    justify-content: flex-start;
+    gap: 0.25rem;
+    padding: 0.375rem;
+    border-radius: var(--r-2);
+    background: var(--surface-sunken);
+}
+
+.tablist [role="tab"] {
+    min-height: var(--tap);
+    padding: 0.55rem 1rem;
+    border: 0;
+    border-radius: calc(var(--r-2) - 4px);
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 0.9375rem;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.tablist [role="tab"][aria-selected="true"] {
+    background: var(--surface);
+    color: var(--ink);
+    box-shadow: var(--shadow-1), 0 0 0 1px var(--hairline);
+}
+
+.workbench-panel {
+    width: 100%;
+    margin-top: 1rem;
+    padding: 1.5rem;
+    border-radius: var(--r-3);
+    background: var(--surface);
+    box-shadow: var(--shadow-1), 0 0 0 1px var(--hairline);
+}
+
+.workbench-panel > .table-wrapper,
+.workbench-panel [data-fragment] > .table-wrapper,
+.workbench-panel .disclosure__body > .table-wrapper { width: 100%; }
+.panel-heading { margin-bottom: 1rem; }
+.panel-heading h2, .panel-heading p { margin-bottom: 0; }
+
+.result-unavailable {
+    padding: 2rem;
+    border: 1px dashed var(--hairline-strong);
+    border-radius: var(--r-2);
+    background: var(--surface-sunken);
+}
+
+.pit-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+    margin: 1.25rem 0;
+}
+
+.dividend-summary { margin-bottom: 1.25rem; }
+.dividend-summary .pit-fields dd .cell-note { margin-top: 0.125rem; }
+
+.dividend-countries caption {
+    margin-bottom: 0.5rem;
+    text-align: left;
+    caption-side: top;
+}
+
+.settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1rem;
+}
+
+.settings-grid {
+    display: grid;
+    gap: 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(24rem, 1fr));
+}
+
+.settings-grid .field--inline { margin-bottom: 0.75rem; }
+
+.settings-help { display: grid; gap: 0.625rem; margin: 0 0 0.75rem; }
+
+.settings-help dt {
+    color: var(--ink);
+    font-size: 0.8125rem;
+    font-weight: 650;
+}
+
+.settings-help dd {
+    margin: 0.125rem 0 0;
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+    line-height: 1.5;
+}
+
+.pit-card {
+    padding: 1.25rem;
+    border-radius: var(--r-2);
+    background: var(--surface-sunken);
+    box-shadow: inset 0 0 0 1px var(--hairline);
+}
+.pit-card--wide { margin-bottom: 1rem; }
+.pit-fields { display: grid; gap: 0; margin: 0; }
+.pit-fields > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 1rem;
+    padding: 0.625rem 0;
+    border-top: 1px solid var(--hairline);
+}
+.pit-fields > div:first-child { border-top: 0; }
+.pit-fields dt { color: var(--ink-2); }
+.pit-fields dd { margin: 0; font-weight: 700; text-align: right; font-variant-numeric: tabular-nums; }
+.reconciliation {
+    margin-top: 0.75rem;
+    padding-top: 0.75rem;
+    border-top: 1px solid var(--hairline-strong);
+    font-size: 0.875rem;
+}
+
+.table--editable input:not([type="hidden"]),
+.table--editable select {
+    max-width: 18rem;
+    margin: 0.1rem;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    font-size: 0.875rem;
+}
+.trade-editor { min-width: 116rem; }
+.cell-note { display: block; color: var(--ink-2); font-size: 0.72rem; }
+.toggle-label { display: inline-flex; align-items: center; gap: 0.35rem; min-height: var(--tap); }
+
+.attention-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 1.5rem;
+    height: 1.5rem;
+    padding: 0 0.4rem;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--ink-3) 18%, transparent);
+    color: var(--ink-2);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+}
+
+.attention-count--blocking {
+    background: var(--error-bg);
+    color: var(--error);
+}
+
+.attention-empty {
+    padding: 2rem;
+    border: 1px dashed var(--hairline-strong);
+    border-radius: var(--r-2);
+    background: var(--surface-sunken);
+}
+
+.attention-empty h2,
+.attention-empty p { margin-bottom: 0.4rem; }
+
+.attention-list {
+    display: grid;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.attention-item {
+    padding: 1rem 1.125rem;
+    border-left: 4px solid var(--warning);
+    border-radius: var(--r-2);
+    background: var(--warning-bg);
+}
+
+.attention-item--blocking {
+    border-left-color: var(--error);
+    background: var(--error-bg);
+}
+
+.attention-action {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    margin-top: 0.5rem;
+}
+
+.attention-action select {
+    max-width: 18rem;
+    padding: 0.4rem 0.5rem;
+    font: inherit;
+    font-size: 0.875rem;
+}
+
+.attention-action .button--link {
+    min-height: 2rem;
+    padding-inline: 0;
+    font-size: 0.8125rem;
+}
+
+.attention-item__level {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: var(--ink-2);
+    font-size: 0.75rem;
+    font-weight: 700;
+    letter-spacing: 0.035em;
+    text-transform: uppercase;
+}
+
+.attention-item p { margin: 0 0 0.45rem; }
+.attention-item a { font-size: 0.875rem; font-weight: 650; }
+
+.bulk-country {
+    display: block;
+    min-height: 2rem;
+    margin-top: 0.25rem;
+    padding-inline: 0;
+    font-size: 0.75rem;
+    text-align: left;
+}
+
+@media (max-width: 54rem) {
+    .container--workbench { padding-inline: 0.75rem; }
+    .workbench-bar { position: static; }
+    .pit-grid { grid-template-columns: 1fr; }
+    .workbench-panel { padding: 1rem; }
+    .tablist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .trade-editor { min-width: 0; }
+    .table--editable input:not([type="hidden"]),
+    .table--editable select,
+    .attention-action select,
+    .attention-action .button--link,
+    .bulk-country { min-height: var(--tap); font-size: 1rem; }
+}
+
+@media print {
+    .workbench-bar,
+    .attention-action,
+    #panel-settings,
+    .tablist,
+    .panel-heading .button,
+    .table--editable,
+    [data-row-template] { display: none !important; }
+    .workbench-panel,
+    .workbench-panel[hidden] {
+        display: block !important;
+        margin: 0 0 5mm;
+        padding: 0;
+        border: 0;
+        box-shadow: none;
+    }
+    .pit-grid { grid-template-columns: repeat(2, 1fr); }
 }

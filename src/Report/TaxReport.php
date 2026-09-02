@@ -8,6 +8,7 @@ use App\Money\Amount;
 use App\Tax\CreditMethod;
 use App\Tax\Result\DividendTaxResult;
 use App\Tax\Result\StockTaxResult;
+use App\Web\Diagnostic;
 
 /**
  * Everything needed to render or export a settlement for one tax year.
@@ -21,6 +22,7 @@ final readonly class TaxReport
     /**
      * @param list<string> $warnings
      * @param list<string> $errors
+     * @param list<Diagnostic> $diagnostics
      */
     public function __construct(
         public int $taxYear,
@@ -32,8 +34,10 @@ final readonly class TaxReport
         public Amount $totalTaxNsaRounded,
         public int $excludedPositions,
         public int $excludedDividends,
+        public int $excludedFees,
         public array $warnings,
         public array $errors,
+        public array $diagnostics = [],
     ) {
     }
 
@@ -44,7 +48,7 @@ final readonly class TaxReport
 
     public function hasExclusions(): bool
     {
-        return $this->excludedPositions > 0 || $this->excludedDividends > 0;
+        return $this->excludedPositions > 0 || $this->excludedDividends > 0 || $this->excludedFees > 0;
     }
 
     /**
@@ -59,6 +63,17 @@ final readonly class TaxReport
     public function scenarioDifference(): Amount
     {
         return $this->totalTaxConservative->minus($this->totalTaxNsa);
+    }
+
+    /**
+     * The full-zloty total for one reading - the figure that actually goes on
+     * the form, as opposed to {@see totalTaxFor()} which keeps the grosze.
+     */
+    public function totalTaxRoundedFor(CreditMethod $method): Amount
+    {
+        return CreditMethod::Conservative === $method
+            ? $this->totalTaxConservativeRounded
+            : $this->totalTaxNsaRounded;
     }
 
     public function totalTaxFor(CreditMethod $method): Amount

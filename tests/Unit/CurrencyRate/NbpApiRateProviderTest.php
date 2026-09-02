@@ -43,6 +43,54 @@ final class NbpApiRateProviderTest extends TestCase
         self::assertStringContainsString('exchangerates/rates/a/usd/2025-03-13', $requestedUrls[0]);
     }
 
+    /**
+     * The Christmas 2025 run: NBP published on the 23rd and then not again
+     * until the 29th - Wigilia became a public holiday in 2025, the 25th and
+     * 26th are holidays and the 27th/28th a weekend. A payment settled on the
+     * 24th therefore legitimately carries the rate of the 23rd, five days
+     * earlier. Nothing in the suite walked back more than one day before this.
+     */
+    public function testWalksBackOverAMultiDayHolidayRun(): void
+    {
+        $requestedUrls = [];
+        $published = ['2025-12-23' => ['248/A/NBP/2025', 3.5848]];
+        $client = new MockHttpClient(function (string $method, string $url) use (&$requestedUrls, $published): MockResponse {
+            $requestedUrls[] = $url;
+
+            foreach ($published as $day => [$no, $mid]) {
+                if (str_contains($url, $day)) {
+                    return new MockResponse(
+                        json_encode([
+                            'code' => 'USD',
+                            'rates' => [['no' => $no, 'effectiveDate' => $day, 'mid' => $mid]],
+                        ], JSON_THROW_ON_ERROR),
+                        ['http_code' => 200],
+                    );
+                }
+            }
+
+            return new MockResponse('404 NotFound', ['http_code' => 404]);
+        }, 'https://api.nbp.pl/api/');
+
+        $provider = new NbpApiRateProvider($client);
+
+        // Settled on the 24th: D-1 is the 23rd, one request, no walk.
+        $rate = $provider->rateForPreviousBusinessDay('USD', new DateTimeImmutable('2025-12-24'));
+        self::assertSame('3.5848', (string) $rate->rate);
+        self::assertSame('2025-12-23', $rate->date->format('Y-m-d'));
+        self::assertSame('248/A/NBP/2025', $rate->table);
+        self::assertCount(1, $requestedUrls);
+
+        // Settled on the 29th: D-1 is the 28th, and the walk has to cross the
+        // 28th, 27th, 26th, 25th and 24th before the 23rd answers.
+        $requestedUrls = [];
+        $rate = $provider->rateForPreviousBusinessDay('USD', new DateTimeImmutable('2025-12-29'));
+        self::assertSame('2025-12-23', $rate->date->format('Y-m-d'));
+        self::assertCount(6, $requestedUrls);
+        self::assertStringContainsString('2025-12-28', $requestedUrls[0]);
+        self::assertStringContainsString('2025-12-23', $requestedUrls[5]);
+    }
+
     public function testWalksBackOverWeekendsAndHolidays(): void
     {
         $requestedUrls = [];

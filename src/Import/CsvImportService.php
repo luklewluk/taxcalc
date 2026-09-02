@@ -10,6 +10,8 @@ use App\Import\Importer\ImporterInterface;
 use App\Import\Importer\TradeSourceImporterInterface;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
+use App\Money\Amount;
+use App\Money\Decimal;
 use App\Tax\TaxRates;
 use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
 
@@ -80,7 +82,7 @@ final readonly class CsvImportService
          * Files whose importer needs the whole batch before it can decide what a
          * record is, keyed by importer class.
          *
-         * @var array<class-string, array{BatchImporterInterface, list<CsvSource>}> $recordBatches
+         * @var array<class-string, array{BatchImporterInterface, list<CsvSource>, string}> $recordBatches
          */
         $recordBatches = [];
 
@@ -92,7 +94,7 @@ final readonly class CsvImportService
                     $source->name,
                     'Nie rozpoznano formatu pliku. Obsługiwane formaty opisano na stronie kalkulatora - '
                     .'możesz też pobrać przykładowe pliki i porównać nagłówki.',
-                )]);
+                )->forTab('attention')]);
 
                 continue;
             }
@@ -102,7 +104,7 @@ final readonly class CsvImportService
                 $result = $result->withMessages([ImportMessage::error(
                     $source->name,
                     sprintf('Brak obsługi formatu "%s".', $format->label()),
-                )]);
+                )->forTab('attention')]);
 
                 continue;
             }
@@ -115,7 +117,7 @@ final readonly class CsvImportService
                 $tradeBatches[$importer::class] = $batch;
 
                 $rawTrades += count($extraction->trades);
-                $result = $result->withMessages($extraction->messages);
+                $result = $result->withMessages(self::messagesForTab($extraction->messages, 'transactions'));
 
                 if ($rawTrades > $this->maxRecords) {
                     return new ImportResult([], [], [...$result->messages, ImportMessage::error(
@@ -132,18 +134,36 @@ final readonly class CsvImportService
             }
 
             if ($importer instanceof BatchImporterInterface) {
-                $batch = $recordBatches[$importer::class] ?? [$importer, []];
+                $batch = $recordBatches[$importer::class] ?? [$importer, [], self::targetTab($format)];
                 $batch[1][] = $source;
                 $recordBatches[$importer::class] = $batch;
 
                 continue;
             }
 
-            $result = $result->merge($importer->import($source));
+            $imported = $importer->import($source);
+            if (CsvFormat::NormalizedPositions === $format) {
+                $imported = new ImportResult(
+                    $imported->positions,
+                    $imported->dividends,
+                    [...$imported->messages, ImportMessage::warning(
+                        $source->name,
+                        'Format własny gotowych par jest przestarzały. Dane pozostają obsługiwane w sekcji legacy, '
+                        .'ale nowe importy powinny zawierać osobne transakcje kupna i sprzedaży.',
+                    )],
+                    legacyPositions: $imported->positions,
+                );
+            } elseif (CsvFormat::NormalizedDividends === $format) {
+                $imported = $imported->withMessages([ImportMessage::warning(
+                    $source->name,
+                    'Własny format CSV dywidend jest zachowany wyłącznie dla zgodności i będzie wycofywany.',
+                )]);
+            }
+            $result = $result->merge(self::resultWithMessageTarget($imported, self::targetTab($format)));
         }
 
-        foreach ($recordBatches as [$batchImporter, $batchSources]) {
-            $result = $result->merge($batchImporter->importMany($batchSources));
+        foreach ($recordBatches as [$batchImporter, $batchSources, $targetTab]) {
+            $result = $result->merge(self::resultWithMessageTarget($batchImporter->importMany($batchSources), $targetTab));
         }
 
         foreach ($tradeBatches as [$tradeImporter, $trades]) {
@@ -153,7 +173,16 @@ final readonly class CsvImportService
                 $tradeImporter->tradeIdLabel(),
             );
 
-            $result = $result->merge($tradeImporter->matchTrades($trades))->withMessages($tradeMessages);
+            $matched = $tradeImporter->matchTrades($trades);
+            $matched = self::resultWithMessageTarget(new ImportResult(
+                $matched->positions,
+                $matched->dividends,
+                $matched->messages,
+                $trades,
+                $matched->fees,
+                $matched->legacyPositions,
+            ), 'transactions');
+            $result = $result->merge($matched)->withMessages(self::messagesForTab($tradeMessages, 'transactions'));
         }
 
         $result = $this->deduplicate($result);
@@ -166,6 +195,44 @@ final readonly class CsvImportService
         }
 
         return $result;
+    }
+
+    private static function targetTab(CsvFormat $format): string
+    {
+        return match ($format) {
+            CsvFormat::IbkrTrades, CsvFormat::DegiroTransactions, CsvFormat::NormalizedPositions => 'transactions',
+            CsvFormat::IbkrActivityDividends, CsvFormat::IbkrDividendDetail, CsvFormat::NormalizedDividends => 'dividends',
+            // A DEGIRO account statement can contain both dividends and fees,
+            // so file-level errors stay on the attention list itself.
+            CsvFormat::DegiroAccount, CsvFormat::Unknown => 'attention',
+        };
+    }
+
+    /**
+     * @param list<ImportMessage> $messages
+     *
+     * @return list<ImportMessage>
+     */
+    private static function messagesForTab(array $messages, string $targetTab): array
+    {
+        return array_map(
+            static fn (ImportMessage $message): ImportMessage => null === $message->targetTab
+                ? $message->forTab($targetTab)
+                : $message,
+            $messages,
+        );
+    }
+
+    private static function resultWithMessageTarget(ImportResult $result, string $targetTab): ImportResult
+    {
+        return new ImportResult(
+            $result->positions,
+            $result->dividends,
+            self::messagesForTab($result->messages, $targetTab),
+            $result->trades,
+            $result->fees,
+            $result->legacyPositions,
+        );
     }
 
     private function importerFor(CsvFormat $format): ?ImporterInterface
@@ -184,8 +251,9 @@ final readonly class CsvImportService
      *
      * This has to happen *before* matching: a repeated buy would otherwise open a
      * second FIFO lot and both understate the matched cost and leave a phantom
-     * open position. Trades without a transaction ID are all kept, because
-     * nothing distinguishes a genuine repeated fill from a duplicated row.
+     * open position. DEGIRO rows without a reported ID carry an explicitly
+     * marked synthetic ID so overlaps can still be recognised without treating
+     * that ID as a broker order during later aggregation.
      *
      * What counts as a repeat depends on what the identifier identifies
      * ({@see TradeIdScope}):
@@ -203,22 +271,20 @@ final readonly class CsvImportService
      * of the row inside the file it was read from. That is what makes this
      * independent of the file's *name*: the same export re-uploaded, renamed or
      * not, produces the same ordinals and its repeats drop out, while two
-     * genuine identical executions in one export keep ordinals 1 and 2 and both
-     * survive - collapsing those would halve a gain.
+     * genuine identical rows without a reported ID keep ordinals 1 and 2 and
+     * both survive. Rows with one reported DEGIRO Order ID and an exact shared
+     * timestamp are subsequently aggregated into one logical transaction.
      *
      * @param list<Trade> $trades
      *
      * @return array{list<Trade>, list<ImportMessage>}
      */
-    private function deduplicateTrades(array $trades, TradeIdScope $scope, string $idLabel): array
+    private function deduplicateTrades(array $trades, TradeIdScope $idScope, string $idLabel): array
     {
         /** @var array<string, string> $seen key => the signature stored under it */
         $seen = [];
         /** @var array<string, string> $orderScope instrument, currency and side each order ID was seen on */
         $orderScope = [];
-        /** @var array<string, array<string, true>> $orderFills distinct fills per order ID */
-        $orderFills = [];
-
         $kept = [];
         $duplicates = 0;
 
@@ -230,14 +296,19 @@ final readonly class CsvImportService
             }
 
             $signature = implode('|', [
+                $trade->broker,
+                $trade->fifoPool,
                 $trade->symbol,
                 $trade->date->format('Y-m-d H:i:s'),
                 (string) $trade->quantity,
                 (string) $trade->grossAmount->value(),
                 $trade->grossAmount->currency(),
+                self::optionalAmountSignature($trade->unitPrice),
+                self::optionalAmountSignature($trade->commission),
+                self::optionalAmountSignature($trade->autoFx),
             ]);
 
-            if (TradeIdScope::Fill === $scope) {
+            if (TradeIdScope::Fill === $idScope) {
                 $key = $trade->externalId;
 
                 if (isset($seen[$key])) {
@@ -259,18 +330,21 @@ final readonly class CsvImportService
             // Deliberately without the day: one order may be filled over
             // several sessions. What may *not* differ is which paper, in which
             // currency, and which way round.
-            $scope = implode('|', [
-                $trade->symbol,
-                $trade->grossAmount->currency(),
-                $trade->isBuy() ? 'K' : 'S',
-            ]);
+            if ($trade->externalIdReported) {
+                $orderIdentity = implode('|', [
+                    $trade->broker,
+                    $trade->fifoPool,
+                    $trade->symbol,
+                    $trade->grossAmount->currency(),
+                    $trade->isBuy() ? 'K' : 'S',
+                ]);
 
-            if (($orderScope[$trade->externalId] ?? $scope) !== $scope) {
-                return [[], [self::conflict($idLabel, $trade)]];
+                if (($orderScope[$trade->externalId] ?? $orderIdentity) !== $orderIdentity) {
+                    return [[], [self::conflict($idLabel, $trade)]];
+                }
+
+                $orderScope[$trade->externalId] = $orderIdentity;
             }
-
-            $orderScope[$trade->externalId] = $scope;
-            $orderFills[$trade->externalId][$signature] = true;
 
             $key = $trade->externalId.'|'.$signature.'|'.$trade->fillOrdinal;
 
@@ -297,19 +371,157 @@ final readonly class CsvImportService
             );
         }
 
-        $split = count(array_filter($orderFills, static fn (array $fills): bool => count($fills) > 1));
+        $aggregated = 0;
+        if (TradeIdScope::Order === $idScope) {
+            [$kept, $aggregated, $aggregationMessages] = self::aggregateOrderFills($kept);
+            $messages = [...$messages, ...$aggregationMessages];
+            if ([] !== array_filter($aggregationMessages, static fn (ImportMessage $message): bool => MessageLevel::Error === $message->level)) {
+                return [[], $messages];
+            }
+        }
+
+        if ($aggregated > 0) {
+            $messages[] = ImportMessage::info(
+                'Import',
+                sprintf(
+                    'Zagregowano %d transz(e) tego samego zgłoszonego zlecenia wykonanych w dokładnie tym samym czasie; '
+                    .'zsumowano liczbę sztuk i kwotę Total przed rozliczeniem FIFO.',
+                    $aggregated,
+                ),
+            );
+        }
+
+        /** @var array<string, array<string, true>> $remainingOrderTimes */
+        $remainingOrderTimes = [];
+        foreach ($kept as $trade) {
+            if ($trade->externalIdReported && null !== $trade->externalId) {
+                $remainingOrderTimes[$trade->externalId][$trade->date->format('Y-m-d H:i:s')] = true;
+            }
+        }
+
+        $split = count(array_filter($remainingOrderTimes, static fn (array $times): bool => count($times) > 1));
         if ($split > 0) {
             $messages[] = ImportMessage::info(
                 'Import',
                 sprintf(
-                    '%d zleceni(e/a) zostało wykonane w kilku transzach - każda transza jest rozliczana '
-                    .'oddzielnie metodą FIFO.',
+                    '%d zleceni(e/a) zostało wykonane w kilku różnych terminach - wykonania z różnych chwil '
+                    .'pozostają oddzielnymi transakcjami FIFO.',
                     $split,
                 ),
             );
         }
 
         return [$kept, $messages];
+    }
+
+    /**
+     * DEGIRO may emit several rows for one order at one timestamp. Once
+     * overlapping exports have been deduplicated, those rows describe one
+     * logical transaction: quantity and settled Total are additive. Synthetic
+     * IDs never enter this path; their rows remain distinct by construction.
+     *
+     * @param list<Trade> $trades
+     *
+     * @return array{list<Trade>, int, list<ImportMessage>} aggregated trades, number of rows merged and errors
+     */
+    private static function aggregateOrderFills(array $trades): array
+    {
+        /** @var array<string, int> $groupIndexes */
+        $groupIndexes = [];
+        $aggregated = [];
+        $merged = 0;
+        $messages = [];
+
+        foreach ($trades as $trade) {
+            if (!$trade->externalIdReported || null === $trade->externalId) {
+                $aggregated[] = $trade;
+
+                continue;
+            }
+
+            $key = implode('|', [
+                $trade->broker,
+                $trade->fifoPool,
+                $trade->externalId,
+                $trade->symbol,
+                $trade->isBuy() ? 'K' : 'S',
+                $trade->grossAmount->currency(),
+                $trade->date->format('Y-m-d H:i:s'),
+            ]);
+
+            if (!isset($groupIndexes[$key])) {
+                $groupIndexes[$key] = count($aggregated);
+                $aggregated[] = $trade;
+
+                continue;
+            }
+
+            $index = $groupIndexes[$key];
+            $first = $aggregated[$index];
+            $sources = array_values(array_unique([$first->source, $trade->source]));
+            if (null !== $first->unitPrice && null !== $trade->unitPrice
+                && $first->unitPrice->currency() !== $trade->unitPrice->currency()) {
+                $messages[] = ImportMessage::error('Import', sprintf(
+                    'Nie można zagregować zlecenia %s dla %s: transze mają różne waluty ceny wykonania (%s i %s).',
+                    $trade->externalId,
+                    $trade->symbol,
+                    $first->unitPrice->currency(),
+                    $trade->unitPrice->currency(),
+                ));
+
+                continue;
+            }
+
+            $unitPrice = self::weightedUnitPrice(
+                $first->unitPrice,
+                $first->quantity->abs(),
+                $trade->unitPrice,
+                $trade->quantity->abs(),
+            );
+
+            $aggregated[$index] = new Trade(
+                $first->symbol,
+                $first->date,
+                $first->quantity->plus($trade->quantity),
+                $first->grossAmount->plus($trade->grossAmount),
+                $first->externalId,
+                implode(', ', array_filter($sources, static fn (string $source): bool => '' !== $source)),
+                $first->instrument,
+                $first->fillOrdinal,
+                true,
+                $unitPrice,
+                $first->executionVenue,
+                $first->broker,
+                self::sumOptional($first->commission, $trade->commission),
+                self::sumOptional($first->autoFx, $trade->autoFx),
+                $first->id(),
+                $first->fifoPool,
+            );
+            ++$merged;
+        }
+
+        return [array_values($aggregated), $merged, $messages];
+    }
+
+    private static function weightedUnitPrice(
+        ?Amount $left,
+        Decimal $leftQuantity,
+        ?Amount $right,
+        Decimal $rightQuantity,
+    ): ?Amount {
+        // A partial price would suggest that it describes the whole order. If
+        // even one fill lacks it, keep the aggregated audit field explicitly
+        // unknown while preserving all taxable Total/NetCash amounts.
+        if (null === $left || null === $right) {
+            return null;
+        }
+
+        $quantity = $leftQuantity->plus($rightQuantity);
+        $weighted = $left->value()->multipliedBy($leftQuantity)
+            ->plus($right->value()->multipliedBy($rightQuantity));
+        $scale = max(8, $left->value()->scale(), $right->value()->scale());
+
+        return Amount::fromDecimal($weighted->dividedBy($quantity, $scale), $left->currency());
     }
 
     private static function conflict(string $idLabel, Trade $trade): ImportMessage
@@ -368,12 +580,41 @@ final readonly class CsvImportService
             );
         }
 
-        [$positions, $dividends, $capMessages] = $this->capRecords($positions, $dividends);
+        [$positions, $dividends, $capMessages] = $this->capRecords(
+            $positions,
+            $dividends,
+            count($result->trades),
+            count($result->fees),
+            count($result->legacyPositions),
+        );
         $messages = [...$messages, ...$capMessages];
 
         $messages = [...$messages, ...$this->countryWarnings($dividends)];
 
-        return new ImportResult($positions, $dividends, $messages);
+        return new ImportResult(
+            $positions,
+            $dividends,
+            $messages,
+            $result->trades,
+            $result->fees,
+            $result->legacyPositions,
+        );
+    }
+
+    private static function sumOptional(?Amount $left, ?Amount $right): ?Amount
+    {
+        if (null === $left || null === $right) {
+            return null;
+        }
+
+        return $left->plus($right);
+    }
+
+    private static function optionalAmountSignature(?Amount $amount): string
+    {
+        return null === $amount
+            ? 'null'
+            : $amount->currency().':'.(string) $amount->value();
     }
 
     /**
@@ -481,9 +722,20 @@ final readonly class CsvImportService
      *
      * @return array{list<ClosedPosition>, list<Dividend>, list<ImportMessage>}
      */
-    private function capRecords(array $positions, array $dividends): array
+    private function capRecords(
+        array $positions,
+        array $dividends,
+        int $tradeCount,
+        int $feeCount,
+        int $legacyPositionCount,
+    ): array
     {
-        $total = count($positions) + count($dividends);
+        // Matched positions are derived from logical trades, so counting both
+        // would halve the effective limit. Legacy pairs are primary records.
+        $positionCount = 0 === $tradeCount && 0 === $legacyPositionCount
+            ? count($positions)
+            : $legacyPositionCount;
+        $total = $tradeCount + $positionCount + count($dividends) + $feeCount;
         if ($total <= $this->maxRecords) {
             return [$positions, $dividends, []];
         }

@@ -42,6 +42,7 @@ abstract class AbstractConvertCommand extends Command
     protected function execute(InputInterface $input, OutputInterface $output): int
     {
         $io = new SymfonyStyle($input, $output);
+        $io->warning('Polecenie app:* jest przestarzałe i zostanie usunięte w przyszłej wersji; użyj workbencha WWW.');
 
         $inputPath = self::stringArgument($input, 'input_path');
         $outputPath = self::stringArgument($input, 'output_path');

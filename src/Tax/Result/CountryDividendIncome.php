@@ -7,8 +7,13 @@ namespace App\Tax\Result;
 use App\Money\Amount;
 
 /**
- * Per-country dividend aggregate for PIT/ZG, with both credit scenarios so the
- * attachment can be reconciled either way.
+ * Per-country dividend aggregate, with both credit scenarios so the return can
+ * be reconciled either way.
+ *
+ * Not a PIT/ZG breakdown: dividends are taxed under art. 30a and reported in
+ * part G of PIT-38, while PIT/ZG covers art. 27/30b/30c/30e. The country matters
+ * here because it decides the treaty withholding cap in the conservative
+ * scenario, not because an attachment is filed per country.
  */
 final readonly class CountryDividendIncome
 {

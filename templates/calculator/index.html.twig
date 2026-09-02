@@ -2,13 +2,9 @@
 
 {% block title %}Kalkulator PIT-38 — wgraj pliki{% endblock %}
 
-{% block progress %}
-    {% include '_partials/steps.html.twig' with {current: 1} only %}
-{% endblock %}
-
 {% block body %}
     <h1>Wgraj pliki</h1>
-    <p class="lead">Zestawienia od brokera albo własny CSV. Format rozpoznaje się sam.</p>
+    <p class="lead">Wgraj zestawienia od brokera, a od razu przejdziesz do wyniku i edycji danych.</p>
 
     <form action="{{ path('app_calculator_import') }}" method="post" enctype="multipart/form-data" class="panel">
         <input type="hidden" name="_token" value="{{ csrf_token(csrf_token_id) }}">
@@ -71,7 +67,6 @@
                         z typami <em>Dividends</em> oraz <em>Withholding Tax</em>, żeby podatek u źródła wczytał się sam.
                     </li>
                 </ul>
-                <p>Nie masz konta w IBKR? Wystarczy arkusz zapisany w formacie własnym.</p>
             </div>
         </details>
 
@@ -89,12 +84,13 @@
                     </li>
                     <li>
                         <strong>Zestawienie konta</strong> — dywidendy i pobrany podatek u źródła. O roku
-                        podatkowym decyduje <em>data waluty</em>.
+                        podatkowym decyduje <em>data waluty</em>; w polskim eksporcie z dwiema kolumnami
+                        „Data” jest to druga z nich.
                     </li>
                 </ul>
                 <p>
                     Eksport nie zawiera kraju dochodu — kalkulator proponuje go z prefiksu ISIN. To kraj
-                    rejestracji papieru, nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj” na następnym ekranie.
+                    rejestracji papieru, nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj” w zakładce Transakcje.
                 </p>
                 <p>
                     Instrukcję prowadzi też sam broker:
@@ -124,6 +120,10 @@
                     <li>
                         <strong>Opłaty, których nie ma w pliku</strong> — starsze eksporty DEGIRO nie ujmowały
                         kosztu przewalutowania w kwocie całkowitej.
+                    </li>
+                    <li>
+                        <strong>Capital Return i QIE Distribution Capital Gain</strong> — są pomijane z
+                        ostrzeżeniem, bo ich kwalifikację podatkową trzeba sprawdzić ręcznie.
                     </li>
                 </ul>
             </div>

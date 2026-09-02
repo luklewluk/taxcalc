@@ -21,7 +21,9 @@ final readonly class TaxYearProvider
      */
     public function years(): array
     {
-        $current = (int) date('Y');
+        // The workbench supports the published 2021-2025 forms and a clearly
+        // marked provisional 2026 mapping. Later years wait for an update.
+        $current = min(2026, (int) date('Y'));
         $years = range($current, $this->firstTaxYear);
 
         return array_values($years);
@@ -32,7 +34,7 @@ final readonly class TaxYearProvider
      */
     public function defaultYear(): int
     {
-        return (int) date('Y') - 1;
+        return min(2025, (int) date('Y') - 1);
     }
 
     public function normalize(mixed $value): int

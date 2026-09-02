@@ -1,11 +1,12 @@
 # Kalkulator PIT-38 — akcje i dywidendy
 
 Otwartoźródłowy, prywatny kalkulator podatku od zysków giełdowych i dywidend dla polskich
-podatników. Wczytuje zestawienia z **Interactive Brokers**, z **DEGIRO** albo własne pliki CSV, przelicza
+podatników. Wczytuje zestawienia z **Interactive Brokers** i **DEGIRO**, przelicza
 kwoty po kursach NBP z dnia poprzedzającego transakcję, dopasowuje sprzedaże do zakupów
 metodą **FIFO** i pokazuje wartości potrzebne do formularzy **PIT-38** i **PIT/ZG**.
 
-Działa jako aplikacja webowa i jako zestaw poleceń konsoli.
+Działa przede wszystkim jako aplikacja webowa. Historyczne polecenia konsoli są nadal
+zgodne wstecz, ale są ukryte na standardowej liście i oznaczone jako wycofywane.
 
 > ### ⚠️ Zastrzeżenie
 >
@@ -48,8 +49,9 @@ historia transakcji, salda i identyfikator rachunku. Ten kalkulator jest zbudowa
 - **brak śledzenia** — zero analityki, zewnętrznych czcionek, skryptów i obrazów,
 - **możesz uruchomić u siebie** — jedno polecenie i liczysz na własnym komputerze.
 
-Między żądaniami dane wracają jako pola formularza w Twojej przeglądarce. Serwer jest
-bezstanowy — odświeżenie strony kasuje wszystko.
+Między żądaniami dane wracają jako pola formularza w bieżącej karcie. Serwer jest
+bezstanowy; aplikacja nie używa `localStorage` ani `sessionStorage`, a odświeżenie strony
+bez ponowienia formularza kasuje dane robocze.
 
 ## Wymagania
 
@@ -98,7 +100,7 @@ większym imporcie ucięłoby formularz weryfikacji. Ustaw w `php.ini` (albo prz
 | `upload_max_filesize` | `6M` | limit aplikacji to 5 MB na plik |
 | `post_max_size` | `64M` | 10 plików × 5 MB + narzut formularza |
 | `max_file_uploads` | `12` | limit aplikacji to 10 plików |
-| `max_input_vars` | `120000` | ekran weryfikacji odsyła każdy wiersz jako pola formularza |
+| `max_input_vars` | `120000` | ekran roboczy odsyła każdy wiersz jako pola formularza |
 | `memory_limit` | `256M` | zapas przy dużych zestawieniach |
 
 Gotowy zestaw znajdziesz w [`docker/php.ini`](docker/php.ini) — obraz Dockera ustawia
@@ -149,20 +151,30 @@ rozpoznała HTTPS i wysłała nagłówek HSTS.
 2. **Kalkulator (`/kalkulator`)** — wybierz rok podatkowy i wgraj jeden lub kilka plików CSV
    (do 10 plików, każdy do 5 MB, kodowanie UTF-8). Format każdego pliku jest rozpoznawany
    automatycznie. Na tej stronie znajdziesz też przykładowe pliki do pobrania.
-3. **Ekran weryfikacji** — po imporcie zobaczysz wszystkie wiersze w postaci edytowalnej:
-   - popraw dowolną wartość, uzupełnij brakujący kraj albo zaznacz wiersz do usunięcia,
-   - komunikaty wskazują problemy (sprzedaż bez pokrycia w zakupach, nieznany kraj,
-     błędna data lub kwota, pominięte typy wierszy),
-   - kolumna *Źródło* pokazuje, z którego pliku i w jakim formacie pochodzi wiersz,
-   - identyczne rekordy z kilku plików są wykrywane i pomijane,
-   - widać też, ile wierszy wypada poza wybrany rok podatkowy.
-4. **Wynik** — podsumowanie w podziale na akcje (część C) i dywidendy (część G), rozbicie
-   na kraje w układzie PIT/ZG oraz tabele szczegółowe z kwotą źródłową, kursem NBP, datą
-   kursu i kwotą w złotych. Podatek łączny podajemy **w dwóch wariantach prawnych**
-   (zachowawczym i wg orzecznictwa NSA) wraz z wyjaśnieniem i odnośnikami do źródeł —
-   patrz [Metodyka podatkowa](#metodyka-podatkowa).
-5. **Raport** — pobranie szczegółowego pliku CSV albo otwarcie wersji do wydruku.
+3. **Ekran roboczy** — po pierwszym imporcie od razu zobaczysz wynik i sześć zakładek:
+   - **PIT-38 / PIT-ZG** — wyłącznie pola właściwych wersji formularzy, oba warianty KIS/NSA
+     i ostrzeżenia wpływające na możliwość przepisania wartości,
+   - **Wymaga uwagi** — pełna lista problemów blokujących wynik i punktów do weryfikacji,
+   - **Transakcje** — osobne, edytowalne logiczne kupna i sprzedaże; cena wykonania jest
+     informacją audytową, a `Total`/`NetCash` pozostaje rozliczoną kwotą, z której wynikają
+     przychód i koszt,
+   - **FIFO** — wynikowe pary FIFO tylko do odczytu, z ceną wykonania obu stron oraz
+     kolumnami „Przychód PLN” i „Koszt PLN”,
+   - **Dywidendy** — edycja wypłat, podsumowanie pól PIT-38 część G z rozbiciem na kraje
+     oraz szczegółowe przeliczenia wiersz po wierszu,
+   - **Opłaty** — samodzielne koszty rachunkowe, ich korekty i przełącznik uwzględnienia,
+   - **Ustawienia** — wybory, w których przepisy dopuszczają więcej niż jedno odczytanie.
+
+   Zmiany przeliczają się automatycznie po krótkim opóźnieniu. Przycisk **Przelicz** jest
+   pełnym fallbackiem bez JavaScriptu. Przy błędzie wartości PIT znikają w całości, ale
+   wszystkie wpisane dane pozostają w formularzu do poprawy.
+4. **Raport** — pobranie szczegółowego pliku CSV albo otwarcie wersji do wydruku.
    Oba są generowane w momencie kliknięcia i nie powstają jako pliki na serwerze.
+
+Kolejne pliki można dogrywać z paska roboczego. Batch jest dodawany atomowo tylko wtedy,
+gdy jest niezależny od dotychczasowych danych. Dotknięcie istniejącej kolejki FIFO albo
+potrzeba połączenia z wcześniejszą wypłatą/podatkiem odrzuca cały nowy upload. Stabilne ID
+i tombstone’y sprawiają, że ręczne poprawki oraz usunięcia nie odżywają po ponownym imporcie.
 
 ### Trasy
 
@@ -170,17 +182,19 @@ rozpoznała HTTPS i wysłała nagłówek HSTS.
 | --- | --- | --- |
 | GET | `/` | strona główna |
 | GET | `/kalkulator` | formularz wgrywania plików |
-| POST | `/kalkulator/import` | import i ekran weryfikacji |
-| POST | `/kalkulator/wynik` | obliczenie podatku |
+| POST | `/kalkulator/import` | atomowy import i ekran roboczy |
+| POST | `/kalkulator/wynik` | pełne lub asynchroniczne przeliczenie stanu roboczego |
 | POST | `/kalkulator/raport.csv` | pobranie raportu CSV |
 | POST | `/kalkulator/raport` | wersja do wydruku |
 | GET | `/przyklady/{plik}.csv` | przykładowe pliki |
 
 Wszystkie operacje POST wymagają poprawnego tokenu CSRF.
 
-## Korzystanie z konsoli (CLI)
+## Korzystanie z konsoli (CLI, deprecated)
 
-Polecenia zachowują nazwy i zgodność z wcześniejszymi wersjami narzędzia.
+Polecenia zachowują nazwy, wejścia, wyjścia i kody zakończenia ze względu na zgodność
+wstecz. Są ukryte na standardowej liście i przy każdym uruchomieniu wypisują ostrzeżenie
+o wycofywaniu; nowe procesy powinny korzystać z workbencha WWW.
 
 ### Obliczenie podatku
 
@@ -201,11 +215,11 @@ jest zawsze wypisany w nagłówku, a liczba pominiętych wierszy w komunikacie.
 > Płaski eksport transakcji IBKR nie zawiera kraju. CLI nie zgaduje tej wartości i
 > zakończy obliczenie błędem. Najpierw użyj polecenia konwersji, uzupełnij kolumnę
 > `country` w znormalizowanym CSV, a następnie uruchom kalkulację. W webie służy do tego
-> ekran weryfikacji.
+> zakładka Transakcje ekranu roboczego.
 
-> Pliki DEGIRO liczą się w CLI od razu, bo kraj można zaproponować z prefiksu ISIN —
-> ale to **propozycja**, nie ustalenie. Polecenie wypisuje wtedy ostrzeżenie z prośbą
-> o sprawdzenie kraju. Żeby go poprawić, użyj ekranu weryfikacji w aplikacji webowej albo
+> Pliki DEGIRO liczą się w CLI od razu, bo kraj można zaproponować z giełdy notowania
+> podanej w pliku (dla dywidend — z prefiksu ISIN) — ale to **propozycja**, nie ustalenie. Polecenie wypisuje wtedy ostrzeżenie z prośbą
+> o sprawdzenie kraju. Żeby go poprawić, użyj zakładki Transakcje w aplikacji webowej albo
 > przekonwertuj dane do formatu własnego i popraw kolumnę `country`:
 >
 > ```bash
@@ -245,14 +259,15 @@ ostrzeżenia i nie przerywają przetwarzania.
 
 Format jest wykrywany automatycznie na podstawie nagłówków lub znacznika sekcji.
 Akceptowane separatory: przecinek, średnik i tabulator. Liczby mogą używać kropki
-(pliki brokerskie) lub przecinka dziesiętnego (pliki własne). Daty: `RRRR-MM-DD`,
+albo przecinka dziesiętnego, również gdy wartość z przecinkiem jest cytowana w CSV
+rozdzielanym przecinkami. Daty: `RRRR-MM-DD`,
 `RRRRMMDD`, `RRRRMMDD;GGMMSS`, `DD.MM.RRRR`, `DD-MM-RRRR` (DEGIRO) i warianty z czasem.
 Rok musi być czterocyfrowy — `15-03-25` jest odrzucane jako niejednoznaczne.
 
 Kwoty z obu notacji tysięcznych są rozpoznawane bez zgadywania: gdy w liczbie występują
 oba separatory, ten **stojący dalej** jest separatorem dziesiętnym, więc `1,234.56`
-i `1.431,00` czytane są poprawnie. Gdy występuje tylko przecinek, decyduje separator pól:
-w pliku rozdzielanym średnikiem (typowy eksport kontynentalny) przecinek jest dziesiętny.
+i `1.431,00` czytane są poprawnie. Dla DEGIRO jednoznaczne wartości w całym pliku ustalają
+konwencję dla niejednoznacznych zapisów typu `1,234`; sprzeczne konwencje przerywają import.
 
 ### 1. Interactive Brokers — transakcje (Flex)
 
@@ -264,8 +279,11 @@ w pliku rozdzielanym średnikiem (typowy eksport kontynentalny) przecinek jest d
 
 Brane pod uwagę są wyłącznie wiersze `AssetClass = STK`. Dodatnia `Quantity` to zakup,
 ujemna — sprzedaż. Jako kwota używany jest **`NetCash`**, a nie `TradePrice × Quantity`,
-dzięki czemu prowizje trafiają do kosztów i przychodów. Ten format **nie zawiera kraju** —
-uzupełnij go na ekranie weryfikacji.
+dzięki czemu prowizja zakupu trafia do kosztu nabycia. Ten format **nie podaje prowizji
+osobno**, więc przy sprzedaży nie da się jej wydzielić z rozliczonej kwoty: dla takich pozycji
+przychód pozostaje kwotą netto, a pola 22 i 23 są o tę opłatę zaniżone (podatek bez zmian). Ten format **nie zawiera kraju** —
+uzupełnij go w zakładce Transakcje. `TradePrice` wraz z `CurrencyPrimary` jest zachowany
+jako audytowa cena wykonania, ale nie zmienia kwoty podatkowej.
 
 Gdzie znaleźć: *Performance & Reports → Flex Queries → Trades*.
 
@@ -312,7 +330,7 @@ Gdzie znaleźć: *Performance & Reports → Tax Documents → Dividend Detail*.
 > (ten sam symbol, waluta, data, kwota brutto i podatek) występuje w obu plikach, rekordy
 > są scalane w jeden — zachowywany jest ten z krajem — a scalenie zgłaszane w komunikacie.
 > Rekordy, które podają **różne** kraje, nie są scalane: to realny konflikt danych,
-> który powinieneś rozstrzygnąć sam na ekranie weryfikacji.
+> który powinieneś rozstrzygnąć sam w zakładce Dywidendy.
 
 ### 4. DEGIRO — transakcje (Transactions)
 
@@ -331,12 +349,23 @@ hiszpańskie i francuskie (`Date`/`Datum`/`Data`, `Quantity`/`Aantal`/`Liczba`,
 Kolumny są dopasowywane po nazwie, ale wiersze czytane **pozycyjnie**: DEGIRO powtarza
 puste nagłówki, bo waluta każdej kwoty stoi w nienazwanej kolumnie obok niej. Wariant,
 w którym waluta jest w nagłówku (`Total EUR`, `Łącznie EUR`), też jest obsługiwany.
+Brakujące lub nadmiarowe puste pola na samym końcu są wyrównywane tylko wtedy, gdy
+odpowiadają pustym końcowym nagłówkom; przesunięcie właściwych kolumn pozostaje błędem.
 
 Jako kwota używana jest kolumna **`Total`** („Razem”) wraz z jej walutą — to gotówka,
 która faktycznie wyszła z rachunku lub na niego weszła, więc zawiera opłatę transakcyjną
 (kolumny `Transaction and/or third party costs` nie doliczamy powtórnie).
 Dodatnia `Quantity` to zakup i wymaga ujemnego `Total`, ujemna — sprzedaży i dodatniego
 `Total`. Niezgodność znaku jest **błędem**, nie jest „naprawiana”.
+
+Jeżeli eksport zawiera jawne kolumny prowizji i AutoFX, wartości są zachowywane osobno
+ze ścisłą kontrolą waluty. Puste pole oznacza brak danych, a jawne zero pozostaje zerem.
+Opłaty nie są wyliczane jako różnica `Total − liczba × kurs` i nigdy nie są doliczane do
+kwoty rozliczonej. Prowizja zakupu jest już w `Total` i tym samym w koszcie nabycia; prowizja
+i AutoFX **sprzedaży** są doliczane z powrotem do przychodu (przychodem jest kwota należna)
+i jednocześnie ujmowane jako koszt odpłatnego zbycia — dochód jest ten sam, zmienia się
+tylko rozbicie na pola 22 i 23. Przy agregacji transz oraz częściowym FIFO są sumowane i dzielone
+proporcjonalnie; ostatnia część lota przejmuje resztę zaokrąglenia.
 
 Tożsamością FIFO jest **sam ISIN**, więc zmiana nazwy spółki nie dzieli pozycji na dwie,
 a papier kupiony na jednej giełdzie i sprzedany na innej pozostaje jedną kolejką.
@@ -354,13 +383,22 @@ minucie przerywają import. Tak samo kilka zakupów w tej samej minucie o różn
 jednostkowych — kolejność plików nie może decydować o koszcie FIFO. Identyczne kosztowo
 transze mogą pozostać, bo ich zamiana nie zmienia wyniku podatkowego.
 
-`Order ID` jest identyfikatorem zewnętrznym. Jedno zlecenie bywa wykonane w kilku
-transzach, **także w kilku dniach** (zlecenie GTC), i wszystkie transze są rozliczane.
+`Order ID` jest identyfikatorem zewnętrznym (czytanym także z sąsiedniego, nienazwanego
+pola końcowego w aktualnym polskim eksporcie). Jedno zlecenie bywa wykonane w kilku
+transzach, **także w kilku dniach** (zlecenie GTC). Po usunięciu duplikatów wykonania
+z tym samym zgłoszonym ID, ISIN-em, kierunkiem, walutą i dokładnym czasem są agregowane:
+sumowane są liczba sztuk i `Total`. Wykonania z różnych chwil pozostają oddzielne.
 Ten sam identyfikator przy innym instrumencie, innej walucie albo po przeciwnej stronie
 transakcji przerywa import w całości. Wiersze **bez** `Order ID` dostają identyfikator
 wyliczony z treści wiersza i jego kolejności w pliku, dzięki czemu ten sam eksport wgrany
-dwa razy (także pod tą samą nazwą) nie dubluje pozycji, a dwie naprawdę identyczne transze
-w jednym pliku pozostają dwiema.
+dwa razy (także pod tą samą nazwą) nie dubluje pozycji. Identyfikator syntetyczny jest
+oznaczony jawnie i nigdy nie uruchamia agregacji brokerowych transz; dwie naprawdę
+identyczne transakcje bez ID w jednym pliku pozostają dwiema.
+
+Neutralna zmiana nazwy produktu jest pomijana tylko jako kompletna para: ten sam plik,
+ISIN, północ, waluta i kurs, przeciwne równe ilości oraz kwoty, puste miejsce wykonania,
+brak brokerowego `Order ID` i różne nazwy produktu. Niepełna korekta oraz zwykły zakup
+i sprzedaż w tej samej minucie nadal zatrzymują import.
 
 Wiersze z zerową liczbą sztuk są pomijane z informacją. Wiersz z **niezerową** liczbą
 sztuk, ale zerowym kursem lub zerową kwotą, to zwykle operacja korporacyjna (split,
@@ -368,9 +406,11 @@ scalenie, przydział) — taki wiersz **przerywa import**. Pominięcie go zmieni
 nabycia wszystkich późniejszych sprzedaży tego papieru, a rozliczenie wyglądałoby
 kompletnie.
 
-Ten format **nie zawiera kraju** — kalkulator proponuje go z dwóch pierwszych znaków ISIN
-i wypisuje ostrzeżenie; sprawdź go na ekranie weryfikacji (patrz
-[Ograniczenia](#ograniczenia)).
+Ten format **nie zawiera kraju źródła dochodu** — kalkulator proponuje go z giełdy
+notowania (kolumna `Giełda referencyjna`, a gdy jej brak `Miejsce wykonania`) i wypisuje
+ostrzeżenie; sprawdź go w zakładce Transakcje (patrz [Ograniczenia](#ograniczenia)).
+Gdy giełda i prefiks ISIN wskazują różne kraje — np. irlandzki ETF notowany w Amsterdamie —
+w „Wymaga uwagi” pojawia się punkt do weryfikacji wymieniający oba kody.
 
 Gdzie znaleźć: portfel DEGIRO → *Aktywność (Activity)* → *Transakcje (Transactions)* →
 zakres dat obejmujący także lata zakupów → *Eksport → CSV*. Instrukcja brokera:
@@ -389,19 +429,45 @@ powtórzone puste nagłówki, więc jest czytany wyłącznie pozycyjnie: kolumna
 `Change`/`Mutatie`/`Zmiana` zawiera **walutę**, a kwota stoi w następnej kolumnie
 (w starszym układzie z nagłówkiem `Amount`/`Kwota` waluta stoi przed kwotą).
 
-Rokiem podatkowym rządzi **data waluty** (`Value date`, `Valutadatum`, `Data waluty`),
-a nie data księgowania: dywidenda zaksięgowana 2 stycznia z datą waluty 29 grudnia należy
-do poprzedniego roku. Wypłaty są grupowane po ISIN, walucie i dacie waluty.
+Rokiem podatkowym rządzi **data zaksięgowania na rachunku** (pierwsza kolumna `Data`
+/ `Date`), a nie data waluty: dywidenda z datą waluty 29 grudnia zaksięgowana 2 stycznia
+należy do nowego roku. Przychód powstaje w dniu otrzymania lub postawienia środków do
+dyspozycji (art. 11 ust. 1 ustawy o PIT), a kurs bierze się z ostatniego dnia roboczego
+**przed** tym dniem (art. 11a). DEGIRO księguje dywidendę po potwierdzeniu jej otrzymania
+przez powiernika, zwykle do dwóch dni roboczych po dacie płatności, więc „data waluty” to
+termin płatności po stronie emitenta i sama nie dowodzi, że pieniądze były dla Ciebie
+dostępne. Data waluty służy więc tylko jako awaryjna, gdy eksport nie podaje księgowania,
+oraz jako informacja przy stornach. Gdyby wyciąg dowodził bezwarunkowej dostępności środków
+już w dacie waluty, popraw datę w zakładce Dywidendy — pole jest edytowalne.
+
+Wypłaty są grupowane po ISIN, walucie, dacie waluty **oraz roku daty księgowania**. Data
+waluty mówi, **której wypłaty** dotyczy wiersz, więc korekty nadal znoszą się z wypłatą,
+którą korygują — DEGIRO potrafi wycofać wypłatę jednego dnia i wystawić ją ponownie
+nazajutrz, a grupowanie po samej dacie księgowania policzyłoby ją dwa razy. Rok księgowania
+jest w kluczu, bo storno zaksięgowane w późniejszym roku nie może sięgnąć wstecz i wyzerować
+roku, w którym rozliczono oryginał. W obrębie jednego roku korekty się znoszą, między latami
+części pozostają rozdzielne. Gdy grupa obejmuje kilka księgowań, datą uzyskania jest
+**najwcześniejsze** — wtedy pieniądze pierwszy raz trafiły na rachunek.
+
+Samotne storno (ujemne brutto) nie jest przychodem bieżącego roku: rekord nie powstaje,
+a w „Wymaga uwagi” pojawia się punkt wskazujący instrument, datę księgowania i rok, którego
+korekta dotyczy.
 
 Opisy są dopasowywane wielojęzycznie, a wzorce podatkowe **przed** dywidendowymi — inaczej
 niderlandzkie `Dividendbelasting` albo polski `Podatek od dywidendy` zostałyby zaksięgowane
 jako przychód. Rozpoznawane są m.in. `Dividend`, `Dividende`, `Dividendo`, `Dywidenda`
 oraz `Dividend Tax`, `Withholding Tax`, `Dividendbelasting`, `Impôts sur dividende`,
-`Retención del dividendo`, `Quellensteuer`, `Podatek od dywidendy`.
+`Retención del dividendo`, `Quellensteuer`, `Podatek od dywidendy` i `Podatek Dywidendowy`.
+Kupno, sprzedaż i zmiana produktu są rozpoznawane przed ogólnym rdzeniem `dywidend`, więc
+słowo w nazwie instrumentu nie tworzy fałszywej wypłaty. Brokerowe skróty walut `NO` i `SG`
+są normalizowane odpowiednio do `NOK` i `SGD`; inne kody przechodzą zwykłą walidację.
 
 Ujemne wiersze podatku to pobranie, dodatnie — zwrot; są sumowane ze znakiem, więc zwrot
 zmniejsza podatek. Zwrot większy od pobrania jest **błędem** dla tej wypłaty, a nie
 sztucznym zwiększeniem odliczenia.
+Wypłata i jej pełne odwrócenie są sumowane. Grupa, w której po korektach brutto i podatek
+wynoszą zero, jest pomijana z informacją; zerowe brutto z niezerowym podatkiem oraz inne
+niespójności pozostają błędami.
 
 Wypłaty są składane **ze wszystkich wgranych zestawień konta razem**, nie osobno w każdym
 pliku. Dywidenda i pobrany od niej podatek to dwa wiersze i łatwo trafiają do dwóch
@@ -415,11 +481,24 @@ dywidend jako pozornie kompletnego zestawu.
 
 **Transakcje z tego pliku nie są importowane.** Zestawienie konta nie podaje liczby sztuk
 ani kursu, a wczytanie ich z obu plików podwoiłoby każdą pozycję; wiersze kupna/sprzedaży
-są tylko policzone w komunikacie. Pozostałe operacje (wpłaty, opłaty, przewalutowania,
-odsetki) są pomijane z podsumowaniem — nigdy jako błąd.
+są tylko policzone w komunikacie. Spośród opłat aplikacja automatycznie importuje wyłącznie
+ścisłe, wielojęzyczne warianty **DEGIRO Exchange Connection Fee** i domyślnie uwzględnia
+je w kosztach PIT-38. Wiersze opłat transakcyjnych są pomijane, bo są już zawarte w `Total`.
+Pozostałe operacje (wpłaty, przewalutowania, odsetki i inne opłaty) są pomijane z podsumowaniem.
 
-Ten format również **nie zawiera kraju**; obowiązuje ta sama propozycja z ISIN
-i to samo ostrzeżenie.
+Dodatnia korekta connection fee zmniejsza koszt. Grupa całkowicie wyzerowana jest pomijana
+z informacją, a zwrot przewyższający opłaty zatrzymuje rozliczenie do ręcznej poprawy.
+Rok oraz kurs NBP D-1 wynikają z daty zaksięgowania na rachunku. Koszty rachunkowe zwiększają koszt PIT-38,
+ale nie są przypisywane do konkretnego kraju PIT/ZG. Zobacz
+[broszurę MF do PIT-38 za 2025 r.](https://www.podatki.gov.pl/media/11079/broszura-do-pit-38-za-2025-r.pdf),
+która wymienia wydatki związane z obsługą rachunku maklerskiego wśród możliwych kosztów.
+`Capital Return` i `QIE Distribution Capital Gain` nie są automatycznie doliczane do
+dywidend; aplikacja pokazuje wyraźne ostrzeżenie, aby zweryfikować je i rozliczyć ręcznie.
+
+Ten format również **nie zawiera kraju** i nie podaje giełdy, więc dla dywidend kraj
+proponowany jest z prefiksu ISIN, z ostrzeżeniem. Kraj dywidendy nie jest potrzebny do
+PIT/ZG (dywidendy rozlicza się ryczałtem z art. 30a w części G PIT-38), ale bez niego nie
+da się ustalić limitu stawki umownej w wariancie zachowawczym.
 
 Gdzie znaleźć: portfel DEGIRO → *Aktywność (Activity)* → *Zestawienie konta
 (Account statement)* → *Eksport → CSV*.
@@ -433,7 +512,10 @@ Gdzie znaleźć: portfel DEGIRO → *Aktywność (Activity)* → *Zestawienie ko
 > dopasowywane **osobno dla każdego brokera**: identyfikatory są unikalne tylko u wystawcy,
 > a kolejka FIFO jednego brokera jest kluczowana ISIN-em, drugiego symbolem.
 
-### 6. Format własny — pozycje zamknięte
+### 6. Format własny — pozycje zamknięte (deprecated)
+
+Format pozostaje obsługiwany wyłącznie dla zgodności. Import pokazuje ostrzeżenie, a gotowe
+pary trafiają do zwiniętej sekcji legacy i nie są ponownie dopasowywane przez FIFO.
 
 ```csv
 name,country,currency,buy_date,buy_total_amount,sell_date,sell_total_amount
@@ -443,7 +525,10 @@ PKO,PL,PLN,2024-01-15,1000.00,2025-03-10,1180.50
 
 Kwoty są **łączne dla pozycji**, nie za sztukę. Precyzja większa niż grosze jest zachowywana.
 
-### 7. Format własny — dywidendy
+### 7. Format własny — dywidendy (deprecated)
+
+Format pozostaje obsługiwany dla starszych integracji i przy imporcie jest oznaczany jako
+wycofywany. Nie jest promowany w głównym interfejsie ani w publicznych przykładach.
 
 ```csv
 name,country,currency,date,amount,tax_paid
@@ -455,8 +540,8 @@ VUSD,IE,USD,2025-04-02,56.75,0
 Ujemny znak jest normalizowany wyłącznie w brokerowych formatach IBKR, które go tak
 definiują. W formacie własnym i formularzu wartość ujemna jest błędem.
 
-Przykładowe pliki znajdziesz w katalogu [`examples/`](examples/) oraz do pobrania
-ze strony `/kalkulator`.
+Publiczne przykłady aktualnych eksportów DEGIRO znajdziesz w katalogu [`examples/`](examples/)
+oraz do pobrania ze strony `/kalkulator`.
 
 ## Metodyka podatkowa
 
@@ -489,7 +574,12 @@ niepełnym zbiorze danych podczas awarii NBP lub przy nieobsługiwanej walucie.
 - Przy częściowym zamknięciu partii koszt jest dzielony proporcjonalnie, a ostatnia część
   dostaje dokładną resztę, więc sumy się zgadzają co do grosza.
 - Przychód = suma kwot sprzedaży w PLN; koszt = suma kwot zakupu w PLN.
+- Uwzględnione samodzielne opłaty rachunkowe zwiększają koszt ogólny, ale pozostają osobną
+  pozycją uzgadniającą i nie są przypisywane do kraju PIT/ZG.
 - Podatek = **19%** dochodu. Przy stracie podatek wynosi **zero** (nigdy wartości ujemnej).
+- PIT/ZG powstaje wyłącznie dla kraju z dodatnim dochodem z art. 30b. Kraj ze stratą
+  pozostaje w audycie FIFO z ostrzeżeniem. Dywidendy nie tworzą PIT/ZG ani nie zwiększają
+  liczby załączników.
 
 ### Dywidendy (PIT-38 część G)
 
@@ -576,7 +666,10 @@ potrafi zależeć od rodzaju instrumentu i statusu podatnika. Tabela to punkt wy
 nie źródło prawa — jest zdefiniowana w [`src/Tax/TaxRates.php`](src/Tax/TaxRates.php).
 Dla kraju spoza tabeli kalkulator **nie zgaduje stawki**: wariant zachowawczy przyjmuje
 odliczenie `0 PLN`, wariant wg NSA pokazuje faktycznie pobrany podatek do limitu 19%,
-a wynik zawiera wyraźne ostrzeżenie wymagające weryfikacji umowy.
+a wynik zawiera wyraźne ostrzeżenie wymagające weryfikacji umowy. Kraj spoza tabeli można
+jednak wybrać — lista rozwijana zawiera dodatkowo każdy kraj, jaki potrafi zaproponować
+tablica giełd, oraz każdy poprawny kod już obecny w danych, z etykietą
+*poza tabelą umów*.
 
 ### Zaokrąglanie
 
@@ -610,10 +703,22 @@ zmiennoprzecinkowych**, więc grosze się nie gubią. Zasady:
 
 ### Pola formularzy
 
-Celowo **nie podajemy numerów pól** (typu „C.22”). Numeracja zmienia się między wersjami
-formularzy, a wpisanie kwoty w nieaktualne pole jest gorsze niż samodzielne dopasowanie.
-Zamiast tego prezentujemy wartości semantyczne (przychód, koszty uzyskania przychodu,
-dochód, podatek) wraz z sekcją formularza i wybranym rokiem.
+Ekran roboczy dobiera wersję i numery pól do roku. Wyświetlane wartości są opisane jako
+**wkład z zaimportowanych danych**, a nie kompletne zeznanie: straty z lat ubiegłych, inne
+PIT-8C, krypto i zagraniczny podatek od zysków kapitałowych pozostają „brak danych”.
+
+| Rok | Formularze | Źródło akcji | Suma / dochód-strata / podatek | Dywidendy | Podatek łącznie / PIT-ZG | PIT/ZG dochód / podatek |
+| --- | --- | --- | --- | --- | --- | --- |
+| 2021 | PIT-38(15), PIT/ZG(7) | 22/23 | 24–27, 29–33 | 45–47 | 49 / 69 | 32/33 |
+| 2022 | PIT-38(16), PIT/ZG(7) | 22/23 | 24–27, 29–33 | 45–47 | 49 / 69 | 32/33 |
+| 2023 | PIT-38(16), PIT/ZG(8) | 22/23 | 24–27, 29–33 | 45–47 | 49 / 69 | 29/30 |
+| 2024 | PIT-38(17), PIT/ZG(8) | 22/23 | 24–27, 29–33 | 45–47 | 49 / 69 | 29/30 |
+| 2025 | PIT-38(18), PIT/ZG(8) | 22/23 | 26–29, 31–35 | 47–49 | 51 / 72 | 29/30 |
+| 2026 | prowizorycznie jak 2025 | jak 2025 | jak 2025 | jak 2025 | jak 2025 | jak 2025 |
+
+Dla 2026 aplikacja stale ostrzega, że oficjalny wzór nie został jeszcze opublikowany i
+numery mogą się zmienić. Interfejs oferuje wyłącznie lata 2021–2026. Aktualne wzory:
+[PIT-38](https://www.gov.pl/web/finanse/pit-38) i [PIT/ZG](https://www.gov.pl/web/finanse/pitzg).
 
 ## Model prywatności
 
@@ -641,15 +746,37 @@ Rzeczy, których to narzędzie **nie robi** — warto wiedzieć przed użyciem:
   znaku właściwej dla formatu). Wiersz łamiący te reguły jest odrzucany z komunikatem,
   a nie „naprawiany” zmianą znaku.
 - **Wymaga kraju przed obliczeniem.** Płaskie zestawienia IBKR nie zawierają kraju; taki
-  wiersz trafia na ekran weryfikacji, ale wynik i raport policzysz dopiero po uzupełnieniu
+  wiersz trafia do zakładki Transakcje, ale wynik i raport policzysz dopiero po uzupełnieniu
   dwuliterowego kodu ISO.
+- **Kraj transakcji to wybór wykładni, nie usterka.** Przy zbyciu akcji spotyka się dwie
+  interpretacje kraju uzyskania dochodu: kraj giełdy, na której doszło do sprzedaży, albo kraj
+  rejestracji instrumentu. Kalkulator domyślnie idzie za giełdą, a w zakładce **Ustawienia**
+  można to przełączyć — zmiana przelicza propozycje dla transakcji i nie nadpisuje krajów
+  wpisanych ręcznie. Dywidendy zawsze idą za numerem ISIN, bo stawkę umowną wyznacza rezydencja
+  wypłacającego: kanadyjski emitent notowany w USA wypłaca dywidendę z Kanady. Transakcje
+  i dywidendy tego samego papieru mogą więc mieć **różne** kraje i nie jest to sprzeczność —
+  aplikacja tego nie zgłasza.
+- **Wariant odliczenia wybierasz w Ustawieniach.** Domyślny jest wariant zachowawczy (KIS) i to
+  on wypełnia pola PIT. Drugi wariant zostaje widoczny wszędzie — w podsumowaniu, w zakładce
+  Dywidendy, na wydruku, w CSV i w CLI — bo wysokość odliczenia jest sporna. Ustawienia jadą
+  razem z danymi w formularzu; nic nie jest zapisywane między sesjami.
 - **Kraj z pliku DEGIRO jest tylko propozycją.** Eksporty DEGIRO nie podają kraju źródła
-  dochodu, więc kalkulator wpisuje dwa pierwsze znaki numeru ISIN i wypisuje ostrzeżenie.
-  To **kraj rejestracji papieru**, nie zawsze kraj źródła dochodu — klasyczny przykład to
-  irlandzki ETF na akcje amerykańskie (`IE…`) albo spółka notowana poza krajem rejestracji.
-  Prefiksy, które nie są kodem kraju (`XS…` Euroclear/Clearstream, `EU`, `QZ`), zostawiają
-  pole puste do ręcznego uzupełnienia. Cyfra kontrolna ISIN nie jest weryfikowana —
-  sprawdzana jest tylko struktura numeru. **Sprawdź kolumnę „Kraj” przed obliczeniem.**
+  dochodu. Dla **transakcji** kalkulator bierze kraj **giełdy notowania** (`Giełda
+  referencyjna`, a gdy jej brak `Miejsce wykonania`); dla **dywidend** — dwa pierwsze znaki
+  numeru ISIN, bo zestawienie konta nie podaje giełdy. Oba warianty są opatrzone
+  ostrzeżeniem. Kraj notowania też nie musi być krajem źródła dochodu: chiński emitent
+  notowany w Hongkongu wypłaca z Chin. Platformy wielorynkowe (`CEUX`, `TQEX`, `XOFF`)
+  i kody nierozpoznane nie proponują nic — pole zostaje puste, a kod trafia do ostrzeżenia
+  dosłownie. Gdy ten sam ISIN ma w pliku dwie różne giełdy, propozycja jest wycofywana:
+  jeden papier ma jeden kraj, a wybór którejś nogi FIFO byłby zgadywaniem. Prefiksy ISIN,
+  które nie są kodem kraju (`XS…` Euroclear/Clearstream, `EU`, `QZ`), zostawiają pole
+  dywidendy puste. Cyfra kontrolna ISIN nie jest weryfikowana — sprawdzana jest tylko
+  struktura numeru. **Sprawdź kolumnę „Kraj” przed obliczeniem.**
+- **Kraj ustawisz zbiorczo dla całego instrumentu.** W zakładce „Wymaga uwagi” każdy
+  instrument bez kraju ma jedno pole wyboru i przycisk „Zastosuj do wszystkich (N)”, który
+  uzupełnia wszystkie puste wiersze tego papieru — także w zakładce Dywidendy. Gdy wiersze
+  jednego instrumentu mają różne kraje, ten sam panel proponuje „Ujednolić kraj we
+  wszystkich”. Uzupełnianie pustych nigdy nie nadpisuje tego, co wpisałeś ręcznie.
 - **Starsze eksporty DEGIRO mogły nie zawierać prowizji AutoFX w kwocie `Total`.** Sam
   DEGIRO to w przeszłości potwierdzał. Kalkulator liczy dokładnie to, co jest w pliku, i
   informuje, gdy plik nie ma kolumny AutoFX — opłaty, której nie ma w eksporcie, nie da się
@@ -685,7 +812,10 @@ Rzeczy, których to narzędzie **nie robi** — warto wiedzieć przed użyciem:
 - **Tabela stawek umownych jest uproszczona** i wymaga weryfikacji (patrz wyżej).
 - **Prowizje** trafiają do rozliczenia tylko wtedy, gdy są zawarte w `NetCash` (IBKR),
   w kolumnie `Total` (DEGIRO) lub w kwotach formatu własnego. Osobnych wierszy
-  prowizyjnych nie sumujemy.
+  prowizyjnych nie sumujemy. Rozdzielenie prowizji sprzedaży na przychód i koszt wymaga
+  osobnej kolumny opłaty — mają ją tylko transakcje DEGIRO. Bez niej (płaski eksport IBKR,
+  format własny, puste pole opłaty, sklejone zlecenie o niespójnych transzach) przychód
+  zostaje kwotą rozliczoną.
 - **Nie jest to porada podatkowa.**
 
 ## Architektura
@@ -696,13 +826,13 @@ Symfony 8.1 na PHP 8.5, bez bazy danych i bez kroku budowania front-endu.
 src/
 ├─ Money/          Decimal, Amount — arytmetyka dziesiętna (brick/math)
 ├─ Fifo/           dopasowanie FIFO z proporcjonalnym podziałem kosztu
-├─ Model/          ClosedPosition, Dividend — znormalizowane rekordy
+├─ Model/          ClosedPosition, Dividend, AccountFee — rekordy rozliczenia
 ├─ CurrencyRate/   kursy NBP: interfejs, klient HTTP, cache, przeliczanie D-1
 ├─ Import/         rozpoznawanie formatu, parsery liczb i dat, 7 importerów
 │  └─ Degiro/      pozycyjny czytnik CSV, aliasy nagłówków, ISIN
 ├─ Tax/            stawki, kalkulator akcji, kalkulator dywidend, filtr roku
 ├─ Report/         budowanie raportu, eksport CSV odporny na formuły
-├─ Web/            mapowanie formularza, walidacja i odczyt przesłanych plików
+├─ Web/            workbench, mapowanie formularza, walidacja i odczyt przesłanych plików
 ├─ Controller/     3 kontrolery (strona główna, kalkulator, pliki przykładowe)
 ├─ Command/        4 polecenia konsoli
 ├─ EventListener/  nagłówki bezpieczeństwa

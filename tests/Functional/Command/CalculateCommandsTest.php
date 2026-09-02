@@ -101,7 +101,9 @@ final class CalculateCommandsTest extends KernelTestCase
         self::assertStringContainsString('400.00', $output);
         self::assertStringContainsString('600.00', $output);
         self::assertStringContainsString('38.00', $output);
-        self::assertMatchesRegularExpression('/ISIN/u', $output);
+        // The country proposal now comes from the listing exchange, and the
+        // command has to keep saying where it came from.
+        self::assertMatchesRegularExpression('/giełd/iu', $output);
     }
 
     public function testDegiroDividendsAreCalculatedFromTheAccountStatement(): void

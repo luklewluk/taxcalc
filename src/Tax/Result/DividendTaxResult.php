@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tax\Result;
 
 use App\Money\Amount;
+use App\Tax\CreditMethod;
 
 final readonly class DividendTaxResult
 {
@@ -27,6 +28,15 @@ final readonly class DividendTaxResult
      * True when the disputed treaty cap actually changes the outcome, which is
      * the only time the user needs to make a decision about it.
      */
+    /**
+     * The totals for one reading, so a caller that has already decided which
+     * variant it declares does not have to branch on the enum itself.
+     */
+    public function scenarioFor(CreditMethod $method): ScenarioTotals
+    {
+        return CreditMethod::Conservative === $method ? $this->conservative : $this->nsa;
+    }
+
     public function scenariosDiffer(): bool
     {
         return 0 !== $this->conservative->taxDue->compareTo($this->nsa->taxDue);

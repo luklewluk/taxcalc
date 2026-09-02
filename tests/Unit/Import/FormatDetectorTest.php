@@ -109,6 +109,12 @@ final class FormatDetectorTest extends TestCase
             CsvFormat::DegiroAccount,
         ];
 
+        yield 'degiro account statement, polish with two date columns' => [
+            "Data,Czas,Data,Produkt,ISIN,Opis,Kurs,Zmiana,,Saldo,,Identyfikator zlecenia\n"
+            ."02-01-2025,00:00,29-12-2024,ALFA CORP,US000ALFA001,Dywidenda,,USD,2.50,USD,500.00,\n",
+            CsvFormat::DegiroAccount,
+        ];
+
         yield 'unknown' => ["foo,bar\n1,2\n", CsvFormat::Unknown];
         yield 'empty' => ['', CsvFormat::Unknown];
         yield 'not a csv at all' => ["just some prose\nwithout structure\n", CsvFormat::Unknown];

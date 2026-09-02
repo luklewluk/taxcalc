@@ -37,7 +37,7 @@ final class ReportRenderer
                         $item->position->currency,
                         $item->position->buyDate->format('Y-m-d'),
                         (string) $item->cost->rate,
-                        (string) $item->cost->pln->value(),
+                        (string) $item->totalCost()->value(),
                         $item->position->sellDate->format('Y-m-d'),
                         (string) $item->revenue->rate,
                         (string) $item->revenue->pln->value(),
@@ -52,6 +52,7 @@ final class ReportRenderer
         $io->definitionList(
             ['Przychód' => $stock->totalRevenue->value().' PLN'],
             ['Koszty uzyskania przychodu' => $stock->totalCost->value().' PLN'],
+            ['w tym koszty zbycia' => $stock->disposalCost->value().' PLN'],
             [($stock->isLoss() ? 'Strata' : 'Dochód') => ($stock->isLoss() ? $stock->loss->value() : $stock->income->value()).' PLN'],
             ['Podatek 19%' => $stock->tax->value().' PLN'],
         );
@@ -132,7 +133,7 @@ final class ReportRenderer
         );
 
         if ([] !== $dividends->countries) {
-            $io->section('PIT/ZG — dywidendy według kraju');
+            $io->section('Dywidendy według kraju (art. 30a - bez PIT/ZG)');
             $io->table(
                 [
                     'Kraj', 'Brutto PLN', 'Pobrany PLN', 'Podatek PL PLN',

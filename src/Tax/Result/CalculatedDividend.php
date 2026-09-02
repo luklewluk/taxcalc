@@ -33,4 +33,10 @@ final readonly class CalculatedDividend
     {
         return 0 !== $this->conservative->taxDue->toScale(2)->compareTo($this->nsa->taxDue->toScale(2));
     }
+
+    /** NSA credit minus the treaty-capped KIS credit. */
+    public function creditDifference(): Amount
+    {
+        return $this->nsa->creditableTax->minus($this->conservative->creditableTax);
+    }
 }

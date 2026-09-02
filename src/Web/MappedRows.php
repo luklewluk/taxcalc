@@ -6,6 +6,8 @@ namespace App\Web;
 
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
+use App\Fifo\Trade;
+use App\Model\AccountFee;
 
 final readonly class MappedRows
 {
@@ -23,6 +25,12 @@ final readonly class MappedRows
         public array $dividends,
         public array $errors,
         public array $rows = [],
+        /** @var list<Trade> */
+        public array $trades = [],
+        /** @var list<AccountFee> */
+        public array $fees = [],
+        /** @var list<Diagnostic> */
+        public array $diagnostics = [],
     ) {
     }
 }

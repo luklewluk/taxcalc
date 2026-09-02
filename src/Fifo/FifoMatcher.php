@@ -29,7 +29,8 @@ final class FifoMatcher
         /** @var array<string, list<Trade>> $bySymbol */
         $bySymbol = [];
         foreach ($trades as $trade) {
-            $bySymbol[$trade->symbol][] = $trade;
+            $pool = '' === $trade->fifoPool ? $trade->symbol : $trade->fifoPool;
+            $bySymbol[$trade->broker.'|'.$pool][] = $trade;
         }
 
         $matches = [];
@@ -81,6 +82,8 @@ final class FifoMatcher
             $sellQtyLeft = $trade->quantity->abs();
             $sellQtyTotal = $sellQtyLeft;
             $sellAmountLeft = $trade->grossAmount->abs();
+            $sellCommissionLeft = $trade->commission?->abs();
+            $sellAutoFxLeft = $trade->autoFx?->abs();
 
             foreach ($openLots as $lot) {
                 if (!$sellQtyLeft->isPositive()) {
@@ -93,13 +96,29 @@ final class FifoMatcher
 
                 $matchedQty = $lot->remainingQuantity->min($sellQtyLeft);
 
+                $lotQtyBefore = $lot->remainingQuantity;
                 $buyCost = $lot->take($matchedQty);
+                [$buyCommission, $buyAutoFx] = $lot->takeFees($matchedQty, $lotQtyBefore);
                 $sellProceeds = $this->slice(
                     $sellAmountLeft,
                     $matchedQty,
                     $sellQtyLeft,
                     $sellQtyTotal,
                     $trade->grossAmount->abs(),
+                );
+                $sellCommission = $this->sliceOptional(
+                    $trade->commission,
+                    $sellCommissionLeft,
+                    $matchedQty,
+                    $sellQtyLeft,
+                    $sellQtyTotal,
+                );
+                $sellAutoFx = $this->sliceOptional(
+                    $trade->autoFx,
+                    $sellAutoFxLeft,
+                    $matchedQty,
+                    $sellQtyLeft,
+                    $sellQtyTotal,
                 );
 
                 $matches[] = new FifoMatch(
@@ -116,14 +135,29 @@ final class FifoMatcher
                     ++$sequence,
                     $lot->trade->instrument,
                     $trade->instrument,
+                    $buyCommission,
+                    $sellCommission,
+                    $buyAutoFx,
+                    $sellAutoFx,
+                    $trade->broker,
+                    $lot->trade->id(),
+                    $trade->id(),
+                    $lot->trade->unitPrice,
+                    $trade->unitPrice,
                 );
 
                 $sellQtyLeft = $sellQtyLeft->minus($matchedQty);
                 $sellAmountLeft = $sellAmountLeft->minus($sellProceeds);
+                if (null !== $sellCommissionLeft && null !== $sellCommission) {
+                    $sellCommissionLeft = $sellCommissionLeft->minus($sellCommission);
+                }
+                if (null !== $sellAutoFxLeft && null !== $sellAutoFx) {
+                    $sellAutoFxLeft = $sellAutoFxLeft->minus($sellAutoFx);
+                }
             }
 
             if ($sellQtyLeft->isPositive()) {
-                $unmatched[] = new UnmatchedSell($trade->symbol, $trade->date, $sellQtyLeft);
+                $unmatched[] = new UnmatchedSell($trade->symbol, $trade->date, $sellQtyLeft, $trade->id());
             }
         }
 
@@ -146,5 +180,23 @@ final class FifoMatcher
         }
 
         return $totalAmount->proratedBy($matchedQty, $totalQty);
+    }
+
+    private function sliceOptional(
+        ?Amount $total,
+        ?Amount $remaining,
+        Decimal $matchedQty,
+        Decimal $remainingQty,
+        Decimal $totalQty,
+    ): ?Amount {
+        if (null === $total || null === $remaining) {
+            return null;
+        }
+
+        if (0 === $matchedQty->compareTo($remainingQty)) {
+            return $remaining;
+        }
+
+        return $total->abs()->proratedBy($matchedQty, $totalQty);
     }
 }

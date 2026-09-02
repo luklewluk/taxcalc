@@ -29,6 +29,29 @@ final readonly class DegiroHeader
 
     public const array PRODUCT = ['product', 'produkt', 'producto', 'produit', 'prodotto'];
 
+    /**
+     * The *listing* exchange DEGIRO reports the instrument against, in its own
+     * three-letter vocabulary (`NDQ`, `EAM`). Distinct from
+     * {@see EXECUTION_VENUE}, which is the MIC of the venue an order actually
+     * filled on and can name a pan-European MTF rather than a market.
+     *
+     * The Dutch export uses the bare word `Beurs`; no other DEGIRO column is
+     * named that, and aliases are matched whole, so it is safe here.
+     */
+    public const array REFERENCE_EXCHANGE = [
+        'reference exchange', 'reference', 'giełda referencyjna', 'gielda referencyjna',
+        'giełda referenc', 'gielda referenc', 'beurs', 'referentiebeurs',
+        'börse', 'borse', 'referenzbörse', 'referenzborse',
+        'bolsa', 'bolsa de referencia', 'bourse', 'place de référence', 'place de reference',
+        'borsa', 'borsa di riferimento',
+    ];
+
+    public const array EXECUTION_VENUE = [
+        'execution venue', 'venue', 'miejsce wykonania', 'uitvoeringsplaats',
+        'ausführungsplatz', 'ausfuhrungsplatz', 'lugar de ejecución', 'lugar de ejecucion',
+        'place d’exécution', 'place d’execution', 'place d\'exécution', 'place d\'execution',
+    ];
+
     public const array ISIN = ['isin'];
 
     public const array QUANTITY = [
@@ -58,12 +81,14 @@ final readonly class DegiroHeader
     public const array COSTS = [
         'transaction and/or third', 'transaction and/or third party costs', 'transaction costs',
         'transactiekosten en/of', 'transactiekosten', 'opłata transakcyjna', 'oplata transakcyjna',
+        'opłata transakcyjna degiro i/lub opłata stron',
+        'oplata transakcyjna degiro i/lub oplata stron',
         'koszty transakcyjne', 'transaktionskosten', 'costes de transacción', 'costes de transaccion',
     ];
 
     public const array AUTOFX = [
         'autofx', 'autofx commission', 'autofx costs', 'autofx-kosten', 'prowizja autofx',
-        'koszty autofx', 'autofx kosten', 'commission autofx',
+        'koszty autofx', 'opłaty autofx', 'oplaty autofx', 'autofx kosten', 'commission autofx',
     ];
 
     public const array VALUE_DATE = [
@@ -123,13 +148,24 @@ final readonly class DegiroHeader
      */
     public function indexOf(array $aliases): ?int
     {
+        return $this->indexesOf($aliases)[0] ?? null;
+    }
+
+    /**
+     * @param list<string> $aliases
+     *
+     * @return list<int>
+     */
+    public function indexesOf(array $aliases): array
+    {
+        $indexes = [];
         foreach ($this->columns as $index => $column) {
             if ('' !== $column && in_array($column, $aliases, true)) {
-                return $index;
+                $indexes[] = $index;
             }
         }
 
-        return null;
+        return $indexes;
     }
 
     /**

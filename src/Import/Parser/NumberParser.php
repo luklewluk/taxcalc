@@ -25,7 +25,7 @@ final class NumberParser
 {
     public static function parse(string $value, bool $decimalComma = false): Decimal
     {
-        return Decimal::of(self::normalize($value, $decimalComma));
+        return Decimal::of(self::normalize($value, $decimalComma, false));
     }
 
     /**
@@ -41,7 +41,26 @@ final class NumberParser
         return self::parse($value, $decimalComma);
     }
 
-    private static function normalize(string $value, bool $decimalComma): string
+    /**
+     * Parses a broker file whose decimal convention was inferred from all its
+     * unambiguous numeric cells. Unlike the permissive form/normalized-CSV path,
+     * this applies the convention symmetrically to dots and commas.
+     */
+    public static function parseLocalized(string $value, ?bool $decimalComma): Decimal
+    {
+        return Decimal::of(self::normalize($value, $decimalComma, true));
+    }
+
+    public static function parseLocalizedOrZero(string $value, ?bool $decimalComma): Decimal
+    {
+        if ('' === self::strip($value)) {
+            return Decimal::zero();
+        }
+
+        return self::parseLocalized($value, $decimalComma);
+    }
+
+    private static function normalize(string $value, ?bool $decimalComma, bool $strictConvention): string
     {
         $normalized = self::strip($value);
 
@@ -66,17 +85,18 @@ final class NumberParser
             $groupSeparator = ',' === $decimalSeparator ? '.' : ',';
 
             $normalized = self::ungroup($value, $normalized, $groupSeparator, $decimalSeparator);
+        } elseif ($hasComma && $strictConvention) {
+            $normalized = self::singleSeparator($value, $normalized, ',', $decimalComma);
         } elseif ($hasComma) {
             if (!$decimalComma) {
                 $normalized = self::ungroup($value, $normalized, ',', null);
             } elseif (1 === preg_match('/^[+-]?\d+,\d+$/', $normalized)) {
                 $normalized = str_replace(',', '.', $normalized);
             } else {
-                // A decimal separator needs digits on both sides. A bare ",123"
-                // or "123," is a truncated field far more often than it is a
-                // deliberate 0.123, and a second comma is not a decimal point.
                 throw InvalidNumberException::notADecimal($value);
             }
+        } elseif ($hasDot && $strictConvention) {
+            $normalized = self::singleSeparator($value, $normalized, '.', $decimalComma);
         }
 
         if ($negative) {
@@ -90,6 +110,63 @@ final class NumberParser
         }
 
         return ltrim($normalized, '+');
+    }
+
+    /**
+     * Resolves a value containing only one kind of separator.
+     *
+     * `null` means that the caller deliberately has no file-wide convention.
+     * Values such as `12,50` or `12.5000` still identify their own decimal
+     * separator, while `1,234` is refused because it can mean either 1234 or
+     * 1.234. DEGIRO's positional reader establishes the convention from the
+     * other, unambiguous values in the same export before calling this method.
+     *
+     * @param bool|null $decimalComma true for comma decimals, false for dot
+     *                                decimals, null when the file has no clue
+     */
+    private static function singleSeparator(
+        string $original,
+        string $normalized,
+        string $separator,
+        ?bool $decimalComma,
+    ): string {
+        $separatorIsDecimal = null === $decimalComma
+            ? self::inferSingleSeparator($normalized, $separator)
+            : (',' === $separator) === $decimalComma;
+
+        if (null === $separatorIsDecimal) {
+            throw InvalidNumberException::notADecimal($original);
+        }
+
+        if (!$separatorIsDecimal) {
+            return self::ungroup($original, $normalized, $separator, null);
+        }
+
+        $quoted = preg_quote($separator, '/');
+        if (1 !== preg_match('/^[+-]?\d+'.$quoted.'\d+$/', $normalized)) {
+            throw InvalidNumberException::notADecimal($original);
+        }
+
+        return ',' === $separator ? str_replace(',', '.', $normalized) : $normalized;
+    }
+
+    /**
+     * @return bool|null true when the separator is decimal, false when it is a
+     *                   grouping mark, null when a single three-digit suffix is
+     *                   genuinely ambiguous
+     */
+    private static function inferSingleSeparator(string $normalized, string $separator): ?bool
+    {
+        if (substr_count($normalized, $separator) > 1) {
+            return false;
+        }
+
+        $at = strrpos($normalized, $separator);
+        if (false === $at) {
+            return null;
+        }
+
+        return 3 === strlen($normalized) - $at - 1 ? null : true;
     }
 
     /**

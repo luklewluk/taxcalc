@@ -13,6 +13,9 @@ use App\Import\Parser\NumberParser;
 use App\Model\ClosedPosition;
 use App\Model\CountryCode;
 use App\Model\Dividend;
+use App\Model\AccountFee;
+use App\Fifo\Trade;
+use App\Fifo\InstrumentDetails;
 use App\Money\Amount;
 
 /**
@@ -42,15 +45,21 @@ final readonly class RowFormMapper
     {
         $positions = [];
         $errors = [];
+        $diagnostics = [];
         $keptRows = [];
 
         [$rows, $errors] = $this->capRows($rows, $errors);
+        foreach ($errors as $message) {
+            $diagnostics[] = Diagnostic::blocking('position.row_limit', $message, 'transactions');
+        }
 
         foreach ($rows as $index => $row) {
             $number = $index + 1;
 
             if (!is_array($row)) {
-                $errors[] = sprintf('Pozycja %d: nieprawidłowe dane wiersza.', $number);
+                $message = sprintf('Pozycja %d: nieprawidłowe dane wiersza.', $number);
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('position.invalid_row', $message, 'transactions');
 
                 continue;
             }
@@ -66,7 +75,9 @@ final readonly class RowFormMapper
                 $currency = strtoupper($this->str($row, 'currency'));
                 $name = $this->str($row, 'name');
                 if ('' === $name) {
-                    $errors[] = sprintf('Pozycja %d: nazwa instrumentu jest wymagana.', $number);
+                    $message = sprintf('Pozycja %d: nazwa instrumentu jest wymagana.', $number);
+                    $errors[] = $message;
+                    $diagnostics[] = Diagnostic::blocking('position.name_missing', $message, 'transactions');
 
                     continue;
                 }
@@ -75,11 +86,13 @@ final readonly class RowFormMapper
                 $sellDate = DateParser::parse($this->str($row, 'sell_date'));
 
                 if ($sellDate < $buyDate) {
-                    $errors[] = sprintf(
+                    $message = sprintf(
                         'Pozycja %d (%s): data sprzedaży jest wcześniejsza niż data zakupu.',
                         $number,
                         $name,
                     );
+                    $errors[] = $message;
+                    $diagnostics[] = Diagnostic::blocking('position.date_order', $message, 'transactions');
 
                     continue;
                 }
@@ -88,7 +101,7 @@ final readonly class RowFormMapper
 
                 $positions[] = new ClosedPosition(
                     $name,
-                    CountryCode::normalizeRequired($this->str($row, 'country'), $name),
+                    CountryCode::normalizeRequired($this->str($row, 'country'), $name, forPitZg: false),
                     $currency,
                     $buyDate,
                     Amount::fromDecimal(NumberParser::parse($this->str($row, 'buy_amount'), decimalComma: true), $currency),
@@ -98,11 +111,13 @@ final readonly class RowFormMapper
                     $this->str($row, 'source'),
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
-                $errors[] = sprintf('Pozycja %d: %s', $number, $e->getMessage());
+                $message = sprintf('Pozycja %d: %s', $number, $e->getMessage());
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('position.invalid', $message, 'transactions');
             }
         }
 
-        return new MappedRows($positions, [], $errors, $keptRows);
+        return new MappedRows($positions, [], $errors, $keptRows, diagnostics: $diagnostics);
     }
 
     /**
@@ -112,15 +127,21 @@ final readonly class RowFormMapper
     {
         $dividends = [];
         $errors = [];
+        $diagnostics = [];
         $keptRows = [];
 
         [$rows, $errors] = $this->capRows($rows, $errors);
+        foreach ($errors as $message) {
+            $diagnostics[] = Diagnostic::blocking('dividend.row_limit', $message, 'dividends');
+        }
 
         foreach ($rows as $index => $row) {
             $number = $index + 1;
 
             if (!is_array($row)) {
-                $errors[] = sprintf('Dywidenda %d: nieprawidłowe dane wiersza.', $number);
+                $message = sprintf('Dywidenda %d: nieprawidłowe dane wiersza.', $number);
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('dividend.invalid_row', $message, 'dividends');
 
                 continue;
             }
@@ -136,7 +157,9 @@ final readonly class RowFormMapper
                 $currency = strtoupper($this->str($row, 'currency'));
                 $name = $this->str($row, 'name');
                 if ('' === $name) {
-                    $errors[] = sprintf('Dywidenda %d: nazwa instrumentu jest wymagana.', $number);
+                    $message = sprintf('Dywidenda %d: nazwa instrumentu jest wymagana.', $number);
+                    $errors[] = $message;
+                    $diagnostics[] = Diagnostic::blocking('dividend.name_missing', $message, 'dividends', self::rowId($row));
 
                     continue;
                 }
@@ -152,13 +175,163 @@ final readonly class RowFormMapper
                         $currency,
                     ),
                     $this->str($row, 'source'),
+                    $this->str($row, 'id'),
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
-                $errors[] = sprintf('Dywidenda %d: %s', $number, $e->getMessage());
+                $message = sprintf('Dywidenda %d: %s', $number, $e->getMessage());
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('dividend.invalid', $message, 'dividends', self::rowId($row));
             }
         }
 
-        return new MappedRows([], $dividends, $errors, $keptRows);
+        return new MappedRows([], $dividends, $errors, $keptRows, diagnostics: $diagnostics);
+    }
+
+    /** @param array<mixed> $rows */
+    public function mapTrades(array $rows): MappedRows
+    {
+        $trades = [];
+        $errors = [];
+        $diagnostics = [];
+        $keptRows = [];
+        [$rows, $errors] = $this->capRows($rows, $errors);
+        foreach ($errors as $message) {
+            $diagnostics[] = Diagnostic::blocking('trade.row_limit', $message, 'transactions');
+        }
+
+        foreach ($rows as $index => $row) {
+            $number = $index + 1;
+            if (!is_array($row)) {
+                $message = sprintf('Transakcja %d: nieprawidłowe dane wiersza.', $number);
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('trade.invalid_row', $message, 'transactions');
+                continue;
+            }
+            /** @var array<string, mixed> $row */
+            if ($this->isRemoved($row)) {
+                continue;
+            }
+            $form = $this->tradeRowToForm($row);
+            $keptRows[] = $form;
+
+            try {
+                $broker = $this->str($row, 'broker');
+                $symbol = $this->str($row, 'symbol');
+                $name = $this->str($row, 'name');
+                $currency = strtoupper($this->str($row, 'currency'));
+                $country = CountryCode::normalizeOptional($this->str($row, 'country'));
+                if ('' === $broker || '' === $symbol || '' === $name) {
+                    throw new InvalidRecordException('Broker/pula FIFO, symbol i nazwa instrumentu są wymagane.');
+                }
+                $side = strtoupper($this->str($row, 'side'));
+                if (!in_array($side, ['BUY', 'SELL'], true)) {
+                    throw new InvalidRecordException('Kierunek musi mieć wartość BUY albo SELL.');
+                }
+                $quantity = NumberParser::parse($this->str($row, 'quantity'), decimalComma: true)->abs();
+                if (!$quantity->isPositive()) {
+                    throw InvalidRecordException::quantityMustBePositive((string) $quantity);
+                }
+                if ('SELL' === $side) {
+                    $quantity = $quantity->negated();
+                }
+
+                $date = DateParser::parseWithTime($this->str($row, 'date'), $this->str($row, 'time'));
+                $total = Amount::fromDecimal(
+                    NumberParser::parse($this->str($row, 'total'), decimalComma: true)->abs(),
+                    $currency,
+                );
+                if (!$total->isPositive()) {
+                    throw InvalidRecordException::amountMustBePositive('Total/NetCash', $total);
+                }
+
+                $commission = $this->optionalAmount($row, 'commission', $currency);
+                $autoFx = $this->optionalAmount($row, 'autofx', $currency);
+                $unitPrice = $this->optionalExecutionPrice($row);
+                $externalId = $this->str($row, 'external_id');
+
+                $trades[] = new Trade(
+                    $symbol,
+                    $date,
+                    $quantity,
+                    $total,
+                    '' === $externalId ? null : $externalId,
+                    $this->str($row, 'source'),
+                    new InstrumentDetails($name, $country),
+                    externalIdReported: '' !== $externalId,
+                    unitPrice: $unitPrice,
+                    broker: $broker,
+                    commission: $commission,
+                    autoFx: $autoFx,
+                    stableId: $this->str($row, 'id'),
+                    fifoPool: $this->str($row, 'pool') ?: $symbol,
+                );
+            } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
+                $message = sprintf('Transakcja %d: %s', $number, $e->getMessage());
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('trade.invalid', $message, 'transactions', self::rowId($row));
+            }
+        }
+
+        return new MappedRows([], [], $errors, $keptRows, $trades, diagnostics: $diagnostics);
+    }
+
+    /** @param array<mixed> $rows */
+    public function mapFees(array $rows): MappedRows
+    {
+        $fees = [];
+        $errors = [];
+        $diagnostics = [];
+        $keptRows = [];
+        [$rows, $errors] = $this->capRows($rows, $errors);
+        foreach ($errors as $message) {
+            $diagnostics[] = Diagnostic::blocking('fee.row_limit', $message, 'fees');
+        }
+
+        foreach ($rows as $index => $row) {
+            $number = $index + 1;
+            if (!is_array($row)) {
+                $message = sprintf('Opłata %d: nieprawidłowe dane wiersza.', $number);
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('fee.invalid_row', $message, 'fees');
+                continue;
+            }
+            /** @var array<string, mixed> $row */
+            if ($this->isRemoved($row)) {
+                continue;
+            }
+            $form = $this->feeRowToForm($row);
+            $keptRows[] = $form;
+
+            try {
+                $currency = strtoupper($this->str($row, 'currency'));
+                $description = $this->str($row, 'description');
+                $category = $this->str($row, 'category');
+                if ('' === $category) {
+                    throw new InvalidRecordException('Kategoria opłaty jest wymagana.');
+                }
+                $amount = Amount::fromDecimal(
+                    NumberParser::parse($this->str($row, 'amount'), decimalComma: true)->abs(),
+                    $currency,
+                );
+                $fees[] = new AccountFee(
+                    $description,
+                    $category,
+                    DateParser::parse($this->str($row, 'value_date')),
+                    $currency,
+                    $amount,
+                    $this->isTruthy($row['correction'] ?? null),
+                    $this->str($row, 'source'),
+                    $this->str($row, 'id'),
+                    $this->isTruthy($row['included'] ?? null),
+                );
+            } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
+                $message = sprintf('Opłata %d: %s', $number, $e->getMessage());
+                $errors[] = $message;
+                $diagnostics[] = Diagnostic::blocking('fee.invalid', $message, 'fees', self::rowId($row));
+            }
+        }
+
+        return new MappedRows([], [], $errors, $keptRows, [], $fees, $diagnostics);
     }
 
     /**
@@ -186,7 +359,37 @@ final readonly class RowFormMapper
     private function dividendRowToForm(array $row): array
     {
         $form = [];
-        foreach (['name', 'country', 'currency', 'date', 'gross', 'tax_paid', 'source'] as $key) {
+        foreach (['id', 'name', 'country', 'currency', 'date', 'gross', 'tax_paid', 'source'] as $key) {
+            $form[$key] = $this->str($row, $key);
+        }
+
+        return $form;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     *
+     * @return array<string, string>
+     */
+    private function tradeRowToForm(array $row): array
+    {
+        $form = [];
+        foreach (['id', 'broker', 'pool', 'symbol', 'name', 'country', 'exchange', 'date', 'time', 'side', 'quantity', 'currency', 'total', 'unit_price', 'price_currency', 'commission', 'autofx', 'external_id', 'source'] as $key) {
+            $form[$key] = $this->str($row, $key);
+        }
+
+        return $form;
+    }
+
+    /**
+     * @param array<string, mixed> $row
+     *
+     * @return array<string, string>
+     */
+    private function feeRowToForm(array $row): array
+    {
+        $form = [];
+        foreach (['id', 'description', 'category', 'value_date', 'currency', 'amount', 'correction', 'source', 'included'] as $key) {
             $form[$key] = $this->str($row, $key);
         }
 
@@ -217,6 +420,7 @@ final readonly class RowFormMapper
     public function dividendToForm(Dividend $dividend): array
     {
         return [
+            'id' => $dividend->id(),
             'name' => $dividend->name,
             'country' => $dividend->countryCode,
             'currency' => $dividend->currency,
@@ -224,6 +428,52 @@ final readonly class RowFormMapper
             'gross' => (string) $dividend->grossAmount->value(),
             'tax_paid' => (string) $dividend->withheldTax->value(),
             'source' => $dividend->source,
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function tradeToForm(Trade $trade): array
+    {
+        return [
+            'id' => $trade->id(),
+            'broker' => $trade->broker ?: 'Ręczne',
+            'pool' => $trade->fifoPool ?: $trade->symbol,
+            'symbol' => $trade->symbol,
+            'name' => $trade->instrument?->displayName ?: $trade->symbol,
+            'country' => $trade->instrument->countryCode ?? '',
+            // Audit-only provenance of the country proposal. It rides the form
+            // rather than the domain because the disagreement between the
+            // listing venue and the ISIN has to be recomputable on every post -
+            // import warnings are dropped by the time the user edits anything.
+            'exchange' => $trade->instrument->exchangeCode ?? '',
+            'date' => $trade->date->format('Y-m-d'),
+            'time' => $trade->date->format('H:i:s'),
+            'side' => $trade->isBuy() ? 'BUY' : 'SELL',
+            'quantity' => (string) $trade->quantity->abs(),
+            'currency' => $trade->grossAmount->currency(),
+            'total' => (string) $trade->grossAmount->value(),
+            'unit_price' => null === $trade->unitPrice ? '' : (string) $trade->unitPrice->value(),
+            'price_currency' => null === $trade->unitPrice ? '' : $trade->unitPrice->currency(),
+            'commission' => null === $trade->commission ? '' : (string) $trade->commission->value(),
+            'autofx' => null === $trade->autoFx ? '' : (string) $trade->autoFx->value(),
+            'external_id' => $trade->externalId ?? '',
+            'source' => $trade->source,
+        ];
+    }
+
+    /** @return array<string, string> */
+    public function feeToForm(AccountFee $fee): array
+    {
+        return [
+            'id' => $fee->id(),
+            'description' => $fee->description,
+            'category' => $fee->category,
+            'value_date' => $fee->valueDate->format('Y-m-d'),
+            'currency' => $fee->currency,
+            'amount' => (string) $fee->amount->value(),
+            'correction' => $fee->correction ? '1' : '0',
+            'source' => $fee->source,
+            'included' => $fee->included ? '1' : '0',
         ];
     }
 
@@ -259,6 +509,51 @@ final readonly class RowFormMapper
         return is_scalar($remove) && in_array((string) $remove, ['1', 'on', 'true'], true);
     }
 
+    /** @param array<string, mixed> $row */
+    private function optionalAmount(array $row, string $key, string $currency): ?Amount
+    {
+        $raw = $this->str($row, $key);
+        if ('' === $raw) {
+            return null;
+        }
+
+        $value = NumberParser::parse($raw, decimalComma: true);
+        if ($value->isNegative()) {
+            // These two now feed the declared przychód and koszt, so the user
+            // actually reaches this message - it may not leak the form key.
+            $label = ['commission' => 'Prowizja', 'autofx' => 'AutoFX'][$key] ?? $key;
+
+            throw new InvalidRecordException(sprintf('%s nie może być ujemne.', $label));
+        }
+
+        return Amount::fromDecimal($value, $currency);
+    }
+
+    /** @param array<string, mixed> $row */
+    private function optionalExecutionPrice(array $row): ?Amount
+    {
+        $rawPrice = $this->str($row, 'unit_price');
+        $currency = strtoupper($this->str($row, 'price_currency'));
+        if ('' === $rawPrice && '' === $currency) {
+            return null;
+        }
+        if ('' === $rawPrice || '' === $currency) {
+            throw new InvalidRecordException('Cena wykonania i waluta ceny muszą być podane razem.');
+        }
+
+        $price = Amount::fromDecimal(NumberParser::parse($rawPrice, decimalComma: true), $currency);
+        if (!$price->isPositive()) {
+            throw InvalidRecordException::amountMustBePositive('cena wykonania', $price);
+        }
+
+        return $price;
+    }
+
+    private function isTruthy(mixed $value): bool
+    {
+        return is_scalar($value) && in_array((string) $value, ['1', 'on', 'true'], true);
+    }
+
     /**
      * @param array<string, mixed> $row
      */
@@ -267,5 +562,13 @@ final readonly class RowFormMapper
         $value = $row[$key] ?? '';
 
         return is_scalar($value) ? trim((string) $value) : '';
+    }
+
+    /** @param array<string, mixed> $row */
+    private static function rowId(array $row): ?string
+    {
+        $id = $row['id'] ?? null;
+
+        return is_scalar($id) && '' !== trim((string) $id) ? trim((string) $id) : null;
     }
 }

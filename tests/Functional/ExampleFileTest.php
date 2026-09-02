@@ -27,11 +27,6 @@ final class ExampleFileTest extends WebTestCase
      */
     public static function sampleFiles(): iterable
     {
-        yield 'normalized positions' => ['pozycje-zamkniete.csv'];
-        yield 'normalized dividends' => ['dywidendy.csv'];
-        yield 'ibkr trades' => ['ibkr-transakcje.csv'];
-        yield 'ibkr activity dividends' => ['ibkr-dywidendy-aktywnosc.csv'];
-        yield 'ibkr dividend detail' => ['ibkr-dywidendy-detail.csv'];
         yield 'degiro transactions' => ['degiro-transakcje.csv'];
         yield 'degiro account statement' => ['degiro-rachunek.csv'];
     }
@@ -68,5 +63,24 @@ final class ExampleFileTest extends WebTestCase
 
             self::assertDoesNotMatchRegularExpression('/\bU\d{7,}\b/', $body, $filename.' contains an account number');
         }
+    }
+
+    public function testPublicDegiroSamplesContainNeitherUuidsNorLegacyPrivateFilename(): void
+    {
+        $client = static::createClient();
+
+        foreach (['degiro-transakcje.csv', 'degiro-rachunek.csv'] as $filename) {
+            $client->request('GET', '/przyklady/'.$filename);
+            $body = (string) $client->getResponse()->getContent();
+
+            self::assertDoesNotMatchRegularExpression(
+                '/\b[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\b/i',
+                $body,
+                $filename.' contains a UUID',
+            );
+        }
+
+        $client->request('GET', '/przyklady/degiro-transactions.csv');
+        self::assertResponseStatusCodeSame(404);
     }
 }
