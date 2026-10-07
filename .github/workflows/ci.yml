@@ -1,0 +1,110 @@
+name: CI
+
+# Tests on every push and pull request; deployment only from `main`, only after
+# the tests pass, and only once deployment is switched on for the repository.
+#
+# Nothing about the server lives in this file or in deploy.php: host, user,
+# path and SSH key are secrets of the GitHub Environment `deployment`, which
+# pull requests (including ones from forks) never receive.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Superseded pull request runs are cancelled; runs on main never are - a
+# deployment cut off halfway would leave Deployer's lock behind.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Tests (PHP ${{ matrix.php }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.4', '8.5']
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: ${{ matrix.php }}
+          extensions: ctype, dom, iconv, json, mbstring
+          coverage: none
+          tools: composer:v2
+          ini-values: max_input_vars=120000
+
+      - name: Validate composer.json
+        run: composer validate --strict
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist --no-interaction
+
+      - name: Audit dependencies
+        run: composer audit
+
+      - name: Static analysis
+        run: vendor/bin/phpstan analyse --no-progress
+
+      # Tests never touch the network: NBP rates come from a fixed fake.
+      - name: Tests
+        run: vendor/bin/phpunit
+
+      - name: Lint container and templates
+        run: |
+          php bin/console lint:container
+          php bin/console lint:twig templates
+
+  deploy:
+    name: Deploy to production
+    needs: test
+    # Repository variable DEPLOY_ENABLED=true switches deployment on once the
+    # server and the `deployment` secrets are in place; until then pushes to
+    # main are tested only.
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && vars.DEPLOY_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    environment:
+      name: deployment
+      url: ${{ vars.PUBLIC_URL }}
+    concurrency:
+      group: deploy-production
+      cancel-in-progress: false
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.4'
+          coverage: none
+
+      - name: Deploy with Deployer
+        uses: deployphp/action@a1b46c204dbde25a32ed0d7bb6751ac3377ca1e9 # v1.0.26
+        with:
+          dep: deploy prod
+          deployer-version: '7.5.12'
+          private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+          known-hosts: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+        env:
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_PHP: ${{ vars.DEPLOY_PHP }}
+          DEPLOY_COMPOSER: ${{ vars.DEPLOY_COMPOSER }}
+
+      - name: Smoke test
+        env:
+          PUBLIC_URL: ${{ vars.PUBLIC_URL }}
+        run: |
+          test -n "$PUBLIC_URL" || { echo "Ustaw zmienną PUBLIC_URL w Environment deployment."; exit 1; }
+          headers=$(curl -fsS --max-time 20 -D - -o /dev/null "$PUBLIC_URL/kalkulator")
+          echo "$headers" | grep -qi '^content-security-policy:' || { echo "Brak nagłówka CSP w odpowiedzi."; exit 1; }
+          echo "OK: $PUBLIC_URL odpowiada i wysyła CSP."

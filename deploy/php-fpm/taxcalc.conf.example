@@ -1,0 +1,57 @@
+; PHP-FPM pool for TaxCalc.pl. Copy to /etc/php/8.4/fpm/pool.d/taxcalc.conf,
+; adjust the user and the paths, then: systemctl reload php8.4-fpm
+;
+; Mirrors docker/php.ini - change both together.
+
+[taxcalc]
+; The pool runs as the deploy user, which owns the releases and var/, so
+; Deployer needs no permission juggling (writable_mode: skip).
+user = taxcalc
+group = taxcalc
+
+listen = /run/php/taxcalc.sock
+listen.owner = www-data
+listen.group = www-data
+listen.mode = 0660
+
+pm = ondemand
+pm.max_children = 10
+pm.process_idle_timeout = 30s
+pm.max_requests = 500
+
+; Errors go to the FPM log, never to the page.
+php_admin_flag[display_errors] = off
+php_admin_flag[display_startup_errors] = off
+php_admin_flag[log_errors] = on
+php_admin_flag[expose_php] = off
+
+php_admin_value[memory_limit] = 256M
+php_admin_value[max_execution_time] = 60
+
+; The application enforces 10 files x 5 MB itself; these are the outer bounds.
+php_admin_value[upload_max_filesize] = 6M
+php_admin_value[post_max_size] = 64M
+php_admin_value[max_file_uploads] = 12
+
+; Critical: the workbench round-trips every row as form fields, because the
+; server stores nothing. PHP drops variables past this limit silently.
+php_admin_value[max_input_vars] = 120000
+
+php_admin_value[date.timezone] = Europe/Warsaw
+
+; Releases never change in place and each one is a new path ($realpath_root
+; in the vhost), so opcache need not stat files and the deploy needs no reload.
+; Entries of old releases stay until PHP-FPM restarts (e.g. on a PHP update);
+; if memory ever runs short, reload the pool by hand. No preload: its path
+; moves with every release.
+php_admin_value[opcache.enable] = 1
+php_admin_value[opcache.memory_consumption] = 128
+php_admin_value[opcache.max_accelerated_files] = 20000
+php_admin_value[opcache.validate_timestamps] = 0
+php_admin_value[realpath_cache_size] = 4096K
+php_admin_value[realpath_cache_ttl] = 600
+
+; Sessions hold nothing but a CSRF token.
+php_admin_flag[session.cookie_httponly] = on
+php_admin_value[session.cookie_samesite] = Strict
+php_admin_flag[session.use_strict_mode] = on

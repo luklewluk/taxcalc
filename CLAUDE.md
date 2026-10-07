@@ -423,6 +423,19 @@ The public flow is `upload → work with the result`. After the first import,
 - **`--ink-3` is for rules and dots, not words.** It is a 3.3:1 grey on the light canvas;
   text uses `--ink` or `--ink-2`.
 
+## Deployment
+
+- `.github/workflows/ci.yml` tests every push and pull request (PHP 8.4 and 8.5) and, on
+  `main` only, after the tests and only when the repository variable `DEPLOY_ENABLED` is
+  `true`, deploys with Deployer (`deploy.php`, `recipe/symfony.php`) through the GitHub
+  Environment `deployment`.
+- **No server detail in the repository.** Host, user, path, SSH key and known hosts are
+  `deployment` secrets read from the environment by `deploy.php`; the examples in `deploy/`
+  use placeholders. Never add `pull_request_target`, and keep third-party actions pinned to
+  a commit SHA - the deploy job holds the SSH key.
+- The PHP-FPM pool in `deploy/php-fpm/` mirrors `docker/php.ini` - change both together,
+  above all `max_input_vars`, which PHP enforces silently.
+
 ## Testing
 
 - `tests/Unit` — pure domain, no container.

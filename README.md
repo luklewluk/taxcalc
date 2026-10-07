@@ -32,6 +32,7 @@ zgodne wstecz, ale są ukryte na standardowej liście i oznaczone jako wycofywan
 - [Wymagania](#wymagania)
 - [Instalacja lokalna](#instalacja-lokalna)
 - [Docker](#docker)
+- [Wdrożenie na serwer](#wdrożenie-na-serwer)
 - [Korzystanie z aplikacji webowej](#korzystanie-z-aplikacji-webowej)
 - [Korzystanie z konsoli (CLI)](#korzystanie-z-konsoli-cli)
 - [Obsługiwane formaty plików](#obsługiwane-formaty-plików)
@@ -125,6 +126,14 @@ Jeśli używasz [Symfony CLI](https://symfony.com/download):
 ```bash
 symfony serve
 ```
+
+## Wdrożenie na serwer
+
+Produkcja (taxcalc.pl) jest wdrażana automatycznie: każdy push do `main` uruchamia testy w
+GitHub Actions, a po ich przejściu [Deployer](https://deployer.org) instaluje nowe wydanie na
+serwerze z nginx i PHP-FPM. Repozytorium nie zawiera żadnych danych serwera — są one
+sekretami GitHub Environment. Przygotowanie serwera, przykładowe konfiguracje i listę
+sekretów opisuje [DEPLOYMENT.md](DEPLOYMENT.md).
 
 ## Docker
 

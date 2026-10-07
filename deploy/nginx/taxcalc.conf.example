@@ -1,0 +1,64 @@
+# nginx vhost for TaxCalc.pl on a plain nginx + PHP-FPM server.
+# Copy to /etc/nginx/sites-available/taxcalc, adjust the placeholders
+# (example.com, /var/www/taxcalc, the socket path), then:
+#   ln -s /etc/nginx/sites-available/taxcalc /etc/nginx/sites-enabled/
+#   nginx -t && systemctl reload nginx
+#   certbot --nginx -d example.com -d www.example.com
+# certbot adds the 443 listener and the certificate lines itself.
+
+# Never log query strings or request bodies: they can carry financial data.
+# Defined once per nginx instance - drop it if another vhost already does.
+log_format taxcalc_minimal '$remote_addr - "$request_method $uri" $status $body_bytes_sent';
+
+server {
+    listen 80;
+    listen [::]:80;
+    server_name example.com www.example.com;
+
+    # Deployer keeps releases side by side; `current` points at the live one.
+    root /var/www/taxcalc/current/public;
+
+    access_log /var/log/nginx/taxcalc.access.log taxcalc_minimal;
+    error_log  /var/log/nginx/taxcalc.error.log warn;
+
+    server_tokens off;
+
+    # Matches the application's own 10 files x 5 MB limit, with headroom.
+    client_max_body_size 60m;
+
+    gzip on;
+    gzip_types text/plain text/css application/javascript application/json image/svg+xml;
+
+    location / {
+        try_files $uri /index.php$is_args$args;
+    }
+
+    # Static assets are the only thing worth caching; every page response is
+    # marked no-store by the application itself.
+    location ~* \.(css|js|ico|svg|png|jpg|webp|woff2)$ {
+        expires 7d;
+        add_header Cache-Control "public, immutable";
+        try_files $uri =404;
+    }
+
+    location ~ ^/index\.php(/|$) {
+        fastcgi_pass unix:/run/php/taxcalc.sock;
+        fastcgi_split_path_info ^(.+\.php)(/.*)$;
+        include fastcgi_params;
+        # $realpath_root resolves the `current` symlink, so after a deploy PHP
+        # sees the new release's paths instead of a cached old one.
+        fastcgi_param SCRIPT_FILENAME $realpath_root$fastcgi_script_name;
+        fastcgi_param DOCUMENT_ROOT $realpath_root;
+        fastcgi_read_timeout 60s;
+        internal;
+    }
+
+    # Never execute any other PHP file that might end up in the web root.
+    location ~ \.php$ {
+        return 404;
+    }
+
+    location ~ /\. {
+        deny all;
+    }
+}
