@@ -47,7 +47,9 @@ set('keep_releases', 3);
 set('writable_mode', 'skip');
 
 set('bin/php', fn (): string => fromEnv('DEPLOY_PHP', '/usr/bin/php8.4'));
-set('bin/composer', fn (): string => fromEnv('DEPLOY_COMPOSER', '{{bin/php}} /usr/local/bin/composer'));
+// Composer wherever the server has it (/usr/bin from a package, /usr/local/bin
+// from the installer), run with the PHP chosen above.
+set('bin/composer', fn (): string => fromEnv('DEPLOY_COMPOSER', '{{bin/php}} '.which('composer')));
 set('composer_options', '--verbose --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader --classmap-authoritative');
 
 // shared_files ['.env.local'] and shared_dirs ['var/log'] come from the Symfony recipe.

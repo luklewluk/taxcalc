@@ -99,7 +99,7 @@ W repozytorium: **Settings → Environments → New environment → `deployment`
 | Sekret | `DEPLOY_SSH_KEY` | zawartość prywatnego `taxcalc_deploy` |
 | Sekret | `DEPLOY_KNOWN_HOSTS` | wynik `ssh-keyscan -H <host>` (sprawdź odcisk z konsolą DigitalOcean) |
 | Zmienna | `PUBLIC_URL` | `https://example.com` (smoke test po wdrożeniu) |
-| Zmienna (opcj.) | `DEPLOY_PHP`, `DEPLOY_COMPOSER` | gdy ścieżki różnią się od `/usr/bin/php8.4`, `/usr/local/bin/composer` |
+| Zmienna (opcj.) | `DEPLOY_PHP`, `DEPLOY_COMPOSER` | gdy PHP nie jest w `/usr/bin/php8.4` albo composer nie jest w `PATH` użytkownika (domyślnie wykrywany przez `which composer`) |
 
 W ustawieniach Environment możesz ograniczyć wdrożenia do gałęzi `main`
 (*Deployment branches and tags → Selected branches*).
