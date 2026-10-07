@@ -53,12 +53,38 @@
             <summary>Jak pobrać pliki z IBKR</summary>
             <div class="disclosure__body">
                 <p>
-                    Najprościej: <strong>Activity Statement</strong> — nie wymaga żadnej konfiguracji. W portalu IBKR
-                    wybierz <em>Performance &amp; Reports → Statements → Activity</em>, okres <em>Annual</em>
-                    (albo <em>Custom Date Range</em>, najwyżej rok), format <em>CSV</em> i język <em>English</em>,
-                    a potem pobierz plik. Powtórz to dla każdego roku od pierwszego zakupu papierów, które
-                    sprzedawałeś, i wgraj wszystkie pliki naraz — kalkulator połączy je w jedną kolejkę FIFO.
+                    Najprościej: <strong>Activity Statement</strong> — standardowy wyciąg, który nie wymaga żadnej
+                    konfiguracji. Jeden plik obejmuje najwyżej rok, więc pobierz go za każdy rok od pierwszego
+                    zakupu papierów, które sprzedawałeś, i wgraj wszystkie pliki naraz — kalkulator połączy je
+                    w jedną kolejkę FIFO.
                 </p>
+                <ol class="tutorial">
+                    <li class="tutorial__step">
+                        <p>Zaloguj się do portalu IBKR i z menu <strong>Performance &amp; Reports</strong> wybierz <strong>Statements</strong>.</p>
+                        <figure class="tutorial__shot">
+                            <img src="{{ asset('img/ibkr/activity-statement-1.png') }}" width="878" height="195" loading="lazy"
+                                 alt="Menu Performance &amp; Reports w portalu IBKR z zaznaczoną pozycją Statements">
+                        </figure>
+                    </li>
+                    <li class="tutorial__step">
+                        <p>W sekcji <em>Default Statements</em> przy <strong>Activity Statement</strong> kliknij strzałkę po prawej (obok przycisku Run).</p>
+                        <figure class="tutorial__shot">
+                            <img src="{{ asset('img/ibkr/activity-statement-2.png') }}" width="960" height="620" loading="lazy"
+                                 alt="Lista Default Statements; strzałka wskazuje przycisk ze strzałką przy Activity Statement">
+                        </figure>
+                    </li>
+                    <li class="tutorial__step">
+                        <p>
+                            Ustaw <strong>Period: Annual</strong>, w polu <strong>Date</strong> wybierz rok i kliknij
+                            <strong>Download CSV</strong>. Powtórz dla każdego roku. Raport musi być po angielsku
+                            (domyślnie tak jest).
+                        </p>
+                        <figure class="tutorial__shot">
+                            <img src="{{ asset('img/ibkr/activity-statement-3.png') }}" width="952" height="316" loading="lazy"
+                                 alt="Okno Activity Statement: Period Annual, wybór roku w polu Date i przycisk Download CSV">
+                        </figure>
+                    </li>
+                </ol>
                 <p>
                     Jeden wyciąg zawiera transakcje, dywidendy i podatek u źródła. Kraj dochodu kalkulator
                     proponuje z giełdy notowania, a dla dywidend z prefiksu ISIN — sprawdź go w zakładkach

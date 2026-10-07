@@ -2241,6 +2241,54 @@ kbd {
 .trade-editor { min-width: 116rem; }
 .cell-note { display: block; color: var(--ink-2); font-size: 0.72rem; }
 
+/*
+ * Step-by-step broker help with screenshots. The numbers are a CSS counter in
+ * the badge style of .flow__num; the screenshots are local files, framed so a
+ * dark broker UI still reads as a picture on the light canvas.
+ */
+.tutorial {
+    counter-reset: tutorial;
+    display: grid;
+    gap: 1.25rem;
+    margin: 1rem 0 1.5rem;
+    padding: 0;
+    list-style: none;
+}
+
+.tutorial__step {
+    counter-increment: tutorial;
+    position: relative;
+    padding-left: 2.75rem;
+}
+
+.tutorial__step::before {
+    content: counter(tutorial);
+    position: absolute;
+    left: 0;
+    top: 0;
+    display: grid;
+    place-items: center;
+    width: 1.875rem;
+    height: 1.875rem;
+    border-radius: 10px;
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.tutorial__step > p { margin: 0.25rem 0 0.625rem; }
+
+.tutorial__shot { margin: 0; }
+
+.tutorial__shot img {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    border-radius: var(--r-1);
+    box-shadow: var(--shadow-1), 0 0 0 1px var(--hairline);
+}
+
 /* Marks an option position in the FIFO table; a written one is the case people misread. */
 .position-kind { font-weight: 650; color: var(--accent); }
 .position-kind--short { color: var(--warning); }
