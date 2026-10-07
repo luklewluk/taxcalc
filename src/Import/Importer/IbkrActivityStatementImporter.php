@@ -10,6 +10,8 @@ use App\Exception\InvalidNumberException;
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
+use App\Fifo\InstrumentKind;
+use App\Fifo\PositionEffect;
 use App\Fifo\Trade;
 use App\Import\CsvFormat;
 use App\Import\CsvSource;
@@ -76,6 +78,8 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
 
     private const string FOREX = 'Forex';
 
+    private const string OPTIONS = 'Equity and Index Options';
+
     private const string BROKER = 'IBKR';
 
     /** Codes that undo or rewrite an earlier execution; neither can be settled from one row. */
@@ -141,8 +145,14 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
         $skippedClasses = [];
         $forexRows = 0;
         $zeroRows = 0;
-        /** @var list<string> $deliveries */
-        $deliveries = [];
+        /** @var array<string, string> $deliveredShares "UNDERLYING|Y-m-d" => what was delivered */
+        $deliveredShares = self::deliveredShares($statement, $discriminator);
+        /** @var array<string, true> $explainedDeliveries deliveries an assignment message already names */
+        $explainedDeliveries = [];
+        /** @var list<string> $assignments */
+        $assignments = [];
+        /** @var list<string> $cashSettlements */
+        $cashSettlements = [];
         /** @var array<string, true> $unknownExchanges */
         $unknownExchanges = [];
         /** @var array<string, true> $withoutExchange */
@@ -180,14 +190,16 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                 continue;
             }
 
-            if (self::STOCKS !== $category) {
+            if (self::STOCKS !== $category && self::OPTIONS !== $category) {
                 $skippedClasses[$category] = ($skippedClasses[$category] ?? 0) + 1;
 
                 continue;
             }
 
+            $isOption = self::OPTIONS === $category;
+
             try {
-                $symbol = $row->get('symbol');
+                $symbol = (string) preg_replace('/\s+/', ' ', $row->get('symbol'));
                 if ('' === $symbol) {
                     throw new InvalidRecordException('Brak symbolu instrumentu.');
                 }
@@ -215,7 +227,44 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                 }
 
                 $proceeds = NumberParser::parse($row->get('proceeds'));
-                if ($proceeds->isZero()) {
+                $fee = NumberParser::parseOrZero($row->get('comm/fee'));
+                $instrument = $instruments[$symbol] ?? null;
+                $delivery = [] !== array_intersect(self::DELIVERY_CODES, $codes);
+                $effect = null;
+
+                if ($isOption) {
+                    $effect = self::optionEffect($symbol, $date, $codes);
+                    $underlying = $instrument['underlying'] ?? strtok($symbol, ' ');
+                    $closesAtNothing = self::assertOptionCash($symbol, $date, $codes, $effect, $proceeds, $fee);
+
+                    if ($closesAtNothing && $delivery) {
+                        // Physical delivery: the option closes at nothing and
+                        // the shares arrive as their own Stocks row at the
+                        // strike. Without that row the contract was settled in
+                        // cash, and the amount is not in this statement.
+                        $key = $underlying.'|'.$date->format('Y-m-d');
+                        if (!isset($deliveredShares[$key])) {
+                            throw new InvalidRecordException(sprintf(
+                                'Przydział lub wykonanie opcji %s z dnia %s nie ma transakcji instrumentu bazowego %s. '
+                                .'Opcja mogła być rozliczona pieniężnie (np. opcje na indeks), a kwoty rozliczenia nie ma '
+                                .'w pliku - rozlicz ją ręcznie.',
+                                $symbol,
+                                $date->format('Y-m-d'),
+                                $underlying,
+                            ));
+                        }
+
+                        $explainedDeliveries[$key] = true;
+                        $assignments[] = sprintf(
+                            'opcja %s z dnia %s zamyka się kwotą 0, a %s weszło do FIFO po cenie wykonania',
+                            $symbol,
+                            $date->format('Y-m-d'),
+                            $deliveredShares[$key],
+                        );
+                    } elseif ($delivery) {
+                        $cashSettlements[] = sprintf('%s z dnia %s (%s %s)', $symbol, $date->format('Y-m-d'), (string) $proceeds, $currency);
+                    }
+                } elseif ($proceeds->isZero()) {
                     // Shares that move without cash are a corporate action - a
                     // split, a merger, a spin-off. Settling around one would
                     // change the cost of every later sale of the paper.
@@ -228,13 +277,13 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                     ));
                 }
 
-                $fee = NumberParser::parseOrZero($row->get('comm/fee'));
                 $cash = $proceeds->plus($fee);
-                self::assertCashFollowsTheSide($symbol, $quantity, $proceeds, $cash);
+                if (!$proceeds->isZero()) {
+                    self::assertCashFollowsTheSide($symbol, $quantity, $proceeds, $cash);
+                }
 
-                $instrument = $instruments[$symbol] ?? null;
                 $isin = $instrument['isin'] ?? '';
-                if ('' === $isin) {
+                if ('' === $isin && !$isOption) {
                     $withoutIsin[$symbol] = true;
                 }
 
@@ -247,17 +296,14 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                     $proposed = true;
                 }
 
-                if ([] !== array_intersect(self::DELIVERY_CODES, $codes)) {
-                    $deliveries[] = sprintf('%s %s (%s szt.)', $symbol, $date->format('Y-m-d'), (string) $quantity);
-                }
-
-                $pool = ('' === $isin ? $symbol : $isin).'@'.$currency;
+                // An option series has no ISIN; its own symbol names it.
+                $pool = ($isOption || '' === $isin ? $symbol : $isin).'@'.$currency;
                 $price = self::unitPrice($row, $currency);
 
                 // Everything that makes this row the row it is. Two rows sharing
                 // it are indistinguishable, so their order inside the file is
                 // the only thing that separates them.
-                $signature = implode('|', [
+                $fields = [
                     $pool,
                     $symbol,
                     $currency,
@@ -266,7 +312,13 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                     (string) $proceeds,
                     (string) $fee,
                     null === $price ? '' : (string) $price->value(),
-                ]);
+                ];
+                if ($isOption) {
+                    // Appended only for options, so stock IDs stay what
+                    // they were before options existed.
+                    $fields[] = $effect->value ?? '';
+                }
+                $signature = implode('|', $fields);
                 $ordinal = $ordinals[$signature] = ($ordinals[$signature] ?? 0) + 1;
 
                 $trades[] = new Trade(
@@ -285,6 +337,8 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                     // carries it, and the sell side then keeps przychód = cash.
                     commission: $fee->isPositive() ? null : Amount::fromDecimal(self::atLeastCents($fee->abs()), $currency),
                     fifoPool: $pool,
+                    kind: $isOption ? InstrumentKind::Option : InstrumentKind::Stock,
+                    effect: $effect,
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
                 $messages[] = ImportMessage::error($source->name, $e->getMessage(), $row->line);
@@ -293,8 +347,8 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
 
         foreach ($skippedClasses as $category => $count) {
             $messages[] = ImportMessage::review($source->name, sprintf(
-                'Pominięto %d transakcj(ę/e/i) klasy "%s" - kalkulator rozlicza wyłącznie akcje i ETF-y, '
-                .'więc pola 22/23 PIT-38 ich nie obejmują - dolicz je samodzielnie.',
+                'Pominięto %d transakcj(ę/e/i) klasy "%s" - kalkulator rozlicza akcje, ETF-y i opcje na akcje '
+                .'i indeksy, więc pola 22/23 PIT-38 ich nie obejmują - dolicz je samodzielnie.',
                 $count,
                 $category,
             ))->forTab('transactions');
@@ -314,11 +368,27 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             ));
         }
 
-        if ([] !== $deliveries) {
+        if ([] !== $assignments) {
+            $messages[] = ImportMessage::review($source->name, sprintf(
+                'Przydział lub wykonanie opcji: %s. Premia jest przychodem lub kosztem opcji w dniu przydziału - '
+                .'nie zmienia kosztu nabycia akcji.',
+                implode('; ', $assignments),
+            ))->forTab('transactions');
+        }
+
+        $unexplained = array_diff_key($deliveredShares, $explainedDeliveries);
+        if ([] !== $unexplained) {
             $messages[] = ImportMessage::review($source->name, sprintf(
                 'Akcje z przydziału lub wykonania opcji: %s. Weszły do FIFO po cenie wykonania - premia z opcji '
                 .'nie zmienia ich kosztu nabycia i jest rozliczana osobno.',
-                implode('; ', $deliveries),
+                implode('; ', $unexplained),
+            ))->forTab('transactions');
+        }
+
+        if ([] !== $cashSettlements) {
+            $messages[] = ImportMessage::review($source->name, sprintf(
+                'Rozliczenie pieniężne opcji: %s. Kwota rozliczenia zamyka pozycję jak sprzedaż lub odkup.',
+                implode('; ', $cashSettlements),
             ))->forTab('transactions');
         }
 
@@ -394,29 +464,11 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             $name = null === $instrument || '' === $instrument->displayName ? $match->symbol : $instrument->displayName;
 
             try {
-                $positions[] = new ClosedPosition(
+                $positions[] = ClosedPosition::fromMatch(
+                    $match,
                     $name,
                     $country,
-                    $match->buyCost->currency(),
-                    // The execution time ordered the queue; the settled record
-                    // is per day, because the NBP rate and the tax year are.
-                    $match->buyDate->setTime(0, 0),
-                    $match->buyCost,
-                    $match->sellDate->setTime(0, 0),
-                    $match->sellProceeds,
-                    $match->quantity,
                     PositionSource::describe($match->buySource, $match->sellSource, CsvFormat::IbkrActivityStatement),
-                    $match->lineageKey(),
-                    $match->buyCommission,
-                    $match->sellCommission,
-                    $match->buyAutoFx,
-                    $match->sellAutoFx,
-                    $match->broker,
-                    $match->symbol,
-                    $match->buyTradeId,
-                    $match->sellTradeId,
-                    $match->buyUnitPrice,
-                    $match->sellUnitPrice,
                 );
             } catch (InvalidRecordException $e) {
                 $messages[] = ImportMessage::error('Import', sprintf(
@@ -446,6 +498,13 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                 $unmatched->date->format('Y-m-d'),
                 (string) $unmatched->quantity,
             ));
+        }
+
+        foreach ($fifo->violations as $violation) {
+            // As fatal as a sale without a purchase: a close without its open
+            // has no premium, and settling around it would drop the income.
+            $messages[] = ImportMessage::error('Import', $violation->describe()
+                .' Jeśli opcja została otwarta wcześniej, dograj Activity Statement za tamten rok.');
         }
 
         if ($unknownCountry) {
@@ -645,15 +704,16 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
     }
 
     /**
-     * Stock rows of Financial Instrument Information, by symbol.
+     * Stock and option rows of Financial Instrument Information, by symbol.
      *
-     * @return array<string, array{name: string, isin: string, exchange: string}>
+     * @return array<string, array{name: string, isin: string, exchange: string, underlying: string}>
      */
     private static function instruments(ActivityStatement $statement): array
     {
         $instruments = [];
         foreach ($statement->rows(self::INSTRUMENTS) as $row) {
-            if (self::STOCKS !== $row->get('asset category')) {
+            $category = $row->get('asset category');
+            if (self::STOCKS !== $category && self::OPTIONS !== $category) {
                 continue;
             }
 
@@ -662,18 +722,129 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                 'name' => $row->get('description'),
                 'isin' => Isin::isWellFormed($isin) ? $isin : '',
                 'exchange' => $row->get('listing exch'),
+                'underlying' => $row->get('underlying'),
             ];
 
             // After a ticker change IBKR lists every symbol the contract has
-            // carried in one field ("CNDX, CSNDX"); trades use either.
-            foreach (explode(',', $row->get('symbol')) as $symbol) {
-                if ('' !== trim($symbol)) {
-                    $instruments[trim($symbol)] = $details;
+            // carried in one field ("CNDX, CSNDX"); trades use either. An
+            // option is listed under its OCC code ("AAA   260116P00050000")
+            // while trades name it by the description ("AAA 16JAN26 50 P").
+            $symbols = explode(',', $row->get('symbol'));
+            if (self::OPTIONS === $category) {
+                $symbols[] = $row->get('description');
+            }
+
+            foreach ($symbols as $symbol) {
+                $symbol = (string) preg_replace('/\s+/', ' ', trim($symbol));
+                if ('' !== $symbol) {
+                    $instruments[$symbol] = $details;
                 }
             }
         }
 
         return $instruments;
+    }
+
+    /**
+     * Shares delivered by an option assignment or exercise, by underlying and
+     * day, so the option row that closed at nothing can be paired with them.
+     *
+     * @return array<string, string> "SYMBOL|Y-m-d" => "100 szt. AAA"
+     */
+    private static function deliveredShares(ActivityStatement $statement, string $discriminator): array
+    {
+        $delivered = [];
+        foreach ($statement->rows(self::TRADES) as $row) {
+            if ($discriminator !== $row->get('datadiscriminator') || self::STOCKS !== $row->get('asset category')) {
+                continue;
+            }
+
+            if ([] === array_intersect(self::DELIVERY_CODES, self::codes($row->get('code')))) {
+                continue;
+            }
+
+            try {
+                $day = self::dateTime($row->get('date/time'))->format('Y-m-d');
+            } catch (InvalidDateException) {
+                // Reported by the main pass, which reads the same row.
+                continue;
+            }
+
+            $delivered[$row->get('symbol').'|'.$day] = sprintf('%s szt. %s %s', $row->get('quantity'), $row->get('symbol'), $day);
+        }
+
+        return $delivered;
+    }
+
+    /**
+     * IBKR says on every option row whether it opens (`O`) or closes (`C`) a
+     * position; one order can do both (`C;O`).
+     *
+     * @param list<string> $codes
+     */
+    private static function optionEffect(string $symbol, DateTimeImmutable $date, array $codes): PositionEffect
+    {
+        $opens = in_array('O', $codes, true);
+        $closes = in_array('C', $codes, true);
+
+        return match (true) {
+            $opens && $closes => PositionEffect::CloseThenOpen,
+            $opens => PositionEffect::Open,
+            $closes => PositionEffect::Close,
+            default => throw new InvalidRecordException(sprintf(
+                'Transakcja opcją %s z dnia %s nie ma kodu otwarcia (O) ani zamknięcia (C), więc nie wiadomo, '
+                .'czy otwiera, czy zamyka pozycję. Rozlicz ją ręcznie.',
+                $symbol,
+                $date->format('Y-m-d'),
+            )),
+        };
+    }
+
+    /**
+     * An option may close at nothing - expiry, or assignment and exercise
+     * with physical delivery - and then it costs no fee. Any other row of an
+     * option moves cash; an expiry that did is not an expiry.
+     *
+     * @param list<string> $codes
+     *
+     * @return bool whether the row closes the option at nothing
+     */
+    private static function assertOptionCash(
+        string $symbol,
+        DateTimeImmutable $date,
+        array $codes,
+        PositionEffect $effect,
+        Decimal $proceeds,
+        Decimal $fee,
+    ): bool {
+        $expired = in_array('Ep', $codes, true);
+
+        if (!$proceeds->isZero()) {
+            if ($expired) {
+                throw new InvalidRecordException(sprintf(
+                    'Wygaśnięcie opcji %s z dnia %s ma kwotę %s - wygasła opcja zamyka się kwotą 0. Zweryfikuj wiersz.',
+                    $symbol,
+                    $date->format('Y-m-d'),
+                    (string) $proceeds,
+                ));
+            }
+
+            return false;
+        }
+
+        $closingAtNothing = PositionEffect::Close === $effect
+            && ($expired || [] !== array_intersect(self::DELIVERY_CODES, $codes));
+
+        if (!$closingAtNothing || !$fee->isZero()) {
+            throw new InvalidRecordException(sprintf(
+                'Transakcja opcją %s z dnia %s nie ma kwoty, a nie jest wygaśnięciem ani przydziałem bez opłat. '
+                .'Zweryfikuj wiersz.',
+                $symbol,
+                $date->format('Y-m-d'),
+            ));
+        }
+
+        return true;
     }
 
     /**

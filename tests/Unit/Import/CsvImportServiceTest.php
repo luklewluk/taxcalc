@@ -168,6 +168,68 @@ final class CsvImportServiceTest extends TestCase
         self::assertStringContainsString('Dividend Detail', implode("\n", array_map(static fn ($m): string => $m->message, $review)));
     }
 
+    public function testTheSameIdOnAnOptionWithAnotherEffectIsAConflict(): void
+    {
+        $open = self::optionTrade(\App\Fifo\PositionEffect::Open);
+        $close = self::optionTrade(\App\Fifo\PositionEffect::Close);
+        $importer = new class([$open, $close]) implements \App\Import\Importer\TradeSourceImporterInterface {
+            /** @param list<\App\Fifo\Trade> $trades */
+            public function __construct(private readonly array $trades)
+            {
+            }
+
+            public function supports(\App\Import\CsvFormat $format): bool
+            {
+                return \App\Import\CsvFormat::IbkrActivityStatement === $format;
+            }
+
+            public function import(CsvSource $source): \App\Import\ImportResult
+            {
+                return new \App\Import\ImportResult();
+            }
+
+            public function extractTrades(CsvSource $source): \App\Import\Importer\TradeExtraction
+            {
+                return new \App\Import\Importer\TradeExtraction($this->trades, []);
+            }
+
+            public function matchTrades(array $trades): \App\Import\ImportResult
+            {
+                return new \App\Import\ImportResult();
+            }
+
+            public function tradeIdScope(): \App\Import\TradeIdScope
+            {
+                return \App\Import\TradeIdScope::Fill;
+            }
+
+            public function tradeIdLabel(): string
+            {
+                return 'ID';
+            }
+        };
+
+        $result = (new CsvImportService(new FormatDetector(), [$importer], new TaxRates()))
+            ->import([new CsvSource('as.csv', self::activityStatement())]);
+
+        self::assertStringContainsString('Konflikt', implode("\n", $result->errors()));
+    }
+
+    private static function optionTrade(\App\Fifo\PositionEffect $effect): \App\Fifo\Trade
+    {
+        return new \App\Fifo\Trade(
+            'AAA 16JAN26 50 P',
+            new \DateTimeImmutable('2026-01-16 10:00:00'),
+            \App\Money\Decimal::of('1'),
+            \App\Money\Amount::of('10.00', 'USD'),
+            'same-id',
+            broker: 'IBKR',
+            fifoPool: 'AAA 16JAN26 50 P@USD',
+            kind: \App\Fifo\InstrumentKind::Option,
+            effect: $effect,
+        );
+    }
+
     private static function activityStatement(): string
     {
         return "Statement,Header,Field Name,Field Value\n"

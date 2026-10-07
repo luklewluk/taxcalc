@@ -2240,6 +2240,10 @@ kbd {
 }
 .trade-editor { min-width: 116rem; }
 .cell-note { display: block; color: var(--ink-2); font-size: 0.72rem; }
+
+/* Marks an option position in the FIFO table; a written one is the case people misread. */
+.position-kind { font-weight: 650; color: var(--accent); }
+.position-kind--short { color: var(--warning); }
 .toggle-label { display: inline-flex; align-items: center; gap: 0.35rem; min-height: var(--tap); }
 
 .attention-count {

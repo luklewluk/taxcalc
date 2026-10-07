@@ -22,8 +22,8 @@
         <h2>Logiczne transakcje wejściowe FIFO ({{ trade_rows|length }})</h2>
         {% if trade_rows is not empty %}
             <div class="table-wrapper"><table class="table table--detail">
-                <thead><tr><th>Broker / pula</th><th>Symbol</th><th>Nazwa / kraj</th><th>Data i czas</th><th>Kierunek</th><th>Liczba</th><th>Cena/szt.</th><th>Total</th><th>Prowizja</th><th>AutoFX</th><th>Źródło</th></tr></thead>
-                <tbody>{% for row in trade_rows %}<tr><td>{{ row.broker }} / {{ row.pool }}</td><td>{{ row.symbol }}</td><td>{{ row.name }} / {{ row.country }}</td><td>{{ row.date }} {{ row.time }}</td><td>{{ row.side }}</td><td>{{ row.quantity }}</td><td>{{ row.unit_price == '' ? '—' : row.unit_price ~ ' ' ~ row.price_currency }}</td><td>{{ row.total }} {{ row.currency }}</td><td>{{ row.commission ?: '—' }}</td><td>{{ row.autofx ?: '—' }}</td><td>{{ row.source }}</td></tr>{% endfor %}</tbody>
+                <thead><tr><th>Broker / pula</th><th>Symbol</th><th>Nazwa / kraj</th><th>Data i czas</th><th>Typ</th><th>Kierunek</th><th>Otwarcie/zamknięcie</th><th>Liczba</th><th>Cena/szt.</th><th>Total</th><th>Prowizja</th><th>AutoFX</th><th>Źródło</th></tr></thead>
+                <tbody>{% for row in trade_rows %}<tr><td>{{ row.broker }} / {{ row.pool }}</td><td>{{ row.symbol }}</td><td>{{ row.name }} / {{ row.country }}</td><td>{{ row.date }} {{ row.time }}</td><td>{{ row.asset == 'OPT' ? 'Opcja' : 'Akcje / ETF' }}</td><td>{{ row.side }}</td><td>{{ {'open': 'Otwarcie', 'close': 'Zamknięcie', 'close_open': 'Zamknięcie i otwarcie'}[row.effect] ?? '—' }}</td><td>{{ row.quantity }}</td><td>{{ row.unit_price == '' ? '—' : row.unit_price ~ ' ' ~ row.price_currency }}</td><td>{{ row.total }} {{ row.currency }}</td><td>{{ row.commission ?: '—' }}</td><td>{{ row.autofx ?: '—' }}</td><td>{{ row.source }}</td></tr>{% endfor %}</tbody>
             </table></div>
         {% endif %}
         <h2>Dopasowania FIFO</h2>

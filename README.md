@@ -304,6 +304,8 @@ zawiera transakcje, dywidendy i podatek u źródła. Format jest rozpoznawany po
   `Withholding Tax`; wypłata jest łączona z podatkiem po ISIN, walucie i dniu, także między
   plikami. Storna i korekty podatku bez wypłaty z tego samego dnia trafiają do „Wymaga uwagi”.
   Podatek od odsetek jest pomijany.
+- **Opcje** (`Equity and Index Options`) są rozliczane w dniu zamknięcia pozycji — zob.
+  [Opcje (PIT-38 część C)](#opcje-pit-38-część-c).
 - **Pomijane** są wymiany walut (`Forex`). Inne klasy aktywów (np. futures, obligacje) są
   pomijane z pozycją w „Wymaga uwagi”, bo pola PIT-38 ich nie obejmują.
 - **Przerywają import:** operacje korporacyjne (sekcja `Corporate Actions` albo wiersz bez
@@ -629,6 +631,37 @@ niepełnym zbiorze danych podczas awarii NBP lub przy nieobsługiwanej walucie.
   pozostaje w audycie FIFO z ostrzeżeniem. Dywidendy nie tworzą PIT/ZG ani nie zwiększają
   liczby załączników.
 
+### Opcje (PIT-38 część C)
+
+Opcje z Activity Statement (klasa `Equity and Index Options`) trafiają do tych samych pól
+co akcje (art. 30b), ale rozlicza się je **w dniu zamknięcia pozycji** — odkupu lub
+sprzedaży zamykającej, wygaśnięcia albo przydziału lub wykonania — nigdy w dniu otwarcia
+(art. 17 ust. 1 pkt 10 i ust. 1b, art. 23 ust. 1 pkt 38a ustawy o PIT; interpretacja
+Dyrektora KIS 0113-KDIPT2-3.4011.645.2025.3.KKA z 7.11.2025).
+
+| Kwota (kurs NBP z dnia roboczego przed…) | Akcje / opcja kupiona | Opcja wystawiona |
+| --- | --- | --- |
+| koszt (kupno + prowizja) | dniem kupna (otwarcia) | dniem odkupu lub wygaśnięcia (zamknięcia) |
+| przychód (sprzedaż + prowizja sprzedaży) | dniem sprzedaży (zamknięcia) | **dniem zamknięcia** — premia jest przychodem dopiero wtedy (art. 11a ust. 1) |
+| prowizja sprzedaży jako koszt zbycia | dniem sprzedaży | dniem wystawienia — dzień poniesienia (art. 11a ust. 2) |
+| rok podatkowy | rok sprzedaży | rok zamknięcia |
+
+- **Wygaśnięcie** (`Ep`) i **przydział lub wykonanie z dostawą akcji** (`A`, `Ex`) zamykają
+  opcję kwotą 0. Akcje z przydziału wchodzą do FIFO **po cenie wykonania** — premia nie
+  zmienia ich kosztu nabycia; rozlicza się ją osobno, w dniu przydziału.
+- **Rozliczenie pieniężne** (np. opcje na indeks) z kwotą w wierszu zamyka pozycję jak
+  sprzedaż lub odkup. Przydział bez wiersza akcji i bez kwoty przerywa import — kwoty
+  rozliczenia nie ma w pliku.
+- O tym, czy transakcja otwiera, czy zamyka pozycję, decydują kody IBKR `O`/`C` (`C;O` —
+  zamknięcie i otwarcie przeciwnej pozycji resztą). Zamknięcie bez otwarcia w wgranych
+  plikach przerywa import, tak jak sprzedaż akcji bez zakupu.
+- Kraj opcji wynika z giełdy notowania (`CBOE` i inne giełdy opcyjne USA → US).
+- Pozycje opcyjne nie mają reprezentacji w formacie własnym CSV: polecenie konwersji je
+  pomija z ostrzeżeniem.
+
+> **Uwaga na zmianę metody.** Jeśli w latach ubiegłych rozliczałeś premię z wystawionej
+> opcji w dniu jej otrzymania, nie rozliczaj tej samej premii ponownie przy zamknięciu.
+
 ### Dywidendy (PIT-38 część G)
 
 Podatek polski liczymy tak samo w obu wariantach:
@@ -792,7 +825,12 @@ Rzeczy, których to narzędzie **nie robi** — warto wiedzieć przed użyciem:
 - **Nie przyjmuje kwot ujemnych ani zerowych.** Kwota zakupu, sprzedaży i dywidendy brutto
   muszą być dodatnie, liczba sztuk dodatnia, a podatek u źródła nieujemny (po normalizacji
   znaku właściwej dla formatu). Wiersz łamiący te reguły jest odrzucany z komunikatem,
-  a nie „naprawiany” zmianą znaku.
+  a nie „naprawiany” zmianą znaku. Jedynym wyjątkiem jest noga zamykająca opcji
+  (wygaśnięcie, przydział) — może mieć kwotę 0, ale wtedy bez prowizji.
+- **Nie rozlicza krótkiej sprzedaży akcji.** Pozycja krótka jest dopuszczalna tylko dla
+  wystawionych opcji; sprzedaż akcji bez wcześniejszego zakupu przerywa import.
+- **Nie rozlicza futures, obligacji, CFD ani warrantów.** Takie wiersze Activity Statement
+  są pomijane z pozycją w „Wymaga uwagi” — dolicz je do PIT-38 samodzielnie.
 - **Wymaga kraju przed obliczeniem.** Płaskie zestawienia IBKR nie zawierają kraju; taki
   wiersz trafia do zakładki Transakcje, ale wynik i raport policzysz dopiero po uzupełnieniu
   dwuliterowego kodu ISO.

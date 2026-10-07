@@ -66,7 +66,7 @@ final class CsvReportWriter
         $this->row($writer, ['Zastrzeżenie', self::DISCLAIMER]);
         $this->row($writer, []);
 
-        $this->section($writer, 'AKCJE I ETF (PIT-38 czesc C)');
+        $this->section($writer, $report->stock->hasOptions() ? 'AKCJE, ETF I OPCJE (PIT-38 czesc C)' : 'AKCJE I ETF (PIT-38 czesc C)');
         $this->row($writer, ['Pozycja', 'Kwota (PLN)']);
         $this->row($writer, ['Przychod', (string) $report->stock->totalRevenue->value()]);
         $this->row($writer, ['Koszty uzyskania przychodu', (string) $report->stock->totalCost->value()]);
@@ -183,6 +183,9 @@ final class CsvReportWriter
             'Data sprzedazy', 'Cena/szt. sprzedazy', 'Waluta ceny sprzedazy', 'Kwota sprzedazy', 'Kwota nalezna (brutto)', 'Kurs NBP sprzedazy', 'Data kursu sprzedazy', 'Przychod (PLN)', 'Koszt zbycia (PLN)',
             'Prowizja sprzedazy', 'AutoFX sprzedazy',
             'Dochod (PLN)', 'Zrodlo',
+            // Appended, so the columns above keep their positions for anyone
+            // who reads this file by index.
+            'Rodzaj instrumentu', 'Pozycja (dluga/krotka)', 'Data zamkniecia', 'Kurs NBP kosztu zbycia', 'Data kursu kosztu zbycia',
         ]);
 
         foreach ($report->stock->positions as $index => $position) {
@@ -228,6 +231,11 @@ final class CsvReportWriter
             null === $position->position->sellAutoFx ? '' : (string) $position->position->sellAutoFx->value(),
             (string) $position->income->value(),
             $position->position->source,
+            $position->position->isOption() ? 'Opcja' : 'Akcje',
+            $position->position->isShort() ? 'krotka' : 'dluga',
+            $position->position->closeDate()->format('Y-m-d'),
+            null === $position->disposalCost ? '' : (string) $position->disposalCost->rate,
+            $position->disposalCost?->rateDate?->format('Y-m-d') ?? '',
         ];
     }
 
@@ -241,6 +249,7 @@ final class CsvReportWriter
         $this->row($writer, [
             'Stabilne ID', 'Broker', 'Pula FIFO', 'Symbol/ISIN', 'Nazwa', 'Kraj', 'Data', 'Czas',
             'Kierunek', 'Liczba', 'Cena/szt.', 'Waluta ceny', 'Waluta', 'Total/NetCash', 'Prowizja', 'AutoFX', 'Zrodlo',
+            'Typ', 'Otwarcie/zamkniecie',
         ]);
         foreach ($trades as $trade) {
             $this->row($writer, [
@@ -255,6 +264,8 @@ final class CsvReportWriter
                 null === $trade->commission ? '' : (string) $trade->commission->value(),
                 null === $trade->autoFx ? '' : (string) $trade->autoFx->value(),
                 $trade->source,
+                $trade->isOption() ? 'Opcja' : 'Akcje',
+                $trade->effect->value ?? '',
             ]);
         }
         $this->row($writer, []);

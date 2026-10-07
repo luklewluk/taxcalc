@@ -300,7 +300,7 @@ final class CalculatorController extends AbstractController
             'dividendRows' => array_map($this->rowFormMapper->dividendToForm(...), $result->dividends),
             'feeRows' => array_map($this->rowFormMapper->feeToForm(...), $result->fees),
             'legacyRows' => array_map($this->rowFormMapper->positionToForm(...), $result->legacyPositions),
-            'compatRows' => array_map($this->rowFormMapper->positionToForm(...), $result->positions),
+            'compatRows' => array_map($this->rowFormMapper->positionToForm(...), self::stockPositions($result->positions)),
             'tombstones' => [],
             'errors' => $result->errors(),
             'diagnostics' => $this->importDiagnostics($result),
@@ -478,7 +478,7 @@ final class CalculatorController extends AbstractController
             'fee_rows' => $state['feeRows'],
             'legacy_rows' => $state['legacyRows'],
             'compat_position_rows' => [] !== $positions
-                ? array_map($this->rowFormMapper->positionToForm(...), $positions)
+                ? array_map($this->rowFormMapper->positionToForm(...), self::stockPositions($positions))
                 : $state['compatRows'],
             'tombstones' => $state['tombstones'],
             'errors' => $state['errors'],
@@ -498,7 +498,7 @@ final class CalculatorController extends AbstractController
             'expected_trades' => count($state['tradeRows']),
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),
-            'expected_positions' => count([] !== $positions ? $positions : $state['compatRows']),
+            'expected_positions' => count([] !== $positions ? self::stockPositions($positions) : $state['compatRows']),
             'disclaimer' => CsvReportWriter::DISCLAIMER,
         ];
 
@@ -628,6 +628,20 @@ final class CalculatorController extends AbstractController
         }
 
         return $existing;
+    }
+
+    /**
+     * The hidden compatibility echo is the old position format, which has no
+     * kind or direction: an option position would come back as a stock - with
+     * a zero leg it would not come back at all. Options live only as trades.
+     *
+     * @param list<ClosedPosition> $positions
+     *
+     * @return list<ClosedPosition>
+     */
+    private static function stockPositions(array $positions): array
+    {
+        return array_values(array_filter($positions, static fn (ClosedPosition $position): bool => !$position->isOption()));
     }
 
     private function queueKey(Trade $trade): string

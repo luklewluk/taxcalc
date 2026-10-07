@@ -106,6 +106,22 @@ final class CalculateCommandsTest extends KernelTestCase
         self::assertMatchesRegularExpression('/giełd/iu', $output);
     }
 
+    public function testTheActivityStatementSampleSettlesOptionsAndSaysWhichSideOpened(): void
+    {
+        $tester = $this->invokeCommand('app:calculate-from-file', [
+            'filepath' => dirname(__DIR__, 3).'/examples/ibkr-activity-statement.csv',
+            '--rok' => '2025',
+        ]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+
+        $output = $tester->getDisplay();
+        self::assertStringContainsString('Akcje, ETF-y i opcje', $output);
+        self::assertStringContainsString('Opcja krótka', $output);
+        self::assertStringContainsString('Opcja długa', $output);
+        self::assertStringContainsString('dniu zamknięcia', $output);
+    }
+
     public function testDegiroDividendsAreCalculatedFromTheAccountStatement(): void
     {
         $path = $this->file(

@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Model;
 
 use App\Exception\InvalidRecordException;
+use App\Fifo\FifoMatch;
 use App\Fifo\InstrumentKind;
 use App\Fifo\PositionDirection;
 use App\Money\Amount;
@@ -173,6 +174,42 @@ final readonly class ClosedPosition
         if (!$amount->isPositive()) {
             throw InvalidRecordException::amountMustBePositive($field, $amount);
         }
+    }
+
+    /**
+     * The settled record of one FIFO match. One place builds it, so the kind
+     * and direction of an option can never be dropped on the way. Times are
+     * reset to midnight: they ordered the queue, but the NBP rate and the tax
+     * year are per day.
+     *
+     * @throws InvalidRecordException when the match breaks a record invariant
+     */
+    public static function fromMatch(FifoMatch $match, string $name, string $country, string $source): self
+    {
+        return new self(
+            $name,
+            $country,
+            $match->buyCost->currency(),
+            $match->buyDate->setTime(0, 0),
+            $match->buyCost,
+            $match->sellDate->setTime(0, 0),
+            $match->sellProceeds,
+            $match->quantity,
+            $source,
+            $match->lineageKey(),
+            $match->buyCommission,
+            $match->sellCommission,
+            $match->buyAutoFx,
+            $match->sellAutoFx,
+            $match->broker,
+            $match->symbol,
+            $match->buyTradeId,
+            $match->sellTradeId,
+            $match->buyUnitPrice,
+            $match->sellUnitPrice,
+            $match->kind,
+            $match->direction,
+        );
     }
 
     public function isOption(): bool

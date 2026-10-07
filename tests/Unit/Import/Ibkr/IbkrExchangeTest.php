@@ -27,6 +27,16 @@ final class IbkrExchangeTest extends TestCase
         yield 'IBKR TSEJ is Tokyo' => ['TSEJ', 'XTKS', 'JP'];
         yield 'Warsaw' => ['WSE', 'XWAR', 'PL'];
         yield 'case and spaces' => [' nasdaq ', 'XNAS', 'US'];
+        yield 'Cboe options' => ['CBOE', 'XCBO', 'US'];
+        yield 'Cboe C2 options' => ['CBOE2', 'C2OX', 'US'];
+        yield 'ISE options' => ['ISE', 'XISX', 'US'];
+        yield 'PHLX options' => ['PHLX', 'XPHL', 'US'];
+        yield 'NYSE Arca options' => ['PSE', 'ARCO', 'US'];
+        yield 'BOX options' => ['BOX', 'XBOX', 'US'];
+        yield 'MIAX options' => ['MIAX', 'XMIO', 'US'];
+        yield 'Nasdaq options' => ['NASDAQOM', 'XNDQ', 'US'];
+        yield 'Eurex' => ['EUREX', 'XEUR', 'DE'];
+        yield 'Montreal derivatives' => ['CDE', 'XMOD', 'CA'];
     }
 
     #[DataProvider('listings')]

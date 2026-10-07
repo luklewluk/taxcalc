@@ -19,13 +19,16 @@
             <tbody>
             {% for item in report.stock.positions %}
                 <tr>
-                    <th>{{ item.position.name }}</th>
+                    <th>
+                        {{ item.position.name }}
+                        {% if item.position.isOption %}<span class="cell-note position-kind{{ item.position.isShort ? ' position-kind--short' : '' }}">opcja · {{ item.position.direction.label }}</span>{% endif %}
+                    </th>
                     <td>{{ item.position.quantity ?: '—' }}</td>
                     <td>{{ item.position.buyDate|date('Y-m-d') }}</td>
                     <td>{{ item.position.buyUnitPrice is null ? '—' : (item.position.buyUnitPrice|money_with_currency) }}</td>
                     {# Settled cash from the file, not item.cost.original - the two
                        are the same on this leg, but the sell leg's are not. #}
-                    <td>{{ item.position.buyAmount|money_with_currency }}</td>
+                    <td>{{ item.position.buyAmount|money_with_currency }}{% if item.position.isOption and item.position.buyAmount.isZero %}<span class="cell-note">wygaśnięcie / przydział</span>{% endif %}</td>
                     <td>{{ item.position.buyCommission is null ? '—' : (item.position.buyCommission|money) }}</td>
                     <td>{{ item.position.buyAutoFx is null ? '—' : (item.position.buyAutoFx|money) }}</td>
                     <td>{{ item.cost.rate }}<span class="cell-note">{{ item.cost.rateDate ? item.cost.rateDate|date('Y-m-d') : 'PLN' }}</span></td>
@@ -34,10 +37,10 @@
                     {# Deliberately the record, not item.revenue.original: revenue is
                        the grossed-up amount, and printing it under a header that
                        names the broker's own column would read as a double count. #}
-                    <td>{{ item.position.sellAmount|money_with_currency }}</td>
+                    <td>{{ item.position.sellAmount|money_with_currency }}{% if item.position.isOption and item.position.sellAmount.isZero %}<span class="cell-note">wygaśnięcie / przydział</span>{% endif %}</td>
                     <td>{{ item.position.sellCommission is null ? '—' : (item.position.sellCommission|money) }}</td>
                     <td>{{ item.position.sellAutoFx is null ? '—' : (item.position.sellAutoFx|money) }}</td>
-                    <td>{{ item.revenue.rate }}<span class="cell-note">{{ item.revenue.rateDate ? item.revenue.rateDate|date('Y-m-d') : 'PLN' }}</span></td>
+                    <td>{{ item.revenue.rate }}<span class="cell-note">{{ item.revenue.rateDate ? item.revenue.rateDate|date('Y-m-d') : 'PLN' }}</span>{% if item.position.isShort and item.disposalCost is not null %}<span class="cell-note">prowizja: {{ item.disposalCost.rate }} z {{ item.disposalCost.rateDate ? item.disposalCost.rateDate|date('Y-m-d') : 'PLN' }}</span>{% endif %}</td>
                     <td>{{ item.revenue.pln|money }}</td>
                     <td>{{ item.totalCost|money }}</td>
                     <td class="{{ item.isLoss ? 'figure--negative' : '' }}">{{ item.income|money }}</td>
@@ -52,6 +55,20 @@
         tym Total) powiększony o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> ze
         strony sprzedaży. Kolumny „Total” pokazują kwotę rozliczoną z pliku brokera.
     </p>
+    {% if report.stock.hasOptions %}
+        <p class="note">
+            Opcje rozliczamy w dniu <strong>zamknięcia</strong> pozycji — odkupu lub sprzedaży zamykającej,
+            wygaśnięcia albo przydziału lub wykonania — nigdy w dniu otwarcia (art. 17 ust. 1 pkt 10 i ust. 1b
+            oraz art. 23 ust. 1 pkt 38a ustawy o PIT; interpretacja KIS 0113-KDIPT2-3.4011.645.2025.3.KKA
+            z 7.11.2025). Przy opcji wystawionej (pozycja krótka) strona „Sprzedaż” to wystawienie: premia
+            jest przychodem przeliczonym kursem z dnia roboczego przed zamknięciem (art. 11a ust. 1), a
+            prowizja od wystawienia kosztem po kursie sprzed wystawienia. Wygaśnięcie i przydział zamykają
+            opcję kwotą 0. Akcje z przydziału lub wykonania wchodzą do FIFO po cenie wykonania — premia nie
+            zmienia ich kosztu nabycia. Cena opcji jest podana za jedną akcję bazową, a Total uwzględnia
+            mnożnik. Jeśli w latach ubiegłych rozliczałeś premię w dniu jej otrzymania, nie rozliczaj jej
+            ponownie.
+        </p>
+    {% endif %}
     {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}
         <p class="note">
             Część pozycji nie zgłasza prowizji sprzedaży (płaski eksport IBKR, format własny, pusta

@@ -68,6 +68,23 @@ final class IbkrExchange
         'SEHK' => 'XHKG',
         'SGX' => 'XSES',
         'ASX' => 'XASX',
+
+        // Options exchanges - the listing exchange of an option contract.
+        'CBOE' => 'XCBO',
+        'CBOE2' => 'C2OX',
+        'ISE' => 'XISX',
+        'GEMINI' => 'GMNI',
+        'MERCURY' => 'MCRY',
+        'PHLX' => 'XPHL',
+        'NASDAQOM' => 'XNDQ',
+        'NASDAQBX' => 'XBXO',
+        'PSE' => 'ARCO',
+        'BOX' => 'XBOX',
+        'MIAX' => 'XMIO',
+        'PEARL' => 'MPRL',
+        'EMERALD' => 'EMLD',
+        'EUREX' => 'XEUR',
+        'CDE' => 'XMOD',
     ];
 
     public static function mic(string $code): ?string

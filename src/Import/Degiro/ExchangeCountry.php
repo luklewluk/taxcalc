@@ -125,6 +125,23 @@ final class ExchangeCountry
         'XSHG' => ['CN', 'Shanghai Stock Exchange'],
         'XSHE' => ['CN', 'Shenzhen Stock Exchange'],
 
+        // Options exchanges (ISO 10383 MIC) - the listing venue of an option.
+        'XCBO' => ['US', 'Cboe Options'],
+        'C2OX' => ['US', 'Cboe C2 Options'],
+        'XISX' => ['US', 'Nasdaq ISE'],
+        'GMNI' => ['US', 'Nasdaq GEMX'],
+        'MCRY' => ['US', 'Nasdaq MRX'],
+        'XPHL' => ['US', 'Nasdaq PHLX'],
+        'XNDQ' => ['US', 'Nasdaq Options Market'],
+        'XBXO' => ['US', 'Nasdaq BX Options'],
+        'ARCO' => ['US', 'NYSE Arca Options'],
+        'XBOX' => ['US', 'BOX Options Exchange'],
+        'XMIO' => ['US', 'MIAX Options'],
+        'MPRL' => ['US', 'MIAX Pearl'],
+        'EMLD' => ['US', 'MIAX Emerald'],
+        'XEUR' => ['DE', 'Eurex'],
+        'XMOD' => ['CA', 'Montréal Exchange'],
+
         // Venues that name no listing country.
         'AQEU' => ['', 'Aquis Exchange Europe (wiele rynków)'],
         'AQXE' => ['', 'Aquis Exchange (wiele rynków)'],

@@ -14,7 +14,20 @@ Trades,SubTotal,,Stocks,USD,AAA,,6,,,-480,-2,600.6,118.6,6,
 Trades,Data,Order,Stocks,USD,BBB,"2025-03-10, 09:30:05",5,80,80.5,-400,-1.25,401.25,0,2.5,O
 Trades,Data,Order,Stocks,USD,BBB,"2025-11-20, 11:05:44",-5,90,90,450,-1.25,-401.25,47.5,0,C
 Trades,SubTotal,,Stocks,USD,BBB,,0,,,50,-2.5,0,47.5,2.5,
-Trades,Total,,Stocks,USD,,,,,,-430,-4.5,600.6,166.1,8.5,
+Trades,Data,Order,Stocks,USD,AAA,"2025-07-18, 16:20:00",100,110,112,-11000,0,11000,0,200,A;O
+Trades,SubTotal,,Stocks,USD,AAA,,100,,,-11000,0,11000,0,200,
+Trades,Total,,Stocks,USD,,,,,,-11430,-4.5,11600.6,166.1,208.5,
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Equity and Index Options,USD,AAA 21MAR25 90 P,"2025-02-10, 15:31:02",-1,1.5,1.4,150,-1.05,-148.95,0,10,O
+Trades,Data,Order,Equity and Index Options,USD,AAA 21MAR25 90 P,"2025-03-21, 16:20:00",1,0,0,0,0,148.95,148.95,0,C;Ep
+Trades,SubTotal,,Equity and Index Options,USD,AAA 21MAR25 90 P,,0,,,150,-1.05,0,148.95,10,
+Trades,Data,Order,Equity and Index Options,USD,AAA 20JUN25 120 C,"2025-04-01, 10:02:11",1,3,3.1,-300,-0.65,300.65,0,10,O
+Trades,Data,Order,Equity and Index Options,USD,AAA 20JUN25 120 C,"2025-05-15, 14:47:30",-1,4.1,4.1,410,-0.65,-300.65,108.7,0,C
+Trades,SubTotal,,Equity and Index Options,USD,AAA 20JUN25 120 C,,0,,,110,-1.3,0,108.7,10,
+Trades,Data,Order,Equity and Index Options,USD,AAA 18JUL25 110 P,"2025-06-02, 11:15:40",-1,2,1.9,200,-1.05,-198.95,0,10,O
+Trades,Data,Order,Equity and Index Options,USD,AAA 18JUL25 110 P,"2025-07-18, 16:20:00",1,0,0,0,0,198.95,198.95,0,A;C
+Trades,SubTotal,,Equity and Index Options,USD,AAA 18JUL25 110 P,,0,,,200,-1.05,0,198.95,10,
+Trades,Total,,Equity and Index Options,USD,,,,,,460,-3.15,0,456.6,30,
 Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,,Proceeds,Comm in USD,,,MTM in USD,Code
 Trades,Data,Order,Forex,PLN,USD.PLN,"2025-02-01, 06:00:00",1000,4.05,,-4050,0,,,0,AFx
 Trades,SubTotal,,Forex,PLN,USD.PLN,,1000,,,-4050,0,,,0,
@@ -28,3 +41,7 @@ Withholding Tax,Data,Total,,,-0.75,
 Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
 Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,
 Financial Instrument Information,Data,Stocks,BBB,BETA ETF,1002,IE000BETA002,BBB,LSEETF,1,ETF,
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Underlying,Listing Exch,Multiplier,Expiry,Delivery Month,Type,Strike,Code
+Financial Instrument Information,Data,Equity and Index Options,AAA   250321P00090000,AAA 21MAR25 90 P,2001,AAA,CBOE,100,2025-03-21,2025-03,P,90,
+Financial Instrument Information,Data,Equity and Index Options,AAA   250620C00120000,AAA 20JUN25 120 C,2002,AAA,CBOE,100,2025-06-20,2025-06,C,120,
+Financial Instrument Information,Data,Equity and Index Options,AAA   250718P00110000,AAA 18JUL25 110 P,2003,AAA,CBOE,100,2025-07-18,2025-07,P,110,

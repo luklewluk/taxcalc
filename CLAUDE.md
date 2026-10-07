@@ -74,9 +74,14 @@ Nine modules under `src/`, ordered from the inside out:
   (one closed position) and `UnmatchedSell` (reported, never thrown - importers turn it
   into a *fatal* message, see the invariants). Partially consumed lots are prorated exactly
   and the final slice of a lot receives the exact remaining balance, so prorated parts sum
-  back to the lot total. Buy lots are never filtered by year.
+  back to the lot total. Buy lots are never filtered by year. A pool of **options** goes
+  through `matchOptionPool()` instead (stock matching is untouched): either side may open,
+  the trade's declared `PositionEffect` decides, and what cannot be matched is a
+  `FifoViolation` (also fatal). A pool mixing stocks and options is a violation.
 - **Model** — `ClosedPosition`, `Dividend`, and `AccountFee`, the normalized settlement
   records. Editable records carry stable form IDs in addition to content fingerprints.
+  `ClosedPosition` carries `InstrumentKind` and `PositionDirection`; build it from a match
+  with `ClosedPosition::fromMatch()` so neither can be dropped.
 - **CurrencyRate** — `ExchangeInterface` → `NbpExchange` implements the D-1 rule and
   passes PLN through at rate 1 without any lookup. `NbpRateProviderInterface` is
   implemented by `NbpApiRateProvider` (scoped `symfony/http-client`, walks back over
@@ -255,6 +260,28 @@ Nine modules under `src/`, ordered from the inside out:
   so its whole proceeds would read as gain. Both trade importers emit
   `ImportMessage::error`, which empties the batch. Settling the other positions and quietly
   dropping that one produces a return that looks complete.
+- **Options settle when the position closes, never when it opens.** Art. 17 ust. 1 pkt 10 and
+  ust. 1b, art. 23 ust. 1 pkt 38a; KIS 0113-KDIPT2-3.4011.645.2025.3.KKA of 2025-11-07 - no
+  "premium on receipt" setting. Przychód is always the sell leg and koszt the buy leg; for a
+  written option (`Short`) the buy closes, so `closeDate()`, `taxYear()` and `revenueDate()`
+  move to the buy leg. Each amount uses the NBP rate before *its own* day: koszt the buy date,
+  the disposal fee the sell date, przychód `revenueDate()` (art. 11a). `TaxReportBuilder`
+  pre-flights `conversionDates()`.
+- **Only an option's closing leg may be zero, and then without a fee.** Expiry (`Ep`) and
+  assignment/exercise with physical delivery close at nothing. A stock leg is never zero and a
+  stock is never short - an excess stock sell stays an `UnmatchedSell`.
+- **An option trade declares whether it opens or closes.** IBKR's `O`/`C` codes become
+  `Trade::$effect` (`C;O` = close then open with the rest); the form requires it for `OPT`.
+  Inferring it from row order would let a buy-to-close whose writing sale was not uploaded
+  open a long lot and lose the premium. A close with nothing to close is fatal both ways.
+- **The premium never enters the stock's cost basis.** Shares from an assignment enter FIFO
+  at the strike; the option settles separately on the assignment day. An `A`/`Ex` option row
+  at zero without a Stocks row of its underlying that day was cash-settled with the amount
+  missing (index options) - fatal. Option positions have no representation in the own CSV
+  format: the convert command and the hidden compatibility echo leave them out.
+- **Option identity stays out of stock hashes.** `Trade::id()`, `ClosedPosition::fingerprint()`
+  and the Activity Statement synthetic IDs append kind/effect/direction *only* for options, so
+  every stock ID a workbench posted before options existed keeps matching.
 - **One ISIN is one queue, and a currency change closes the door.** Keying the DEGIRO queue
   per currency would leave a cross-currency sale uncovered and drop its gain. So the queue
   is per ISIN, and a lot opened in a different currency than the sale closing it is a fatal
@@ -276,7 +303,9 @@ Nine modules under `src/`, ordered from the inside out:
   ust. 1 pkt 6 lit. a) and counts the same amount as a koszt odpłatnego zbycia (art. 22 /
   art. 23 ust. 1 pkt 38), converted at the **sell** date's rate — which is why
   `CalculatedPosition::$disposalCost` is a second `ExchangedAmount` and not part of `$cost`.
-  Income and tax are unchanged; only the split between fields 22 and 23 moves. A position whose
+  For stocks and bought options income and tax are unchanged; only the split between fields 22
+  and 23 moves. For a *written* option it is not quite: the writing fee keeps the writing day's
+  rate while the przychód takes the closing day's (see the options invariant). A position whose
   source reported no sell fee (flat IBKR, own format, blank fee cell, an aggregated order whose
   fills disagree) keeps a przychód equal to the settled cash, and the FIFO footnote says so
   rather than pretending the split was made. Never derive the fee from `Total − quantity × price`.

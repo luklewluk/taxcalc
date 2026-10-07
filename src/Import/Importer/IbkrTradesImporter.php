@@ -141,7 +141,12 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         foreach ($skippedAssetClasses as $assetClass => $count) {
             $messages[] = ImportMessage::info(
                 $source->name,
-                sprintf('Pominięto %d wiersz(y) klasy aktywów "%s" - obsługiwane są wyłącznie akcje i ETF-y (STK).', $count, $assetClass),
+                sprintf(
+                    'Pominięto %d wiersz(y) klasy aktywów "%s" - ten format obsługuje wyłącznie akcje i ETF-y (STK). '
+                    .'Opcje rozlicza import z Activity Statement.',
+                    $count,
+                    $assetClass,
+                ),
             );
         }
 

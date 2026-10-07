@@ -127,6 +127,39 @@ final class CsvReportWriterTest extends TestCase
         self::assertStringContainsString('"Koszty zbycia",4.00', $csv);
     }
 
+    public function testAWrittenOptionSaysWhatItIsAndWhichRatesItUsed(): void
+    {
+        $option = new ClosedPosition(
+            'AAA 19APR24 50 P',
+            'US',
+            'USD',
+            new DateTimeImmutable('2024-04-19'),
+            Amount::of('0', 'USD'),
+            new DateTimeImmutable('2024-03-04'),
+            Amount::of('99', 'USD'),
+            \App\Money\Decimal::of('1'),
+            'as.csv',
+            sellCommission: Amount::of('1', 'USD'),
+            kind: \App\Fifo\InstrumentKind::Option,
+            direction: \App\Fifo\PositionDirection::Short,
+        );
+
+        $csv = $this->write([$option], []);
+
+        self::assertStringContainsString('AKCJE, ETF I OPCJE (PIT-38 czesc C)', $csv);
+        self::assertStringContainsString('Rodzaj instrumentu', $csv);
+        // Closed on the buy; the writing fee keeps the writing day's rate.
+        self::assertStringContainsString(',Opcja,krotka,2024-04-19,4.0000,2024-03-03', $csv);
+    }
+
+    public function testAStockOnlyReportKeepsItsSectionTitle(): void
+    {
+        $csv = $this->write([self::position('AAA', 'US', '2024-05-04', '100.00', '2024-12-16', '150.00')], []);
+
+        self::assertStringContainsString('AKCJE I ETF (PIT-38 czesc C)', $csv);
+        self::assertStringContainsString(',Akcje,dluga,2024-12-16,,', $csv);
+    }
+
     private static function position(
         string $name,
         string $country,

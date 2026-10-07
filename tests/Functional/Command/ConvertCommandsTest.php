@@ -54,6 +54,22 @@ final class ConvertCommandsTest extends KernelTestCase
         self::assertStringContainsString('CSPX,,USD,2024-04-03,1523.98,2025-02-27,1680.00', $csv);
     }
 
+    public function testOptionPositionsAreLeftOutOfTheOwnFormatWithAWarning(): void
+    {
+        $output = $this->path();
+
+        $tester = $this->invokeCommand('app:convert-interactivebrokers', [
+            'input_path' => dirname(__DIR__, 3).'/examples/ibkr-activity-statement.csv',
+            'output_path' => $output,
+        ]);
+
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
+        $csv = (string) file_get_contents($output);
+        self::assertStringContainsString('ALFA CORP', $csv);
+        self::assertStringNotContainsString('AAA 21MAR25 90 P', $csv);
+        self::assertStringContainsString('Pominięto 3 pozycj', $tester->getDisplay());
+    }
+
     public function testTradesConversionSaysTheCountryColumnIsEmptyOnlyWhenItIs(): void
     {
         $input = $this->file('"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"'."\n"

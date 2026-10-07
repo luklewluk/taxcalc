@@ -16,6 +16,8 @@ use App\Model\Dividend;
 use App\Model\AccountFee;
 use App\Fifo\Trade;
 use App\Fifo\InstrumentDetails;
+use App\Fifo\InstrumentKind;
+use App\Fifo\PositionEffect;
 use App\Money\Amount;
 
 /**
@@ -236,16 +238,40 @@ final readonly class RowFormMapper
                 }
 
                 $date = DateParser::parseWithTime($this->str($row, 'date'), $this->str($row, 'time'));
+                $kind = InstrumentKind::fromForm($this->str($row, 'asset'));
+                $effect = null;
+                if (InstrumentKind::Option === $kind) {
+                    $effect = PositionEffect::fromForm($this->str($row, 'effect'))
+                        ?? throw new InvalidRecordException('Dla opcji wskaż, czy transakcja otwiera, czy zamyka pozycję.');
+                }
+
                 $total = Amount::fromDecimal(
                     NumberParser::parse($this->str($row, 'total'), decimalComma: true)->abs(),
                     $currency,
                 );
-                if (!$total->isPositive()) {
-                    throw InvalidRecordException::amountMustBePositive('Total/NetCash', $total);
-                }
-
                 $commission = $this->optionalAmount($row, 'commission', $currency);
                 $autoFx = $this->optionalAmount($row, 'autofx', $currency);
+
+                if (!$total->isPositive()) {
+                    // An option expires or is assigned at nothing - the only
+                    // trade that may move no cash, and then it costs no fee.
+                    if (InstrumentKind::Option !== $kind) {
+                        throw InvalidRecordException::amountMustBePositive('Total/NetCash', $total);
+                    }
+
+                    if (PositionEffect::Close !== $effect) {
+                        throw new InvalidRecordException(
+                            'Kwota Total może być zerowa tylko przy zamknięciu opcji (wygaśnięcie, przydział, wykonanie).',
+                        );
+                    }
+
+                    foreach ([$commission, $autoFx] as $fee) {
+                        if (null !== $fee && !$fee->isZero()) {
+                            throw new InvalidRecordException('Zamknięcie opcji kwotą 0 nie może mieć opłaty.');
+                        }
+                    }
+                }
+
                 $unitPrice = $this->optionalExecutionPrice($row);
                 $externalId = $this->str($row, 'external_id');
 
@@ -264,6 +290,8 @@ final readonly class RowFormMapper
                     autoFx: $autoFx,
                     stableId: $this->str($row, 'id'),
                     fifoPool: $this->str($row, 'pool') ?: $symbol,
+                    kind: $kind,
+                    effect: $effect,
                 );
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
                 $message = sprintf('Transakcja %d: %s', $number, $e->getMessage());
@@ -374,7 +402,7 @@ final readonly class RowFormMapper
     private function tradeRowToForm(array $row): array
     {
         $form = [];
-        foreach (['id', 'broker', 'pool', 'symbol', 'name', 'country', 'exchange', 'date', 'time', 'side', 'quantity', 'currency', 'total', 'unit_price', 'price_currency', 'commission', 'autofx', 'external_id', 'source'] as $key) {
+        foreach (['id', 'broker', 'pool', 'symbol', 'name', 'country', 'exchange', 'asset', 'effect', 'date', 'time', 'side', 'quantity', 'currency', 'total', 'unit_price', 'price_currency', 'commission', 'autofx', 'external_id', 'source'] as $key) {
             $form[$key] = $this->str($row, $key);
         }
 
@@ -446,6 +474,8 @@ final readonly class RowFormMapper
             // listing venue and the ISIN has to be recomputable on every post -
             // import warnings are dropped by the time the user edits anything.
             'exchange' => $trade->instrument->exchangeCode ?? '',
+            'asset' => $trade->kind->value,
+            'effect' => $trade->effect->value ?? '',
             'date' => $trade->date->format('Y-m-d'),
             'time' => $trade->date->format('H:i:s'),
             'side' => $trade->isBuy() ? 'BUY' : 'SELL',

@@ -21,12 +21,17 @@ final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
 {
     protected function recordCount(ImportResult $result): int
     {
-        return count($result->positions);
+        return count(self::stockPositions($result));
     }
 
+    /**
+     * The own format has no kind and no direction: a written option would come
+     * back as a stock settled in the year it was opened, and an expiry's zero
+     * leg would not come back at all.
+     */
     protected function render(ImportResult $result): string
     {
-        return $this->csvWriter->writePositions($result->positions);
+        return $this->csvWriter->writePositions(self::stockPositions($result));
     }
 
     protected function emptyMessage(): string
@@ -49,7 +54,16 @@ final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
      */
     protected function afterWrite(SymfonyStyle $io, ImportResult $result): void
     {
-        foreach ($result->positions as $position) {
+        $options = count($result->positions) - count(self::stockPositions($result));
+        if ($options > 0) {
+            $io->warning(sprintf(
+                'Pominięto %d pozycj(ę/e/i) opcyjn(ą/e/ych) - format własny nie ma dla nich reprezentacji. '
+                .'Rozlicz je przez app:calculate-from-file albo w aplikacji WWW.',
+                $options,
+            ));
+        }
+
+        foreach (self::stockPositions($result) as $position) {
             if ('' === $position->countryCode) {
                 $io->note(
                     'Kolumna "country" jest pusta - uzupełnij kraj uzyskania dochodu przed rozliczeniem PIT/ZG.',
@@ -63,5 +77,16 @@ final class ConvertInteractivebrokersCommand extends AbstractConvertCommand
             'Kolumna "country" została wypełniona na podstawie giełdy notowania podanej w pliku. To kraj '
             .'notowania papieru, nie zawsze kraj źródła dochodu - sprawdź ją przed rozliczeniem PIT/ZG.',
         );
+    }
+
+    /**
+     * @return list<\App\Model\ClosedPosition>
+     */
+    private static function stockPositions(ImportResult $result): array
+    {
+        return array_values(array_filter(
+            $result->positions,
+            static fn (\App\Model\ClosedPosition $position): bool => !$position->isOption(),
+        ));
     }
 }

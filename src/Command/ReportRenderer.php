@@ -22,17 +22,26 @@ final class ReportRenderer
     {
         $stock = $report->stock;
 
-        $io->section(sprintf('Akcje i ETF-y — PIT-38, część C (rok %d)', $report->taxYear));
+        $io->section(sprintf(
+            '%s — PIT-38, część C (rok %d)',
+            $stock->hasOptions() ? 'Akcje, ETF-y i opcje' : 'Akcje i ETF-y',
+            $report->taxYear,
+        ));
 
         if ([] === $stock->positions) {
             $io->text('Brak pozycji zamkniętych w tym roku podatkowym.');
         } else {
             $io->table(
-                ['Lp.', 'Instrument', 'Kraj', 'Waluta', 'Zakup', 'Kurs', 'Koszt PLN', 'Sprzedaż', 'Kurs', 'Przychód PLN', 'Dochód PLN'],
+                ['Lp.', 'Instrument', 'Rodzaj', 'Kraj', 'Waluta', 'Zakup', 'Kurs', 'Koszt PLN', 'Sprzedaż', 'Kurs', 'Przychód PLN', 'Dochód PLN'],
                 array_map(
                     static fn (int $index, $item): array => [
                         $index + 1,
                         $item->position->name,
+                        match (true) {
+                            !$item->position->isOption() => 'Akcje',
+                            $item->position->isShort() => 'Opcja krótka',
+                            default => 'Opcja długa',
+                        },
                         $item->position->countryCode ?: '—',
                         $item->position->currency,
                         $item->position->buyDate->format('Y-m-d'),
@@ -46,6 +55,15 @@ final class ReportRenderer
                     array_keys($stock->positions),
                     $stock->positions,
                 ),
+            );
+        }
+
+        if ($stock->hasOptions()) {
+            $io->note(
+                'Opcje rozliczono w dniu zamknięcia pozycji - odkupu lub sprzedaży zamykającej, wygaśnięcia albo '
+                .'przydziału - nigdy w dniu otwarcia (art. 17 ust. 1b ustawy o PIT; interpretacja KIS '
+                .'0113-KDIPT2-3.4011.645.2025.3.KKA). Przy opcji krótkiej "Zakup" to zamknięcie, a "Sprzedaż" '
+                .'to wystawienie; premię przeliczono kursem sprzed zamknięcia.',
             );
         }
 

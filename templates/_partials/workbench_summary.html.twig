@@ -25,7 +25,7 @@
 
     <div class="pit-grid">
         <section class="pit-card" aria-labelledby="pit-akcje">
-            <h3 id="pit-akcje">Akcje i ETF-y</h3>
+            <h3 id="pit-akcje">{{ stock.hasOptions ? 'Akcje, ETF-y i opcje' : 'Akcje i ETF-y' }}</h3>
             <dl class="pit-fields">
                 <div><dt>Pole {{ form_map.stock_revenue }} — Przychód</dt><dd>{{ stock.totalRevenue|money }} zł</dd></div>
                 <div><dt>Pole {{ form_map.stock_cost }} — Koszty uzyskania przychodu</dt><dd>{{ stock.totalCost|money }} zł</dd></div>
@@ -44,7 +44,13 @@
                 <p class="reconciliation">
                     W przychodzie i w kosztach: <strong>{{ stock.disposalCost|money }} zł</strong>
                     prowizji i opłat AutoFX od sprzedaży. Przychodem jest kwota należna, a te opłaty
-                    są kosztem odpłatnego zbycia — dochód jest ten sam.
+                    są kosztem odpłatnego zbycia{{ stock.hasOptions ? ' — przy opcji wystawionej prowizja od wystawienia jest przeliczana kursem z dnia wystawienia, a przychód z dnia zamknięcia' : ' — dochód jest ten sam' }}.
+                </p>
+            {% endif %}
+            {% if stock.hasOptions %}
+                <p class="reconciliation">
+                    W tym opcje: przychód <strong>{{ stock.optionRevenue|money }} zł</strong>, koszty
+                    <strong>{{ stock.optionCost|money }} zł</strong>. Premie rozliczono w dniu zamknięcia pozycji.
                 </p>
             {% endif %}
             {% if stock.accountingFees is not empty %}

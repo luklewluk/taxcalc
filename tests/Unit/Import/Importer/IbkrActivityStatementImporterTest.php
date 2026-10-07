@@ -5,6 +5,9 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Import\Importer;
 
 use App\Fifo\FifoMatcher;
+use App\Fifo\InstrumentKind;
+use App\Fifo\PositionDirection;
+use App\Fifo\PositionEffect;
 use App\Import\CsvSource;
 use App\Import\Importer\IbkrActivityStatementImporter;
 use App\Import\ImportMessage;
@@ -34,6 +37,17 @@ final class IbkrActivityStatementImporterTest extends TestCase
     private const string FII_AAA = 'Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,';
 
     private const string FII_BBB = 'Financial Instrument Information,Data,Stocks,BBB,BETA ETF,1002,IE000BETA002,BBB,LSEETF,1,ETF,';
+
+    private const string FII_OPTIONS_HEADER = 'Financial Instrument Information,Header,Asset Category,Symbol,Description,'
+        .'Conid,Underlying,Listing Exch,Multiplier,Expiry,Delivery Month,Type,Strike,Code';
+
+    private const string PUT = 'AAA 16JAN26 50 P';
+
+    // As IBKR prints it: the OCC code as the symbol, the trades' symbol as the description.
+    private const string FII_PUT = 'Financial Instrument Information,Data,Equity and Index Options,AAA   260116P00050000,'
+        .'AAA 16JAN26 50 P,2001,AAA,CBOE,100,2026-01-16,2026-01,P,50,';
+
+    private const string OPTIONS = 'Equity and Index Options';
 
     private const string DIVIDENDS_HEADER = 'Dividends,Header,Currency,Date,Description,Amount';
 
@@ -380,6 +394,126 @@ final class IbkrActivityStatementImporterTest extends TestCase
         self::assertSame([], $result->dividends);
     }
 
+    public function testAWrittenPutThatExpiresSettlesInTheExpiryYear(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2025-12-15, 15:00:00', '-1', '0.99', '99', '-1', 'O'),
+            self::option('2026-01-16, 16:20:00', '1', '0', '0', '0', 'C;Ep'),
+        ]));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions);
+
+        $position = $result->positions[0];
+        self::assertSame(InstrumentKind::Option, $position->kind);
+        self::assertSame(PositionDirection::Short, $position->direction);
+        self::assertSame(self::PUT, $position->symbol);
+        self::assertSame('US', $position->countryCode);
+        self::assertSame('98.00', (string) $position->sellAmount->value());
+        self::assertSame('1.00', (string) $position->sellCommission?->value());
+        self::assertSame('0.00', (string) $position->buyAmount->value());
+        self::assertSame(2026, $position->taxYear());
+    }
+
+    public function testTheOpenCloseCodeBecomesTheDeclaredEffect(): void
+    {
+        $extraction = (new IbkrActivityStatementImporter(new FifoMatcher()))->extractTrades(new CsvSource('as.csv', self::withOptions([
+            self::option('2026-03-02, 10:00:00', '1', '1.2', '-120', '-0.65', 'O'),
+            self::option('2026-03-09, 10:00:00', '-2', '2', '200', '-1.30', 'C;O'),
+            self::option('2026-03-20, 10:00:00', '1', '0.5', '-50', '-0.65', 'C;P'),
+        ])));
+
+        self::assertSame(
+            [PositionEffect::Open, PositionEffect::CloseThenOpen, PositionEffect::Close],
+            array_map(static fn ($trade): ?PositionEffect => $trade->effect, $extraction->trades),
+        );
+        self::assertSame(self::PUT.'@USD', $extraction->trades[0]->fifoPool);
+        self::assertSame('XCBO', $extraction->trades[0]->instrument?->exchangeCode);
+    }
+
+    public function testAnOptionRowWithoutAnOpenOrCloseCodeIsFatal(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2026-03-02, 10:00:00', '1', '1.2', '-120', '-0.65', 'P'),
+        ]));
+
+        self::assertNotSame([], $result->errors());
+    }
+
+    public function testAnExpiryThatMovedCashIsFatal(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2025-12-15, 15:00:00', '-1', '0.99', '99', '-1', 'O'),
+            self::option('2026-01-16, 16:20:00', '1', '0.1', '-10', '0', 'C;Ep'),
+        ]));
+
+        self::assertNotSame([], $result->errors());
+    }
+
+    public function testAClosingSaleAtZeroThatCostAFeeIsFatal(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2025-12-15, 15:00:00', '1', '1.2', '-120', '-0.65', 'O'),
+            self::option('2026-01-16, 16:20:00', '-1', '0', '0', '-0.65', 'C;Ep'),
+        ]));
+
+        self::assertNotSame([], $result->errors());
+    }
+
+    public function testAnAssignedPutDeliversTheSharesAtTheStrikeAndSaysSo(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2026-03-02, 10:00:00', '-1', '2', '200', '-1.05', 'O'),
+            self::option('2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C'),
+            self::trade('AAA', '2026-04-17, 16:20:00', '100', '50', '-5000', '0', 'A;O'),
+        ]));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions, 'The option closes; the shares stay open.');
+        $review = self::joined(self::ofLevel($result->messages, MessageLevel::Review));
+        self::assertStringContainsString(self::PUT, $review);
+        self::assertStringContainsString('cenie wykonania', $review);
+    }
+
+    public function testAnAssignmentWithoutDeliveredSharesIsFatal(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2026-03-02, 10:00:00', '-1', '2', '200', '-1.05', 'O'),
+            self::option('2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C'),
+        ]));
+
+        self::assertStringContainsString('rozliczona pieniężnie', self::joined($result->errors()));
+    }
+
+    public function testACashSettledExerciseClosesAtItsAmount(): void
+    {
+        $result = $this->import(self::withOptions([
+            self::option('2026-03-02, 10:00:00', '1', '2', '-200', '-1.05', 'O'),
+            self::option('2026-04-17, 16:20:00', '-1', '0', '350', '0', 'C;Ex'),
+        ]));
+
+        self::assertSame([], $result->errors());
+        self::assertSame('350.00', (string) $result->positions[0]->sellAmount->value());
+        self::assertStringContainsString('pieniężne', self::joined(self::ofLevel($result->messages, MessageLevel::Review)));
+    }
+
+    public function testAnOptionClosedInALaterStatementNeedsTheEarlierOne(): void
+    {
+        $importer = new IbkrActivityStatementImporter(new FifoMatcher());
+        $older = $importer->extractTrades(new CsvSource('2025.csv', self::withOptions([
+            self::option('2025-12-15, 15:00:00', '-1', '0.99', '99', '-1', 'O'),
+        ])));
+        $newer = $importer->extractTrades(new CsvSource('2026.csv', self::withOptions([
+            self::option('2026-01-16, 16:20:00', '1', '0', '0', '0', 'C;Ep'),
+        ])));
+
+        self::assertCount(1, $importer->matchTrades([...$older->trades, ...$newer->trades])->positions);
+
+        $alone = $importer->matchTrades($newer->trades);
+        self::assertSame([], $alone->positions);
+        self::assertStringContainsString('Activity Statement', self::joined($alone->errors()));
+    }
+
     /**
      * @param list<string> $trades
      * @param list<string> $instruments
@@ -415,6 +549,19 @@ final class IbkrActivityStatementImporterTest extends TestCase
             $commission,
             $code,
         );
+    }
+
+    /**
+     * @param list<string> $trades
+     */
+    private static function withOptions(array $trades): string
+    {
+        return self::statement($trades, [self::FII_AAA, self::FII_OPTIONS_HEADER, self::FII_PUT]);
+    }
+
+    private static function option(string $when, string $quantity, string $price, string $proceeds, string $commission, string $code): string
+    {
+        return self::trade(self::PUT, $when, $quantity, $price, $proceeds, $commission, $code, category: self::OPTIONS);
     }
 
     private function import(string $content): ImportResult

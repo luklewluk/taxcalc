@@ -49,27 +49,11 @@ final readonly class WorkbenchCalculator
             }
 
             try {
-                $positions[] = new ClosedPosition(
+                $positions[] = ClosedPosition::fromMatch(
+                    $match,
                     $name,
                     $country,
-                    $match->buyCost->currency(),
-                    $match->buyDate->setTime(0, 0),
-                    $match->buyCost,
-                    $match->sellDate->setTime(0, 0),
-                    $match->sellProceeds,
-                    $match->quantity,
                     self::source($match->buySource, $match->sellSource),
-                    $match->lineageKey(),
-                    $match->buyCommission,
-                    $match->sellCommission,
-                    $match->buyAutoFx,
-                    $match->sellAutoFx,
-                    $match->broker,
-                    $match->symbol,
-                    $match->buyTradeId,
-                    $match->sellTradeId,
-                    $match->buyUnitPrice,
-                    $match->sellUnitPrice,
                 );
             } catch (InvalidRecordException $e) {
                 $message = sprintf('Pozycja %s: %s', $name, $e->getMessage());
@@ -91,6 +75,17 @@ final readonly class WorkbenchCalculator
                 $message,
                 'transactions',
                 $sell->tradeId ?: null,
+            );
+        }
+
+        foreach ($fifo->violations as $violation) {
+            $message = $violation->describe();
+            $errors[] = $message;
+            $diagnostics[] = Diagnostic::blocking(
+                'fifo.'.$violation->kind->value,
+                $message,
+                'transactions',
+                $violation->tradeId ?: null,
             );
         }
 

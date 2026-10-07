@@ -42,20 +42,31 @@ final class IbkrActivityStatementFlowTest extends WebTestCase
         self::assertSame(0, $crawler->filter('.message--error')->count(), $crawler->filter('body')->text());
 
         $payload = $crawler->filter('form[data-workbench]')->form()->getPhpValues();
-        self::assertCount(4, $payload['trades']);
+        // Five stock rows (one from an assignment) and six option rows.
+        self::assertCount(11, $payload['trades']);
 
         $countries = [];
+        $assets = [];
         foreach ($payload['trades'] as $trade) {
             $countries[$trade['symbol']] = $trade['country'];
+            $assets[$trade['asset']] = ($assets[$trade['asset']] ?? 0) + 1;
             self::assertSame('IBKR', $trade['broker']);
         }
-        self::assertSame(['AAA' => 'US', 'BBB' => 'GB'], $countries);
+        self::assertSame('US', $countries['AAA']);
+        self::assertSame('GB', $countries['BBB']);
+        self::assertSame('US', $countries['AAA 21MAR25 90 P'], 'An option follows its exchange (CBOE).');
+        self::assertSame(['STK' => 5, 'OPT' => 6], $assets);
 
         self::assertCount(1, $payload['dividends']);
         self::assertSame('US', $payload['dividends'][0]['country']);
         self::assertSame('0.75', $payload['dividends'][0]['tax_paid']);
 
-        self::assertStringContainsString('ALFA CORP', $crawler->filter('#panel-fifo')->text());
+        $fifo = $crawler->filter('#panel-fifo')->text();
+        self::assertStringContainsString('ALFA CORP', $fifo);
+        self::assertStringContainsString('opcja · krótka', $fifo);
+        self::assertStringContainsString('opcja · długa', $fifo);
+
+        self::assertStringContainsString('cenie wykonania', $crawler->filter('#panel-attention')->text());
     }
 
     public function testAStatementCannotJoinAWorkbenchThatAlreadySettlesTheSameTickerFromFlex(): void

@@ -351,6 +351,8 @@ final readonly class CsvImportService
                 self::optionalAmountSignature($trade->unitPrice),
                 self::optionalAmountSignature($trade->commission),
                 self::optionalAmountSignature($trade->autoFx),
+                $trade->kind->value,
+                $trade->effect->value ?? '',
             ]);
 
             if (TradeIdScope::Fill === $idScope) {
@@ -541,6 +543,8 @@ final readonly class CsvImportService
                 self::sumOptional($first->autoFx, $trade->autoFx),
                 $first->id(),
                 $first->fifoPool,
+                $first->kind,
+                $first->effect,
             );
             ++$merged;
         }
