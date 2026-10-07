@@ -517,11 +517,11 @@ final class DegiroBatchImportTest extends TestCase
     }
 
     /**
-     * A sale with no matching purchase means the cost basis is missing, so the
-     * gain would be overstated for that position and the rest of the return
-     * would look complete. Nothing may survive that.
+     * A sale with no matching purchase has no cost basis. It is left out with a
+     * warning that names it, and the rest of the batch still imports - the user
+     * sees every transaction and can upload the missing earlier statement.
      */
-    public function testAnUncoveredSellEmptiesTheWholeBatchEvenWhenOtherPositionsAreFine(): void
+    public function testAnUncoveredSellIsLeftOutWithAWarningWhileTheRestImports(): void
     {
         $result = $this->import([
             'degiro.csv' => self::degiro([
@@ -531,9 +531,9 @@ final class DegiroBatchImportTest extends TestCase
             ]),
         ]);
 
-        self::assertSame([], $result->positions);
-        self::assertNotEmpty($result->errors());
-        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->errors()));
+        self::assertCount(1, $result->positions);
+        self::assertSame([], $result->errors());
+        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->warnings()));
     }
 
     public function testACorporateActionRowEmptiesTheWholeBatchEvenWhenOtherPositionsAreFine(): void
@@ -551,7 +551,7 @@ final class DegiroBatchImportTest extends TestCase
         self::assertStringContainsString('korporacyjn', implode(' ', $result->errors()));
     }
 
-    public function testAnIbkrUncoveredSellAlsoEmptiesTheBatch(): void
+    public function testAnIbkrUncoveredSellIsAlsoAWarning(): void
     {
         $result = $this->import([
             'ibkr.csv' => self::ibkr([
@@ -561,8 +561,9 @@ final class DegiroBatchImportTest extends TestCase
             ]),
         ]);
 
-        self::assertSame([], $result->positions);
-        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->errors()));
+        self::assertCount(1, $result->positions);
+        self::assertSame([], $result->errors());
+        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->warnings()));
     }
 
     public function testAnIbkrConflictIsStillFatalWithTheIbkrColumnNamed(): void

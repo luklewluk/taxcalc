@@ -11,6 +11,7 @@ use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
 use App\Fifo\Trade;
+use App\Fifo\UnmatchedSell;
 use App\Import\CsvFormat;
 use App\Import\CsvSource;
 use App\Import\Degiro\DegiroCsvReader;
@@ -447,18 +448,12 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
         }
 
         foreach ($fifo->unmatchedSells as $unmatched) {
-            // Fatal, not a warning: without the buy leg the cost basis is
-            // missing, so that sale's whole proceeds would look like gain. A
-            // return that silently omits one position while settling the rest
-            // is worse than no result at all.
-            $messages[] = ImportMessage::error('Import', sprintf(
-                'Sprzedaż %s z dnia %s (%s szt.) nie ma pokrycia w zakupach z wgranych plików, '
-                .'więc nie da się ustalić kosztu nabycia. Dograj wcześniejsze zestawienie transakcji '
-                .'DEGIRO albo uzupełnij tę pozycję ręcznie w formacie własnym.',
-                $unmatched->symbol,
-                $unmatched->date->format('Y-m-d'),
-                (string) $unmatched->quantity,
-            ));
+            // No buy leg means no cost basis: the sale is left out of the
+            // result and reported - never silently - while the rest of the
+            // statement stays usable and the user adds the earlier one.
+            $messages[] = ImportMessage::review('Import', $unmatched->describe())
+                ->forTab('transactions')
+                ->withCode(UnmatchedSell::CODE);
         }
 
         if ($unknownCountry) {

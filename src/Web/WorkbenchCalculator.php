@@ -6,6 +6,8 @@ namespace App\Web;
 
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
+use App\Fifo\FifoViolationKind;
+use App\Fifo\UnmatchedSell;
 use App\Fifo\Trade;
 use App\Model\ClosedPosition;
 
@@ -62,31 +64,32 @@ final readonly class WorkbenchCalculator
             }
         }
 
+        // A sale (or an option close) with nothing to match is left out of the
+        // result, never silently: a review item on its row says which one and
+        // that an earlier statement is missing. It does not block the result -
+        // the user sees every other figure while they add the missing year.
         foreach ($fifo->unmatchedSells as $sell) {
-            $message = sprintf(
-                'Sprzedaż %s z dnia %s (%s szt.) nie ma pokrycia w zakupach tej samej puli FIFO.',
-                $sell->symbol,
-                $sell->date->format('Y-m-d'),
-                (string) $sell->quantity,
-            );
-            $errors[] = $message;
-            $diagnostics[] = Diagnostic::blocking(
-                'fifo.unmatched_sell',
-                $message,
+            $diagnostics[] = Diagnostic::review(
+                UnmatchedSell::CODE,
+                $sell->describe(),
                 'transactions',
                 $sell->tradeId ?: null,
             );
         }
 
         foreach ($fifo->violations as $violation) {
+            $code = 'fifo.'.$violation->kind->value;
+            if (FifoViolationKind::UnmatchedClose === $violation->kind) {
+                $diagnostics[] = Diagnostic::review($code, $violation->describe(), 'transactions', $violation->tradeId ?: null);
+
+                continue;
+            }
+
+            // The rest contradict the data itself (an open against an open
+            // position, a missing open/close, stocks and options in one queue).
             $message = $violation->describe();
             $errors[] = $message;
-            $diagnostics[] = Diagnostic::blocking(
-                'fifo.'.$violation->kind->value,
-                $message,
-                'transactions',
-                $violation->tradeId ?: null,
-            );
+            $diagnostics[] = Diagnostic::blocking($code, $message, 'transactions', $violation->tradeId ?: null);
         }
 
         return new SettlementResult($positions, $fifo->matches, $errors, $diagnostics);

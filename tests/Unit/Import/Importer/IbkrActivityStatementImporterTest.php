@@ -159,14 +159,24 @@ final class IbkrActivityStatementImporterTest extends TestCase
         self::assertSame('400.40', (string) $result->positions[0]->buyAmount->value());
     }
 
-    public function testASaleWithoutAPurchaseIsFatalAndPointsAtTheEarlierStatement(): void
+    public function testASaleWithoutAPurchaseIsLeftOutWithAWarningAndTheRestImports(): void
     {
         $result = $this->import(self::statement([
             self::trade('AAA', '2026-02-02, 15:30:00', '-4', '120', '480', '-1', 'C'),
+            self::trade('BBB', '2026-03-03, 10:00:00', '1', '50', '-50', '-1'),
+            self::trade('BBB', '2026-04-03, 10:00:00', '-1', '55', '55', '-1', 'C'),
         ]));
 
-        self::assertSame([], $result->positions);
-        self::assertStringContainsString('Activity Statement', self::joined($result->errors()));
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->positions, 'The covered sale still settles.');
+        self::assertSame('BBB', $result->positions[0]->symbol);
+
+        $review = self::ofLevel($result->messages, MessageLevel::Review);
+        $unmatched = array_values(array_filter($review, static fn (ImportMessage $m): bool => 'fifo.unmatched_sell' === $m->code));
+        self::assertCount(1, $unmatched);
+        self::assertStringContainsString('AAA', $unmatched[0]->message);
+        self::assertStringContainsString('wcześniejszy rok', $unmatched[0]->message);
+        self::assertSame('transactions', $unmatched[0]->targetTab);
     }
 
     public function testIdenticalRowsInOneFileAreTwoTrades(): void
@@ -658,7 +668,8 @@ final class IbkrActivityStatementImporterTest extends TestCase
 
         $alone = $importer->matchTrades($newer->trades);
         self::assertSame([], $alone->positions);
-        self::assertStringContainsString('Activity Statement', self::joined($alone->errors()));
+        self::assertSame([], $alone->errors());
+        self::assertStringContainsString('wcześniejszy rok', self::joined(self::ofLevel($alone->messages, MessageLevel::Review)));
     }
 
     /**

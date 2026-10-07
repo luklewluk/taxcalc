@@ -86,6 +86,29 @@ final class IbkrActivityStatementFlowTest extends WebTestCase
         self::assertStringContainsString('cały upload odrzucono', mb_strtolower($crawler->filter('body')->text()));
     }
 
+    public function testASaleWithoutItsPurchaseStillOpensTheWorkbenchWithOneWarningAndAResult(): void
+    {
+        // The 2025 statement alone: the sale of an instrument bought in 2024.
+        $statement = "Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,Title,Activity Statement\n"
+            ."Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code\n"
+            ."Trades,Data,Order,Stocks,USD,AAA,\"2025-02-27, 10:00:00\",-31,500,500,15500,-1,0,0,0,C\n"
+            ."Trades,Data,Order,Stocks,USD,BBB,\"2025-03-03, 10:00:00\",1,50,50,-50,-1,51,0,0,O\n"
+            ."Trades,Data,Order,Stocks,USD,BBB,\"2025-04-03, 10:00:00\",-1,55,55,55,-1,-51,3,0,C\n"
+            ."Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code\n"
+            ."Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,\n"
+            ."Financial Instrument Information,Data,Stocks,BBB,BETA ETF,1002,IE000BETA002,BBB,LSEETF,1,ETF,\n";
+
+        $client = static::createClient();
+        $crawler = $this->import($client, ['2025.csv' => $statement]);
+
+        self::assertCount(3, $crawler->filter('form[data-workbench]')->form()->getPhpValues()['trades']);
+        self::assertSame(1, $crawler->filter('[data-diagnostic-code="fifo.unmatched_sell"]')->count());
+        self::assertSame(1, substr_count($crawler->filter('#panel-attention')->text(), 'nie ma pokrycia'));
+        self::assertStringContainsString('wcześniejszy rok', $crawler->filter('#panel-attention')->text());
+        self::assertStringContainsString('BETA ETF', $crawler->filter('#panel-fifo')->text(), 'The covered sale settles.');
+    }
+
     private static function sample(): string
     {
         return (string) file_get_contents(dirname(__DIR__, 2).'/examples/ibkr-activity-statement.csv');

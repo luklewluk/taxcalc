@@ -10,7 +10,11 @@ namespace App\Fifo;
  */
 enum FifoViolationKind: string
 {
-    /** A close found no open position on the opposite side to close. */
+    /**
+     * A close found no open position on the opposite side to close - an earlier
+     * statement is missing. Like an unmatched stock sale, a review item that
+     * leaves the close out; every other kind contradicts the data and blocks.
+     */
     case UnmatchedClose = 'option_unmatched_close';
     /** An open while the opposite side still had lots - a close declared as an open. */
     case OpenAgainstOpposite = 'option_open_against_position';

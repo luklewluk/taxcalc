@@ -100,6 +100,12 @@ use Symfony\Component\Routing\Attribute\Route;
  */
 final class CalculatorController extends AbstractController
 {
+    /**
+     * Import findings that {@see WorkbenchCalculator::settle()} reports again on
+     * every post (a sale or an option close an earlier statement would cover).
+     */
+    private const array WORKBENCH_RAISED_IMPORT_CODES = ['fifo.unmatched_sell', 'fifo.option_unmatched_close'];
+
     private const string CSRF_TOKEN_ID = 'kalkulator';
 
     public function __construct(
@@ -319,6 +325,12 @@ final class CalculatorController extends AbstractController
             // act on this", so it earns an item in the panel. `targetTab` is not
             // the signal: CsvImportService stamps one onto every message of a
             // file (see resultWithMessageTarget()).
+            // The workbench raises these itself on every recalculation, with a
+            // link to the row; repeating the import's copy would list them twice.
+            if (in_array($message->code, self::WORKBENCH_RAISED_IMPORT_CODES, true)) {
+                continue;
+            }
+
             if (MessageLevel::Review === $message->level) {
                 $diagnostics[] = Diagnostic::review(
                     'import.review',

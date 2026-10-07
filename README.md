@@ -331,7 +331,9 @@ zawiera transakcje, dywidendy i podatek u źródła. Format jest rozpoznawany po
 - **Pomijane** są wymiany walut (`Forex`). Inne klasy aktywów (np. futures, obligacje) są
   pomijane z pozycją w „Wymaga uwagi”, bo pola PIT-38 ich nie obejmują.
 - **Przerywają import:** operacje korporacyjne (sekcja `Corporate Actions` albo wiersz bez
-  kwoty), transakcje anulowane lub korygowane (kody `Ca`, `Co`) i sprzedaż bez zakupu.
+  kwoty) oraz transakcje anulowane lub korygowane (kody `Ca`, `Co`).
+- **Sprzedaż bez zakupu** w wgranych plikach (zwykle brakuje wcześniejszego roku) jest pomijana
+  w wyniku z pozycją w „Wymaga uwagi”, która ją wskazuje; reszta importu działa.
 
 Wyciąg obejmuje najwyżej rok, więc pobierz plik **za każdy rok** od pierwszego zakupu
 papierów, które sprzedawałeś, i wgraj wszystkie naraz. **Nie łącz** Activity Statement z
@@ -676,7 +678,7 @@ Dyrektora KIS 0113-KDIPT2-3.4011.645.2025.3.KKA z 7.11.2025).
   rozliczenia nie ma w pliku.
 - O tym, czy transakcja otwiera, czy zamyka pozycję, decydują kody IBKR `O`/`C` (`C;O` —
   zamknięcie i otwarcie przeciwnej pozycji resztą). Zamknięcie bez otwarcia w wgranych
-  plikach przerywa import, tak jak sprzedaż akcji bez zakupu.
+  plikach jest pomijane z ostrzeżeniem, tak jak sprzedaż akcji bez zakupu.
 - Kraj opcji wynika z giełdy notowania (`CBOE` i inne giełdy opcyjne USA → US).
 - Pozycje opcyjne nie mają reprezentacji w formacie własnym CSV: polecenie konwersji je
   pomija z ostrzeżeniem.
@@ -909,12 +911,13 @@ Rzeczy, których to narzędzie **nie robi** — warto wiedzieć przed użyciem:
   i obiema walutami — nie jest rozliczana w jednej z nich ani pomijana. Przelicz ją ręcznie
   i dopisz w formacie własnym.
 - **Nie liczy różnic kursowych na rachunku walutowym** ani odsetek.
-- **Nie obsługuje krótkiej sprzedaży, a sprzedaż bez pokrycia przerywa import.**
-  Sprzedaż, do której w żadnym wgranym pliku nie ma zakupu, nie ma kosztu nabycia — cały
-  jej przychód wyglądałby jak dochód. Taki wiersz jest **błędem**, więc żadna pozycja
-  z tego importu nie trafia do wyniku: rozliczenie części pozycji z cicho pominiętą jedną
-  jest groźniejsze niż brak wyniku. Dograj wcześniejsze zestawienie albo dopisz brakującą
-  pozycję w formacie własnym. Dotyczy to zarówno DEGIRO, jak i Interactive Brokers.
+- **Nie rozlicza sprzedaży bez zakupu ani krótkiej sprzedaży akcji.** Sprzedaż, do której
+  w żadnym wgranym pliku nie ma zakupu, nie ma kosztu nabycia. Import się nie przerywa: taka
+  sprzedaż jest **pomijana w wyniku**, a „Wymaga uwagi” wskazuje ją z nazwy i podpowiada,
+  że brakuje wyciągu za wcześniejszy rok. Pominięcie nigdy nie jest ciche — wynik danego roku
+  jest niepełny, dopóki nie wgrasz wcześniejszego zestawienia (nowe rozliczenie ze wszystkimi
+  plikami) albo nie dopiszesz zakupu w zakładce Transakcje. Brak starszych zakupów może też
+  zmienić koszt późniejszych sprzedaży tego papieru. Dotyczy DEGIRO i Interactive Brokers.
 - **Nie generuje pliku e-Deklaracji ani PDF-a formularza.** Dostajesz wartości do
   samodzielnego wpisania oraz raport CSV i wersję do wydruku.
 - **Tabela stawek umownych jest uproszczona** i wymaga weryfikacji (patrz wyżej).

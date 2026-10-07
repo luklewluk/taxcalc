@@ -108,14 +108,45 @@ final class OptionRowsTest extends TestCase
         self::assertSame(2026, $position->taxYear());
     }
 
-    public function testACloseWithoutAnOpenBlocksTheResultOnItsRow(): void
+    public function testACloseWithoutAnOpenIsAReviewItemOnItsRow(): void
     {
         $close = self::option('1', '0', '0', PositionEffect::Close, '2026-01-16');
         $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle([$close]);
 
-        self::assertNotSame([], $settlement->errors);
+        self::assertSame([], $settlement->errors, 'A missing earlier statement does not block the result.');
         self::assertSame('fifo.option_unmatched_close', $settlement->diagnostics[0]->code);
+        self::assertSame(\App\Web\DiagnosticLevel::Review, $settlement->diagnostics[0]->level);
         self::assertSame($close->id(), $settlement->diagnostics[0]->rowId);
+    }
+
+    public function testAnOptionThatContradictsItselfStillBlocks(): void
+    {
+        $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle([
+            self::option('1', '120', '0.65', PositionEffect::Open, '2026-05-04'),
+            self::option('-1', '199', '0.65', PositionEffect::Open, '2026-06-01'),
+        ]);
+
+        self::assertNotSame([], $settlement->errors);
+        self::assertSame('fifo.option_open_against_position', $settlement->diagnostics[0]->code);
+    }
+
+    public function testAStockSaleWithoutAPurchaseIsAReviewItemAndTheRestSettles(): void
+    {
+        $orphan = new Trade('AAA', new DateTimeImmutable('2025-02-27 10:00:00'), Decimal::of('-31'), Amount::of('15000', 'USD'),
+            'auto:orphan', 'as.csv', new InstrumentDetails('AAA', 'US'), broker: 'IBKR', fifoPool: 'AAA@USD');
+        $buy = new Trade('BBB', new DateTimeImmutable('2025-01-02 10:00:00'), Decimal::of('1'), Amount::of('100', 'USD'),
+            'auto:b', 'as.csv', new InstrumentDetails('BBB', 'US'), broker: 'IBKR', fifoPool: 'BBB@USD');
+        $sell = new Trade('BBB', new DateTimeImmutable('2025-03-02 10:00:00'), Decimal::of('-1'), Amount::of('120', 'USD'),
+            'auto:s', 'as.csv', new InstrumentDetails('BBB', 'US'), broker: 'IBKR', fifoPool: 'BBB@USD');
+
+        $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle([$orphan, $buy, $sell]);
+
+        self::assertSame([], $settlement->errors);
+        self::assertCount(1, $settlement->positions);
+        self::assertSame('fifo.unmatched_sell', $settlement->diagnostics[0]->code);
+        self::assertSame(\App\Web\DiagnosticLevel::Review, $settlement->diagnostics[0]->level);
+        self::assertSame($orphan->id(), $settlement->diagnostics[0]->rowId);
+        self::assertStringContainsString('wcześniejszy rok', $settlement->diagnostics[0]->message);
     }
 
     private static function option(string $quantity, string $total, string $commission, ?PositionEffect $effect, string $date = '2026-01-16'): Trade

@@ -256,10 +256,14 @@ Nine modules under `src/`, ordered from the inside out:
   chronologically regardless of upload order; `ClosedPosition` dates are then set back to
   midnight, because the NBP rate and the tax year are per day. A buy and a sell in the same
   minute are ordered by file order and the ambiguity is reported.
-- **A sale with no purchase is fatal, not a warning.** An unmatched sell has no cost basis,
-  so its whole proceeds would read as gain. Both trade importers emit
-  `ImportMessage::error`, which empties the batch. Settling the other positions and quietly
-  dropping that one produces a return that looks complete.
+- **A sale with no purchase is never silent, but it does not stop the import.** An unmatched
+  sell has no cost basis, so it is left out of the result. Importers report it as
+  `ImportMessage::review` with code `fifo.unmatched_sell` (`UnmatchedSell::describe()`, which
+  points at the missing earlier statement); the workbench raises the same review item on every
+  recalculation, linked to the row, and the controller drops the import's copy so it is listed
+  once. It does not block the result: the user decided they want every other figure while
+  they add the missing year. An option close with nothing to close (`UnmatchedClose`) is
+  treated the same; the other FIFO violations contradict the data and still block.
 - **Options settle when the position closes, never when it opens.** Art. 17 ust. 1 pkt 10 and
   ust. 1b, art. 23 ust. 1 pkt 38a; KIS 0113-KDIPT2-3.4011.645.2025.3.KKA of 2025-11-07 - no
   "premium on receipt" setting. Przychód is always the sell leg and koszt the buy leg; for a
@@ -273,7 +277,8 @@ Nine modules under `src/`, ordered from the inside out:
 - **An option trade declares whether it opens or closes.** IBKR's `O`/`C` codes become
   `Trade::$effect` (`C;O` = close then open with the rest); the form requires it for `OPT`.
   Inferring it from row order would let a buy-to-close whose writing sale was not uploaded
-  open a long lot and lose the premium. A close with nothing to close is fatal both ways.
+  open a long lot and lose the premium. A close with nothing to close is reported (review)
+  and left out, never turned into an open.
 - **The premium never enters the stock's cost basis.** Shares from an assignment enter FIFO
   at the strike; the option settles separately on the assignment day. An `A`/`Ex` option row
   at zero without a Stocks row of its underlying that day was cash-settled with the amount

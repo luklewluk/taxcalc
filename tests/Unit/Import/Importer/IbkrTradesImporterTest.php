@@ -104,13 +104,14 @@ final class IbkrTradesImporterTest extends TestCase
      * Reported, never thrown - but as an error, because a sale with no purchase
      * behind it cannot be settled at all: its whole proceeds would read as gain.
      */
-    public function testSellWithoutABuyBecomesAnErrorNotAnException(): void
+    public function testSellWithoutABuyIsAWarningNotAFailedImport(): void
     {
         $result = $this->import(['"STK","AAA","20240601","-5","15","75.00","1","USD"']);
 
         self::assertSame([], $result->positions);
-        self::assertCount(1, $result->errors());
-        self::assertStringContainsString('AAA', $result->errors()[0]);
+        self::assertSame([], $result->errors());
+        self::assertStringContainsString('AAA', implode(' ', $result->warnings()));
+        self::assertStringContainsString('wcześniejszy rok', implode(' ', $result->warnings()));
     }
 
     public function testMalformedRowIsReportedWithItsLineNumberAndOthersStillImport(): void

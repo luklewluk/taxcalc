@@ -13,6 +13,12 @@ final readonly class ImportMessage
         public string $message,
         /** Explicit workbench destination; never inferred from message text. */
         public ?string $targetTab = null,
+        /**
+         * Machine-readable kind, for a finding the workbench raises again on
+         * every recalculation (see {@see \App\Web\WorkbenchCalculator}); the
+         * import screen then shows only the workbench's own item.
+         */
+        public ?string $code = null,
     ) {
     }
 
@@ -52,6 +58,11 @@ final readonly class ImportMessage
 
     public function forTab(string $targetTab): self
     {
-        return new self($this->level, $this->file, $this->line, $this->message, $targetTab);
+        return new self($this->level, $this->file, $this->line, $this->message, $targetTab, $this->code);
+    }
+
+    public function withCode(string $code): self
+    {
+        return new self($this->level, $this->file, $this->line, $this->message, $this->targetTab, $code);
     }
 }

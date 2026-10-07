@@ -10,6 +10,7 @@ use App\Exception\InvalidNumberException;
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
 use App\Fifo\Trade;
+use App\Fifo\UnmatchedSell;
 use App\Import\CsvFormat;
 use App\Import\CsvSource;
 use App\Import\ImportMessage;
@@ -218,20 +219,12 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         }
 
         foreach ($fifo->unmatchedSells as $unmatched) {
-            $symbol = $unmatched->symbol;
-
-            // Fatal, not a warning: without its buy leg a sale has no cost
-            // basis, so its whole proceeds would read as gain. Settling the
-            // other positions and quietly leaving this one out produces a
-            // return that looks complete and is not.
-            $messages[] = ImportMessage::error('Import', sprintf(
-                'Sprzedaż %s z dnia %s (%s szt.) nie ma pokrycia w zakupach z wgranych plików, '
-                .'więc nie da się ustalić kosztu nabycia. Dograj wcześniejsze zestawienie transakcji '
-                .'albo uzupełnij tę pozycję ręcznie w formacie własnym.',
-                $symbol,
-                $unmatched->date->format('Y-m-d'),
-                (string) $unmatched->quantity,
-            ));
+            // No buy leg means no cost basis: the sale is left out of the
+            // result and reported - never silently - while the rest of the
+            // statement stays usable and the user adds the earlier one.
+            $messages[] = ImportMessage::review('Import', $unmatched->describe())
+                ->forTab('transactions')
+                ->withCode(UnmatchedSell::CODE);
         }
 
         if ([] !== $positions) {

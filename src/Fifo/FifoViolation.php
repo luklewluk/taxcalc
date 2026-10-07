@@ -29,8 +29,9 @@ final readonly class FifoViolation
 
         return match ($this->kind) {
             FifoViolationKind::UnmatchedClose => sprintf(
-                'Zamknięcie %s z dnia %s (%s szt.) nie ma otwartej pozycji do zamknięcia, więc nie da się '
-                .'ustalić premii. Dograj wcześniejsze zestawienie z otwarciem tej opcji.',
+                'Zamknięcie opcji %s z dnia %s (%s szt.) nie ma otwarcia w wgranych plikach i zostało '
+                .'pominięte w rozliczeniu. Najpewniej brakuje wyciągu za wcześniejszy rok: zacznij nowe '
+                .'rozliczenie i wgraj wszystkie wyciągi od roku otwarcia tej opcji.',
                 $this->symbol,
                 $day,
                 (string) $this->quantity,

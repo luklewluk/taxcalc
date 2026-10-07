@@ -9,10 +9,12 @@ use App\Exception\InvalidDateException;
 use App\Exception\InvalidNumberException;
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
+use App\Fifo\FifoViolationKind;
 use App\Fifo\InstrumentDetails;
 use App\Fifo\InstrumentKind;
 use App\Fifo\PositionEffect;
 use App\Fifo\Trade;
+use App\Fifo\UnmatchedSell;
 use App\Import\CsvFormat;
 use App\Import\CsvSource;
 use App\Import\Degiro\ExchangeCountry;
@@ -495,24 +497,23 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             }
         }
 
+        // A sale or an option close with nothing to match has no cost basis or
+        // premium: it is left out of the result and reported - never silently -
+        // so the rest of the statement stays usable while the user adds the
+        // earlier one.
         foreach ($fifo->unmatchedSells as $unmatched) {
-            // Fatal, not a warning: without its buy leg a sale has no cost
-            // basis, so its whole proceeds would read as gain.
-            $messages[] = ImportMessage::error('Import', sprintf(
-                'Sprzedaż %s z dnia %s (%s szt.) nie ma pokrycia w zakupach z wgranych plików, '
-                .'więc nie da się ustalić kosztu nabycia. Dograj Activity Statement za wcześniejszy rok, '
-                .'w którym kupowałeś ten papier.',
-                $unmatched->symbol,
-                $unmatched->date->format('Y-m-d'),
-                (string) $unmatched->quantity,
-            ));
+            $messages[] = ImportMessage::review('Import', $unmatched->describe())
+                ->forTab('transactions')
+                ->withCode(UnmatchedSell::CODE);
         }
 
         foreach ($fifo->violations as $violation) {
-            // As fatal as a sale without a purchase: a close without its open
-            // has no premium, and settling around it would drop the income.
-            $messages[] = ImportMessage::error('Import', $violation->describe()
-                .' Jeśli opcja została otwarta wcześniej, dograj Activity Statement za tamten rok.');
+            $messages[] = FifoViolationKind::UnmatchedClose === $violation->kind
+                ? ImportMessage::review('Import', $violation->describe())
+                    ->forTab('transactions')
+                    ->withCode('fifo.'.$violation->kind->value)
+                // The rest contradict the data itself and stop the import.
+                : ImportMessage::error('Import', $violation->describe());
         }
 
         if ($unknownCountry) {

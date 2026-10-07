@@ -198,11 +198,11 @@ final class ConvertCommandsTest extends KernelTestCase
     }
 
     /**
-     * Converting a file that holds a sale with no purchase behind it would write
-     * a normalized CSV quietly missing that position. The conversion stops
-     * instead, and says which instrument is the problem.
+     * A sale with no purchase behind it has no cost basis, so it cannot become a
+     * closed position. The conversion writes the positions it can settle and
+     * names the uncovered sale in a warning - never silently.
      */
-    public function testUnmatchedSellStopsTheConversionInsteadOfWritingAnIncompleteFile(): void
+    public function testUnmatchedSellIsLeftOutOfTheConversionWithAWarning(): void
     {
         $input = $this->file('"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"'."\n"
             .'"STK","AAA","20240601","-5","15","75.00","1","USD"'."\n"
@@ -215,9 +215,11 @@ final class ConvertCommandsTest extends KernelTestCase
             'output_path' => $output,
         ]);
 
-        self::assertSame(Command::FAILURE, $tester->getStatusCode());
+        self::assertSame(Command::SUCCESS, $tester->getStatusCode(), $tester->getDisplay());
         self::assertStringContainsString('AAA', $tester->getDisplay());
-        self::assertFileDoesNotExist($output);
+        $csv = (string) file_get_contents($output);
+        self::assertStringContainsString('BBB', $csv);
+        self::assertStringNotContainsString('AAA', $csv);
     }
 
     /**

@@ -634,14 +634,15 @@ final class DegiroTransactionsImporterTest extends TestCase
      * A sale with no purchase behind it has no cost basis, so its whole proceeds
      * would read as gain. That cannot be a warning next to a settled result.
      */
-    public function testAnUncoveredSellIsAnErrorNotAWarning(): void
+    public function testAnUncoveredSellIsAWarningThatPointsAtTheEarlierStatement(): void
     {
         $result = self::import([
             '20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,195.00,USD,1950.00,USD,-1.00,USD,1949.00,USD,bbb-222',
         ]);
 
         self::assertSame([], $result->positions);
-        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->errors()));
+        self::assertSame([], $result->errors());
+        self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->warnings()));
     }
 
     public function testTheFileWithoutAnAutofxColumnSaysSoOnceInsteadOfInventingFees(): void

@@ -198,17 +198,18 @@ final class CrossSourceImportTest extends TestCase
      * leaving that one out yields a return that looks complete and understates
      * nothing visible.
      */
-    public function testUnmatchedSellAcrossAllFilesIsFatalAndReportedOnce(): void
+    public function testUnmatchedSellAcrossAllFilesIsReportedOnceAndTheRestImports(): void
     {
         $result = $this->import([
             'a.csv' => self::trades(['"STK","AAA","20250601","-5","15","75.00","4001","USD"']),
             'b.csv' => self::trades(['"STK","BBB","20240101","1","10","-10.00","4002","USD"']),
         ]);
 
-        self::assertSame([], $result->positions);
+        self::assertSame([], $result->errors());
+        self::assertCount(2, $result->trades, 'Every transaction reaches the workbench.');
 
         $unmatched = array_filter(
-            $result->errors(),
+            $result->warnings(),
             static fn (string $e): bool => str_contains($e, 'nie ma pokrycia'),
         );
         self::assertCount(1, $unmatched);
