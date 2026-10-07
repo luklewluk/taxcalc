@@ -3,8 +3,11 @@ twig:
     default_path: '%kernel.project_dir%/templates'
     strict_variables: true
     globals:
-        app_name: 'Kalkulator PIT-38'
+        app_name: 'TaxCalc.pl'
         app_repository_url: '%env(APP_REPOSITORY_URL)%'
+        # Public address of this instance (canonical link, Open Graph). Empty on
+        # a self-hosted copy that should not claim the project's domain.
+        app_public_url: '%env(default::APP_PUBLIC_URL)%'
 
 when@test:
     twig:

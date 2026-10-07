@@ -4,8 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**Kalkulator PIT-38** — a privacy-first, open-source (MIT) Polish stock and dividend tax
-calculator. Symfony **8.1** on PHP **8.4+** (developed on 8.5), available both as a web
+**TaxCalc.pl** (https://taxcalc.pl) — a privacy-first, open-source (MIT) Polish stock, option
+and dividend tax calculator. Symfony **8.1** on PHP **8.4+** (developed on 8.5), available both as a web
 application and as CLI commands.
 
 Reads Interactive Brokers (Activity Statement, Flex, Dividend Detail) and DEGIRO exports
@@ -412,6 +412,14 @@ The public flow is `upload → work with the result`. After the first import,
   `<head>`, before the stylesheet**, on every layout including the report and the error page —
   a deferred script flashes the system theme on each navigation. That one word is the only
   thing kept in the browser; workbench state never is.
+- **The brand is local and the name is text.** `app_name` is `TaxCalc.pl`; the header shows
+  the calculator icon (`public/img/brand/taxcalc-icon.png`, `alt=""`) next to the name as
+  HTML text, because the wordmark's dark lettering would vanish in the dark theme. The
+  wordmark lives in `.github/` (light + dark variant) for the README. Favicons and the Open
+  Graph image are files in `public/`; `APP_PUBLIC_URL` (empty on self-hosted copies) gates
+  the canonical link and OG tags. The palette is the logo's teal (`--brand*`); `--brand`
+  carries white text, so it is darkened to `#087F7C` (4.8:1) - never use the logo's raw
+  `#029F9D` under text.
 - **`--ink-3` is for rules and dots, not words.** It is a 3.3:1 grey on the light canvas;
   text uses `--ink` or `--ink-2`.
 

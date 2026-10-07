@@ -12,7 +12,21 @@
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" href="{{ asset('img/brand/favicon-32.png') }}" sizes="32x32">
+    <link rel="apple-touch-icon" href="{{ asset('img/brand/apple-touch-icon.png') }}">
+    {% if app_public_url and app.request and app.request.method == 'GET' %}
+        {% set public_url = app_public_url|trim('/', 'right') %}
+        <link rel="canonical" href="{{ public_url ~ app.request.pathInfo }}">
+        <meta property="og:type" content="website">
+        <meta property="og:site_name" content="{{ app_name }}">
+        <meta property="og:title" content="{{ block('title') }}">
+        <meta property="og:description" content="{{ block('meta_description') }}">
+        <meta property="og:url" content="{{ public_url ~ app.request.pathInfo }}">
+        <meta property="og:image" content="{{ public_url }}/img/brand/og-image.png">
+        <meta property="og:locale" content="pl_PL">
+        <meta name="twitter:card" content="summary_large_image">
+    {% endif %}
 </head>
 <body>
 <a class="skip-link" href="#tresc">Przejdź do treści</a>
@@ -23,7 +37,7 @@
 <header class="site-header">
     <div class="container site-header__inner">
         <a class="site-header__brand" href="{{ path('app_home') }}">
-            <span class="brand-mark" aria-hidden="true"></span>
+            <img class="brand-mark" src="{{ asset('img/brand/taxcalc-icon.png') }}" width="26" height="26" alt="">
             {{ app_name }}
         </a>
         <nav aria-label="Nawigacja główna">

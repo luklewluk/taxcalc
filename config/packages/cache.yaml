@@ -1,6 +1,6 @@
 framework:
     cache:
-        prefix_seed: 'pit_stock_calc'
+        prefix_seed: 'taxcalc'
 
         # Only public NBP exchange rates are cached - never any uploaded user data.
         pools:

@@ -11,7 +11,9 @@
     <title>Coś poszło nie tak — {{ app_name }}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
-    <link rel="icon" href="data:,">
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any">
+    <link rel="icon" type="image/png" href="{{ asset('img/brand/favicon-32.png') }}" sizes="32x32">
+    <link rel="apple-touch-icon" href="{{ asset('img/brand/apple-touch-icon.png') }}">
 </head>
 <body>
 <main class="container">

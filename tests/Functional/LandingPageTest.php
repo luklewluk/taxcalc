@@ -64,10 +64,16 @@ final class LandingPageTest extends WebTestCase
         self::assertStringNotContainsString('google-analytics', $html);
 
         // Every loaded sub-resource (script, stylesheet, image, frame) must be
-        // same-origin. Plain hyperlinks to the repository are fine.
-        preg_match_all('/<(script|link|img|iframe)\b[^>]*\b(?:src|href)="([^"]*)"/i', $html, $matches, PREG_SET_ORDER);
+        // same-origin. Plain hyperlinks to the repository are fine, and so is
+        // the canonical link: it names the page's public address, the browser
+        // fetches nothing from it.
+        preg_match_all('/<(script|link|img|iframe)\b[^>]*\b(?:src|href)="([^"]*)"[^>]*>/i', $html, $matches, PREG_SET_ORDER);
 
         foreach ($matches as $match) {
+            if (1 === preg_match('/\brel="canonical"/i', $match[0])) {
+                continue;
+            }
+
             self::assertDoesNotMatchRegularExpression(
                 '#^(https?:)?//#i',
                 $match[2],

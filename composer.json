@@ -1,5 +1,5 @@
 {
-    "name": "luklewluk/pit-stock-calc",
+    "name": "luklewluk/taxcalc",
     "description": "Otwartoźródłowy, prywatny kalkulator podatku PIT-38 od akcji i dywidend (Interactive Brokers, DEGIRO)",
     "type": "project",
     "license": "MIT",

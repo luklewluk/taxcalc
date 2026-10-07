@@ -1,7 +1,15 @@
-# Kalkulator PIT-38 — akcje i dywidendy
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/taxcalc-logo-dark.png">
+    <img src=".github/taxcalc-logo.png" alt="TaxCalc.pl" width="420">
+  </picture>
+</p>
 
-Otwartoźródłowy, prywatny kalkulator podatku od zysków giełdowych i dywidend dla polskich
-podatników. Wczytuje zestawienia z **Interactive Brokers** i **DEGIRO**, przelicza
+# TaxCalc.pl — kalkulator PIT-38 (akcje, opcje, dywidendy)
+
+Otwartoźródłowy, prywatny kalkulator podatku od zysków giełdowych, opcji i dywidend dla
+polskich podatników, dostępny pod adresem **[taxcalc.pl](https://taxcalc.pl)**. Wczytuje
+zestawienia z **Interactive Brokers** i **DEGIRO**, przelicza
 kwoty po kursach NBP z dnia poprzedzającego transakcję, dopasowuje sprzedaże do zakupów
 metodą **FIFO** i pokazuje wartości potrzebne do formularzy **PIT-38** i **PIT/ZG**.
 
@@ -134,14 +142,19 @@ docker compose up --build
 Albo bez compose:
 
 ```bash
-docker build -t pit-stock-calc .
+docker build -t taxcalc .
 docker run --rm -p 8080:8080 \
   -e APP_SECRET="$(php -r 'echo bin2hex(random_bytes(16));')" \
-  pit-stock-calc
+  taxcalc
 ```
 
 Zmienne środowiskowe opisano w [`.env.example`](.env.example). Na produkcji ustaw
-`APP_ENV=prod`, `APP_DEBUG=0`, losowy `APP_SECRET` oraz `TRUSTED_HOSTS`.
+`APP_ENV=prod`, `APP_DEBUG=0`, losowy `APP_SECRET` oraz `TRUSTED_HOSTS`. `APP_PUBLIC_URL`
+(np. `https://taxcalc.pl`) włącza link canonical i znaczniki Open Graph; na własnej
+instancji zostaw go pustym albo wpisz swój adres.
+
+Logo i ikony leżą lokalnie w `public/img/brand/` i `.github/`. Obraz podglądu repozytorium
+(`.github/social-preview.png`) ustawia się ręcznie w *Settings → General → Social preview*.
 
 Przy wystawieniu publicznie koniecznie przeczytaj [SECURITY.md](SECURITY.md) — opisuje
 konfigurację `TRUSTED_HOSTS` oraz to, jak ustawić odwrotne proxy, żeby aplikacja
