@@ -1,0 +1,102 @@
+{#
+    The Transakcje tab: a read-only ledger. Stocks and options apart, one group
+    per FIFO queue, rows in the order FIFO reads them. Every trades[N][...] field
+    sits in the row's closed "Edytuj" disclosure, so the whole state still
+    posts with every request - closed <details> are submitted like anything else.
+#}
+{% set trade_columns %}
+    <thead><tr>
+        <th scope="col">Data</th><th scope="col">Transakcja</th><th scope="col">Liczba</th><th scope="col">Cena</th>
+        <th scope="col">Total</th><th scope="col">Prowizja</th><th scope="col">Wynik</th>
+        <th scope="col"><span class="visually-hidden">Działania</span></th>
+    </tr></thead>
+{% endset %}
+<div class="trade-ledger" data-trade-ledger data-manual-commit>
+    <p class="visually-hidden" role="status" aria-live="polite" data-ledger-status></p>
+    {% if trade_rows is empty %}
+        <p class="note">Brak transakcji kupna lub sprzedaży.</p>
+    {% elseif not trade_ledger.fifoAvailable %}
+        <p class="note">Szczegóły FIFO pojawią się, gdy wszystkie transakcje będą poprawne.</p>
+    {% endif %}
+    {% if trade_ledger.ratesIncomplete %}
+        <div class="ledger-notice" role="status">
+            <p>Części zamkniętych pozycji z innych lat nie przeliczono jeszcze na złote — zabrakło kursu NBP albo czasu na jego pobranie.</p>
+            <button type="submit" class="button button--link" formaction="{{ path('app_calculator_result') }}#panel-transactions" formnovalidate>Dociągnij brakujące kursy</button>
+        </div>
+    {% endif %}
+
+    {% for section in trade_ledger.sections %}
+        <section class="ledger-section" data-ledger-section="{{ section.key }}" aria-labelledby="ledger-{{ section.key }}">
+            <h3 id="ledger-{{ section.key }}">{{ section.title }}</h3>
+            {% for group in section.groups %}
+                {% set unit = group.isOption ? 'kontr.' : 'szt.' %}
+                <div class="instrument">
+                    <div class="instrument__header">
+                        <h4 class="instrument__title">
+                            {{ group.title }}{% if group.symbol and group.symbol != group.title %} <span class="instrument__symbol">({{ group.symbol }})</span>{% endif %}
+                        </h4>
+                        <p class="instrument__meta">
+                            <span>{{ group.broker }}</span>
+                            {% if group.countries is not empty %}<span>{{ group.countries|join(', ') }}</span>{% endif %}
+                            {% if group.blankCountries > 0 %}
+                                {% if group.countryGroupId %}
+                                    <a class="flag flag--error" href="#attention-country-missing-instrument-{{ group.countryGroupId }}">brak kraju: {{ group.blankCountries }}</a>
+                                {% else %}
+                                    <span class="flag flag--error">brak kraju: {{ group.blankCountries }}</span>
+                                {% endif %}
+                            {% endif %}
+                            {% if group.isOption and group.direction %}
+                                <span>{{ group.direction.value == 'short' ? 'wystawiona' : 'kupiona' }}</span>
+                            {% endif %}
+                            {% if group.openQuantity is not null %}
+                                {% if group.isClosed %}
+                                    <span>zamknięta</span>
+                                {% elseif group.isOption %}
+                                    <span>otwarta: {{ group.openQuantity }} {{ unit }}</span>
+                                {% else %}
+                                    <span>w portfelu {{ group.openQuantity }} {{ unit }}</span>
+                                {% endif %}
+                            {% endif %}
+                            {% if group.mixedKinds %}<span class="flag flag--error">akcje i opcje w jednej puli FIFO</span>{% endif %}
+                        </p>
+                    </div>
+                    <div class="table-wrapper">
+                        <table class="table ledger-table">
+                            <caption class="visually-hidden">Transakcje: {{ group.title }}</caption>
+                            {{ trade_columns }}
+                            {% for entry in group.entries %}
+                                {% include '_partials/trade_item.html.twig' with {entry: entry, country_options: country_options} only %}
+                            {% endfor %}
+                        </table>
+                    </div>
+                </div>
+            {% endfor %}
+        </section>
+    {% endfor %}
+
+    <section class="ledger-section ledger-section--new" data-new-trades hidden aria-labelledby="ledger-new">
+        <h3 id="ledger-new">Nowe transakcje (niezapisane)</h3>
+        <p class="note">Nowa transakcja wchodzi do obliczeń dopiero po kliknięciu „Zapisz”.</p>
+        <div class="table-wrapper">
+            <table class="table ledger-table" data-editor-body="trades">
+                <caption class="visually-hidden">Nowe transakcje</caption>
+                {{ trade_columns }}
+            </table>
+        </div>
+    </section>
+</div>
+
+<template data-row-template="trades">
+    {% include '_partials/trade_item.html.twig' with {
+        entry: {
+            index: '__INDEX__',
+            id: '',
+            row: {id: '', broker: 'Ręczne', pool: '', symbol: '', name: '', country: '', exchange: '', asset: 'STK', effect: '', date: '', time: '', side: 'BUY', quantity: '', currency: '', total: '', unit_price: '', price_currency: '', commission: '', autofx: '', external_id: '', source: 'ręcznie'},
+            isOption: false,
+            detail: null,
+            messages: [],
+            editorOpen: true,
+        },
+        country_options: country_options,
+    } only %}
+</template>

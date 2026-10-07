@@ -127,6 +127,30 @@ final class RowFormMapperTest extends TestCase
         self::assertSame('1400.00', (string) $result->trades[0]->grossAmount->value());
     }
 
+    public function testANewTradeRowIsGivenTheIdOfTheTradeItBecame(): void
+    {
+        $mapper = new RowFormMapper();
+        $row = $mapper->tradeToForm(self::trade());
+        $row['id'] = '';
+
+        $result = $mapper->mapTrades([$row]);
+
+        self::assertSame([], $result->errors);
+        self::assertNotSame('', $result->trades[0]->id());
+        self::assertSame($result->trades[0]->id(), $result->rows[0]['id']);
+        self::assertSame($result->trades[0]->id(), $mapper->mapTrades($result->rows)->trades[0]->id(), 'The id stays put on the next post.');
+    }
+
+    public function testAnInvalidNewTradeRowKeepsItsBlankId(): void
+    {
+        $mapper = new RowFormMapper();
+        $row = $mapper->tradeToForm(self::trade());
+        $row['id'] = '';
+        $row['quantity'] = 'abc';
+
+        self::assertSame('', $mapper->mapTrades([$row])->rows[0]['id']);
+    }
+
     public function testExecutionPriceAndCurrencyMustBothBePresent(): void
     {
         $row = (new RowFormMapper())->tradeToForm(self::trade());

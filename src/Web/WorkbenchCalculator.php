@@ -26,10 +26,11 @@ final readonly class WorkbenchCalculator
     {
         $fifo = $this->fifoMatcher->match($trades);
         $positions = $legacyPositions;
+        $matchPositions = [];
         $errors = [];
         $diagnostics = [];
 
-        foreach ($fifo->matches as $match) {
+        foreach ($fifo->matches as $index => $match) {
             $instrument = $match->instrument();
             $name = $instrument?->displayName ?: $match->symbol;
             $country = $instrument->countryCode ?? '';
@@ -51,12 +52,14 @@ final readonly class WorkbenchCalculator
             }
 
             try {
-                $positions[] = ClosedPosition::fromMatch(
+                $position = ClosedPosition::fromMatch(
                     $match,
                     $name,
                     $country,
                     self::source($match->buySource, $match->sellSource),
                 );
+                $positions[] = $position;
+                $matchPositions[$index] = $position;
             } catch (InvalidRecordException $e) {
                 $message = sprintf('Pozycja %s: %s', $name, $e->getMessage());
                 $errors[] = $message;
@@ -92,7 +95,16 @@ final readonly class WorkbenchCalculator
             $diagnostics[] = Diagnostic::blocking($code, $message, 'transactions', $violation->tradeId ?: null);
         }
 
-        return new SettlementResult($positions, $fifo->matches, $errors, $diagnostics);
+        return new SettlementResult(
+            $positions,
+            $fifo->matches,
+            $errors,
+            $diagnostics,
+            $matchPositions,
+            $fifo->openPositions,
+            $fifo->unmatchedSells,
+            $fifo->violations,
+        );
     }
 
     private static function source(string $buy, string $sell): string

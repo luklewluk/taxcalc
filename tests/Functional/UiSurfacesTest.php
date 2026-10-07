@@ -187,7 +187,7 @@ final class UiSurfacesTest extends WebTestCase
         }
         self::assertSame('507.5782', $form['trades'][0]['unit_price']);
         self::assertSame('USD', $form['trades'][0]['price_currency']);
-        self::assertSame(1, $crawler->filter('[data-editor-body="trades"] label.remove-toggle input[name="trades[0][remove]"]')->count());
+        self::assertSame(1, $crawler->filter('[data-trade-ledger] [data-trade-panel="edit"] label.remove-toggle input[name="trades[0][remove]"]')->count());
     }
 
     public function testWorkbenchBarKeepsYearCountsPrivacyUploadsAndExportsAvailable(): void
@@ -237,8 +237,8 @@ final class UiSurfacesTest extends WebTestCase
         unset($trade);
 
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
-        self::assertSame(0, $crawler->filter('#panel-fifo [data-editor-body="trades"]')->count());
-        self::assertSame(1, $crawler->filter('#panel-transactions [data-editor-body="trades"]')->count());
+        self::assertSame(0, $crawler->filter('#panel-fifo [data-trade-ledger]')->count());
+        self::assertSame(1, $crawler->filter('#panel-transactions [data-trade-ledger]')->count());
         $fifo = $crawler->filter('#panel-fifo')->text();
         self::assertStringContainsString('507,5782 USD', $fifo);
         self::assertStringContainsString('560,00 USD', $fifo);

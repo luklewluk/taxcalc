@@ -165,7 +165,7 @@ final class CalculatorFlowTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertGreaterThan(0, $crawler->filter('.message--error')->count());
-        self::assertSame(0, $crawler->filter('[data-editor-body="trades"] > tr')->count());
+        self::assertSame(0, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
         self::assertSame(0, $crawler->filter('[data-editor-body="dividends"] > tr')->count());
     }
 

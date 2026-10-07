@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Fifo;
 
 use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
+use App\Fifo\PositionDirection;
 use App\Fifo\Trade;
 use App\Money\Amount;
 use App\Money\Decimal;
@@ -138,6 +139,45 @@ final class FifoMatcherTest extends TestCase
         self::assertCount(1, $result->matches);
         self::assertSame('4', (string) $result->matches[0]->quantity);
         self::assertSame('400.00', (string) $result->matches[0]->buyCost->value());
+    }
+
+    public function testWhatIsLeftOfABuyIsReportedAsAnOpenPosition(): void
+    {
+        $first = self::buy('2024-01-10', '5', '500.00');
+        $second = self::buy('2024-02-10', '5', '700.00');
+
+        $result = (new FifoMatcher())->match([
+            $first,
+            $second,
+            self::sell('2024-09-01', '7', '1400.00'),
+        ]);
+
+        self::assertCount(1, $result->openPositions);
+        $open = $result->openPositions[0];
+        self::assertSame($second, $open->trade);
+        self::assertSame('3', (string) $open->quantity);
+        self::assertSame(PositionDirection::Long, $open->direction);
+    }
+
+    public function testAFullyConsumedBuyLeavesNoOpenPosition(): void
+    {
+        $result = (new FifoMatcher())->match([
+            self::buy('2024-01-01', '10', '1000.00'),
+            self::sell('2024-02-01', '10', '1500.00'),
+        ]);
+
+        self::assertSame([], $result->openPositions);
+    }
+
+    public function testAnUntouchedBuyIsOpenInFull(): void
+    {
+        $buy = self::buy('2024-01-01', '10', '1000.00');
+
+        $result = (new FifoMatcher())->match([$buy]);
+
+        self::assertCount(1, $result->openPositions);
+        self::assertSame($buy, $result->openPositions[0]->trade);
+        self::assertSame('10', (string) $result->openPositions[0]->quantity);
     }
 
     public function testExecutionPricesAreCarriedUnchangedAcrossPartialFifoMatches(): void

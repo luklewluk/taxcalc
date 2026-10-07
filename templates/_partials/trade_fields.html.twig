@@ -1,0 +1,100 @@
+{#
+    The posted fields of one trade - the same names, the same requirements as
+    always. Nothing new is posted per row: the workbench has to fit inside
+    max_input_vars (see docker/php.ini).
+#}
+{% set p = 'trades[' ~ index ~ ']' %}
+{% set fid = 't' ~ index %}
+<input type="hidden" name="{{ p }}[id]" value="{{ row.id }}">
+{% if row.exchange %}<input type="hidden" name="{{ p }}[exchange]" value="{{ row.exchange }}">{% endif %}
+<input type="hidden" name="{{ p }}[source]" value="{{ row.source }}">
+<input type="hidden" name="{{ p }}[external_id]" value="{{ row.external_id }}">
+<div class="trade-form">
+    <div class="trade-form__field">
+        <label for="{{ fid }}_broker">Broker</label>
+        <input type="text" id="{{ fid }}_broker" name="{{ p }}[broker]" value="{{ row.broker }}" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_pool">Pula FIFO</label>
+        <input type="text" id="{{ fid }}_pool" name="{{ p }}[pool]" value="{{ row.pool }}" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_symbol">Symbol</label>
+        <input type="text" id="{{ fid }}_symbol" name="{{ p }}[symbol]" value="{{ row.symbol }}" required>
+    </div>
+    <div class="trade-form__field trade-form__field--wide">
+        <label for="{{ fid }}_name">Nazwa</label>
+        <input type="text" id="{{ fid }}_name" name="{{ p }}[name]" value="{{ row.name }}" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_asset">Rodzaj</label>
+        <select id="{{ fid }}_asset" name="{{ p }}[asset]">
+            <option value="STK" {{ row.asset != 'OPT' ? 'selected' : '' }}>Akcje / ETF</option>
+            <option value="OPT" {{ row.asset == 'OPT' ? 'selected' : '' }}>Opcja</option>
+        </select>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_country">Kraj</label>
+        <select id="{{ fid }}_country" name="{{ p }}[country]" required aria-required="true">
+            <option value="">— wybierz —</option>
+            {% for code, name in country_options %}<option value="{{ code }}" {{ row.country == code ? 'selected' : '' }}>{{ code }} — {{ name }}</option>{% endfor %}
+        </select>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_date">Data</label>
+        <input type="date" id="{{ fid }}_date" name="{{ p }}[date]" value="{{ row.date }}" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_time">Czas</label>
+        <input type="time" step="1" id="{{ fid }}_time" name="{{ p }}[time]" value="{{ row.time }}">
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_side">Kierunek</label>
+        <select id="{{ fid }}_side" name="{{ p }}[side]">
+            <option value="BUY" {{ row.side == 'BUY' ? 'selected' : '' }}>Kupno</option>
+            <option value="SELL" {{ row.side == 'SELL' ? 'selected' : '' }}>Sprzedaż</option>
+        </select>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_effect">Opcja: otwiera czy zamyka</label>
+        <select id="{{ fid }}_effect" name="{{ p }}[effect]">
+            <option value="" {{ row.effect == '' ? 'selected' : '' }}>— (akcje)</option>
+            <option value="open" {{ row.effect == 'open' ? 'selected' : '' }}>Otwarcie</option>
+            <option value="close" {{ row.effect == 'close' ? 'selected' : '' }}>Zamknięcie</option>
+            <option value="close_open" {{ row.effect == 'close_open' ? 'selected' : '' }}>Zamknięcie i otwarcie</option>
+        </select>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_quantity">Liczba</label>
+        <input type="text" id="{{ fid }}_quantity" name="{{ p }}[quantity]" value="{{ row.quantity }}" inputmode="decimal" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_currency">Waluta</label>
+        <input type="text" id="{{ fid }}_currency" name="{{ p }}[currency]" value="{{ row.currency }}" size="4" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_total">Total (kwota rozliczona)</label>
+        <input type="text" id="{{ fid }}_total" name="{{ p }}[total]" value="{{ row.total }}" inputmode="decimal" required>
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_unit_price">Cena wykonania</label>
+        <input type="text" id="{{ fid }}_unit_price" name="{{ p }}[unit_price]" value="{{ row.unit_price }}" inputmode="decimal" placeholder="—">
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_price_currency">Waluta ceny</label>
+        <input type="text" id="{{ fid }}_price_currency" name="{{ p }}[price_currency]" value="{{ row.price_currency }}" size="4" placeholder="—">
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_commission">Prowizja</label>
+        <input type="text" id="{{ fid }}_commission" name="{{ p }}[commission]" value="{{ row.commission }}" inputmode="decimal" placeholder="—">
+    </div>
+    <div class="trade-form__field">
+        <label for="{{ fid }}_autofx">AutoFX</label>
+        <input type="text" id="{{ fid }}_autofx" name="{{ p }}[autofx]" value="{{ row.autofx }}" inputmode="decimal" placeholder="—">
+    </div>
+</div>
+<p class="note">
+    Opcje: wybierz „Opcja” i wskaż, czy transakcja otwiera, czy zamyka pozycję. Wygaśnięcie i przydział
+    to zamknięcie z kwotą Total 0 i bez prowizji. Total to kwota, która faktycznie wpłynęła lub wypłynęła
+    z rachunku — prowizja kupna jest już w niej zawarta.
+</p>

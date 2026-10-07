@@ -1,0 +1,47 @@
+{#
+    FIFO matches seen from one trade. `other` names the counterpart column:
+    the lot a closing trade closed, or the trade that closed an opening one.
+#}
+<div class="table-wrapper">
+    <table class="table table--detail trade-details__matches">
+        <caption>{{ caption }}</caption>
+        <thead><tr>
+            <th scope="col">{{ other }}</th><th scope="col">Liczba</th><th scope="col">Rok</th>
+            <th scope="col">Koszt nabycia</th><th scope="col">Przychód</th>
+            <th scope="col">Koszt PLN</th><th scope="col">Przychód PLN</th><th scope="col">Dochód PLN</th><th scope="col">19%</th>
+        </tr></thead>
+        <tbody>
+        {% for m in matches %}
+            {% set calc = m.calculated %}
+            <tr>
+                <th scope="row">
+                    {% if m.counterpart %}
+                        <a href="#row-{{ m.counterpartId }}" data-trade-link>{{ m.counterpart.date }}</a>
+                        <span class="cell-note">{{ m.counterpart.side == 'SELL' ? 'sprzedaż' : 'kupno' }}</span>
+                    {% else %}—{% endif %}
+                </th>
+                <td class="cell--number">{{ m.match.quantity }}</td>
+                <td>{{ m.position ? m.position.taxYear : m.match.closeDate|date('Y') }}</td>
+                {% if calc %}
+                    <td class="cell--number">{{ m.position.buyAmount|money_with_currency }}<span class="cell-note">kurs {{ calc.cost.rate }}{% if calc.cost.rateDate %} z {{ calc.cost.rateDate|date('Y-m-d') }}{% endif %}</span></td>
+                    <td class="cell--number">{{ calc.revenue.original|money_with_currency }}<span class="cell-note">kurs {{ calc.revenue.rate }}{% if calc.revenue.rateDate %} z {{ calc.revenue.rateDate|date('Y-m-d') }}{% endif %}</span></td>
+                    <td class="cell--number">{{ calc.totalCost|money_with_currency }}{% if calc.disposalCost %}<span class="cell-note">w tym koszt zbycia {{ calc.disposalCost.pln|money_with_currency }}</span>{% endif %}</td>
+                    <td class="cell--number">{{ calc.revenue.pln|money_with_currency }}</td>
+                    <td class="cell--number{{ calc.isLoss ? ' figure--negative' : '' }}">{{ calc.income|money_with_currency }}</td>
+                    <td class="cell--number">{{ m.informationalTax|money_with_currency(2) }}</td>
+                {% else %}
+                    <td colspan="6" class="trade-details__unavailable">
+                        {% if m.unavailable == 'budget' %}
+                            Nie przeliczono — zabrakło czasu na pobranie kursów NBP.
+                        {% elseif m.unavailable == 'rate' %}
+                            Brak kursu NBP dla {{ m.match.buyCost.currency }}.
+                        {% else %}
+                            Pozycja nie weszła do wyniku — zobacz „Wymaga uwagi”.
+                        {% endif %}
+                    </td>
+                {% endif %}
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>

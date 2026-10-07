@@ -93,6 +93,46 @@ final class FifoOptionMatchingTest extends TestCase
         self::assertSame([1, 2], [$long->sequence, $short->sequence]);
     }
 
+    public function testAWrittenOptionStillOpenIsAShortOpenPosition(): void
+    {
+        $open = self::option('2026-03-02', '-2', '297.90', '2.10', PositionEffect::Open);
+
+        $result = (new FifoMatcher())->match([
+            $open,
+            self::option('2026-03-20', '1', '51.05', '1.05', PositionEffect::Close),
+        ]);
+
+        self::assertCount(1, $result->openPositions);
+        self::assertSame($open, $result->openPositions[0]->trade);
+        self::assertSame('1', (string) $result->openPositions[0]->quantity);
+        self::assertSame(PositionDirection::Short, $result->openPositions[0]->direction);
+    }
+
+    public function testTheOpeningRestOfACloseThenOpenStaysOpenOnThatTrade(): void
+    {
+        $closeThenOpen = self::option('2026-06-01', '-2', '398.70', '1.30', PositionEffect::CloseThenOpen);
+
+        $result = (new FifoMatcher())->match([
+            self::option('2026-05-04', '1', '120.65', '0.65', PositionEffect::Open),
+            $closeThenOpen,
+        ]);
+
+        self::assertCount(1, $result->openPositions);
+        self::assertSame($closeThenOpen, $result->openPositions[0]->trade);
+        self::assertSame('1', (string) $result->openPositions[0]->quantity);
+        self::assertSame(PositionDirection::Short, $result->openPositions[0]->direction);
+    }
+
+    public function testAClosedOptionPositionLeavesNothingOpen(): void
+    {
+        $result = (new FifoMatcher())->match([
+            self::option('2025-12-15', '-1', '99', '1', PositionEffect::Open),
+            self::option('2026-01-16', '1', '0', '0', PositionEffect::Close),
+        ]);
+
+        self::assertSame([], $result->openPositions);
+    }
+
     public function testAClosingBuyWithNothingToCloseIsAViolation(): void
     {
         $result = (new FifoMatcher())->match([

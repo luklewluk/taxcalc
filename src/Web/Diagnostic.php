@@ -10,6 +10,13 @@ namespace App\Web;
  */
 final readonly class Diagnostic
 {
+    /**
+     * Findings about what FIFO made of a row, not about what the row says:
+     * the fix is an earlier statement, so the link opens the row's details
+     * rather than its editor.
+     */
+    private const array DETAIL_CODES = ['fifo.unmatched_sell', 'fifo.option_unmatched_close'];
+
     public function __construct(
         public string $code,
         public DiagnosticLevel $level,
@@ -38,6 +45,11 @@ final readonly class Diagnostic
         ?string $groupId = null,
     ): self {
         return new self($code, DiagnosticLevel::Review, $message, $targetTab, $rowId, $groupId);
+    }
+
+    public function opensDetails(): bool
+    {
+        return in_array($this->code, self::DETAIL_CODES, true);
     }
 
     public function key(): string

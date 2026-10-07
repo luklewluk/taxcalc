@@ -31,6 +31,14 @@ final class MoneyFormatterTest extends TestCase
         self::assertSame('16,00', $this->formatter->format(Decimal::of('16.00')));
     }
 
+    public function testAPostedAmountIsFormattedOnlyWhenItIsADecimal(): void
+    {
+        self::assertSame('1'.self::NBSP.'001,00', $this->formatter->formatText('1001.00'));
+        self::assertSame('507,5782', $this->formatter->formatText(' 507.5782 '));
+        self::assertSame('1,5e3', $this->formatter->formatText('1,5e3'), 'What the user typed is shown as typed.');
+        self::assertSame('', $this->formatter->formatText(''));
+    }
+
     public function testEveryGroupOfThreeDigitsIsSeparated(): void
     {
         self::assertSame(

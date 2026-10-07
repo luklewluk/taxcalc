@@ -1,0 +1,77 @@
+{#
+    One trade: a read-only summary row, then a row holding its two disclosures.
+    Without JavaScript the <summary> elements are the toggles; with it, the
+    buttons in the summary row take over and the summaries are hidden.
+#}
+{% set row = entry.row %}
+{% set index = entry.index %}
+{% set rid = entry.id ?: 'new-' ~ index %}
+{% set detail = entry.detail %}
+{% set is_option = entry.isOption %}
+{% set side_label = row.side == 'SELL' ? 'Sprzedaż' : 'Kupno' %}
+{% set effect_labels = {open: 'otwarcie', close: 'zamknięcie', close_open: 'zamknięcie i otwarcie'} %}
+{% set blocking = entry.messages|filter(m => m.level.value == 'blocking') %}
+<tbody class="trade{{ entry.editorOpen ? ' is-editing' : '' }}" id="row-{{ rid }}" data-trade data-row-id="{{ entry.id }}">
+    <tr class="trade__summary">
+        <td data-label="Data">{{ row.date ?: '—' }}{% if row.time and row.time != '00:00:00' %}<span class="cell-note">{{ row.time }}</span>{% endif %}</td>
+        <td data-label="Transakcja">
+            <span class="trade__side trade__side--{{ row.side == 'SELL' ? 'sell' : 'buy' }}">{{ side_label }}</span>
+            {% if is_option and effect_labels[row.effect] is defined %}<span class="cell-note">{{ effect_labels[row.effect] }}</span>{% endif %}
+        </td>
+        <td data-label="Liczba" class="cell--number">{{ row.quantity ?: '—' }}</td>
+        <td data-label="Cena" class="cell--number">{{ row.unit_price ? (row.unit_price|money_text) ~ ' ' ~ row.price_currency : '—' }}</td>
+        <td data-label="Total" class="cell--number">{{ row.total != '' ? (row.total|money_text) ~ ' ' ~ row.currency : '—' }}</td>
+        <td data-label="Prowizja" class="cell--number">{{ row.commission != '' ? row.commission|money_text : '—' }}</td>
+        <td data-label="Wynik" class="trade__result">
+            {% if blocking is not empty %}<span class="flag flag--error">błąd w danych</span>{% endif %}
+            {% if detail %}
+                {% if detail.closes is not empty %}
+                    {% if detail.income is not null %}
+                        <span class="{{ detail.income.isNegative ? 'figure--negative' : '' }}">{{ detail.income|money_with_currency }}</span>
+                    {% else %}
+                        <span class="flag flag--warning">bez kursu NBP</span>
+                    {% endif %}
+                    <span class="cell-note">rok {{ detail.taxYear }}</span>
+                {% endif %}
+                {% if detail.openQuantity %}
+                    <span class="cell-note">otwarte: {{ detail.openQuantity }}</span>
+                {% elseif detail.closedBy is not empty and detail.closes is empty %}
+                    <span class="cell-note">zamknięta</span>
+                {% endif %}
+                {% if detail.unmatchedQuantity %}<span class="flag flag--warning">bez pokrycia: {{ detail.unmatchedQuantity }}</span>{% endif %}
+            {% elseif blocking is empty %}
+                <span class="cell-note">—</span>
+            {% endif %}
+        </td>
+        <td class="trade__actions">
+            <button type="button" class="button button--link" data-trade-toggle="details" aria-expanded="false" aria-controls="details-{{ rid }}" hidden>Szczegóły</button>
+            <button type="button" class="button button--link" data-trade-toggle="edit" aria-expanded="{{ entry.editorOpen ? 'true' : 'false' }}" aria-controls="edit-{{ rid }}" hidden>Edytuj</button>
+        </td>
+    </tr>
+    <tr class="trade__panels">
+        <td colspan="8">
+            <details class="trade__panel trade__panel--details" id="details-{{ rid }}" data-trade-panel="details">
+                <summary>Szczegóły</summary>
+                {% include '_partials/trade_details.html.twig' %}
+            </details>
+            <details class="trade__panel trade__panel--edit" id="edit-{{ rid }}" data-trade-panel="edit"{{ entry.editorOpen ? ' open' : '' }}>
+                <summary>Edytuj</summary>
+                {% if entry.messages is not empty %}
+                    <ul class="trade-form__messages">
+                        {% for message in entry.messages %}<li class="flag flag--{{ message.level.value == 'blocking' ? 'error' : 'warning' }}">{{ message.message }}</li>{% endfor %}
+                    </ul>
+                {% endif %}
+                {% include '_partials/trade_fields.html.twig' %}
+                <div class="trade-form__actions">
+                    <button type="submit" class="button button--primary" data-trade-save
+                            formaction="{{ path('app_calculator_result') }}#{{ entry.id ? 'row-' ~ entry.id : 'panel-transactions' }}" formnovalidate>Zapisz</button>
+                    <button type="button" class="button button--plain" data-trade-cancel hidden>Anuluj</button>
+                    <label class="remove-toggle remove-toggle--labelled">
+                        <input type="checkbox" name="trades[{{ index }}][remove]" value="1" data-trade-remove>
+                        <span>Usuń transakcję</span>
+                    </label>
+                </div>
+            </details>
+        </td>
+    </tr>
+</tbody>

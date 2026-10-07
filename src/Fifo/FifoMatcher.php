@@ -36,6 +36,7 @@ final class FifoMatcher
         $matches = [];
         $unmatched = [];
         $violations = [];
+        $open = [];
 
         foreach ($bySymbol as $symbolTrades) {
             $kinds = array_unique(array_map(static fn (Trade $trade): string => $trade->kind->value, $symbolTrades));
@@ -58,9 +59,10 @@ final class FifoMatcher
             $matches = [...$matches, ...$result->matches];
             $unmatched = [...$unmatched, ...$result->unmatchedSells];
             $violations = [...$violations, ...$result->violations];
+            $open = [...$open, ...$result->openPositions];
         }
 
-        return new FifoResult($matches, $unmatched, $violations);
+        return new FifoResult($matches, $unmatched, $violations, $open);
     }
 
     /**
@@ -139,7 +141,10 @@ final class FifoMatcher
             $lots[$own][] = OpenLot::remainderOf($trade, $quantityLeft, $amountLeft, $commissionLeft, $autoFxLeft);
         }
 
-        return new FifoResult($matches, [], $violations);
+        return new FifoResult($matches, [], $violations, [
+            ...self::openPositions($lots['long'], PositionDirection::Long),
+            ...self::openPositions($lots['short'], PositionDirection::Short),
+        ]);
     }
 
     /**
@@ -233,6 +238,19 @@ final class FifoMatcher
     private static function openLots(array $lots): array
     {
         return array_values(array_filter($lots, static fn (OpenLot $lot): bool => $lot->remainingQuantity->isPositive()));
+    }
+
+    /**
+     * @param list<OpenLot> $lots
+     *
+     * @return list<OpenPosition>
+     */
+    private static function openPositions(array $lots, PositionDirection $direction): array
+    {
+        return array_map(
+            static fn (OpenLot $lot): OpenPosition => new OpenPosition($lot->trade, $lot->remainingQuantity, $direction),
+            self::openLots($lots),
+        );
     }
 
     private static function violation(FifoViolationKind $kind, Trade $trade, Decimal $quantity): FifoViolation
@@ -356,7 +374,7 @@ final class FifoMatcher
             }
         }
 
-        return new FifoResult($matches, $unmatched);
+        return new FifoResult($matches, $unmatched, [], self::openPositions($openLots, PositionDirection::Long));
     }
 
     /**

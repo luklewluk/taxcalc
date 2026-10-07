@@ -81,10 +81,13 @@
 
             <section id="panel-transactions" role="tabpanel" aria-labelledby="tab-transactions" data-panel="transactions" class="workbench-panel">
                 <div class="panel-heading">
-                    <div><h2>Logiczne kupna i sprzedaże</h2><p class="note">Każda zmiana uruchamia FIFO ponownie.</p></div>
-                    <button type="button" class="button" data-add-row="trades">Dodaj transakcję</button>
+                    <div>
+                        <h2>Logiczne kupna i sprzedaże</h2>
+                        <p class="note">Lista tylko do odczytu, pogrupowana według instrumentu. „Szczegóły” pokazują, jak FIFO rozliczyło transakcję, a „Edytuj” pozwala ją poprawić — zmiana wchodzi do obliczeń po kliknięciu „Zapisz”.</p>
+                    </div>
+                    <button type="button" class="button" data-add-row="trades" hidden>Dodaj transakcję</button>
                 </div>
-                {% include '_partials/trade_editor.html.twig' %}
+                {% include '_partials/trade_ledger.html.twig' %}
                 {% if legacy_rows is not empty %}
                     <details class="disclosure disclosure--card">
                         <summary>Legacy: gotowe pary z własnego CSV ({{ legacy_rows|length }})</summary>

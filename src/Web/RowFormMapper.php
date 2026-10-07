@@ -275,7 +275,7 @@ final readonly class RowFormMapper
                 $unitPrice = $this->optionalExecutionPrice($row);
                 $externalId = $this->str($row, 'external_id');
 
-                $trades[] = new Trade(
+                $trade = new Trade(
                     $symbol,
                     $date,
                     $quantity,
@@ -293,6 +293,15 @@ final readonly class RowFormMapper
                     kind: $kind,
                     effect: $effect,
                 );
+                $trades[] = $trade;
+
+                // A row added by hand arrives without an id. Echoing the one the
+                // trade derived gives it a stable identity from now on, so the
+                // panel's links and the ledger's details find their row - and an
+                // edit no longer changes who it is.
+                if ('' === $form['id']) {
+                    $keptRows[array_key_last($keptRows)]['id'] = $trade->id();
+                }
             } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
                 $message = sprintf('Transakcja %d: %s', $number, $e->getMessage());
                 $errors[] = $message;

@@ -13,10 +13,11 @@ use Twig\TwigFilter;
 /**
  * Exposes the Polish money notation to templates.
  *
- * Two filters, deliberately narrow:
+ * Three filters, deliberately narrow:
  *
  *   {{ amount|money }}                 1 523,98
  *   {{ amount|money_with_currency }}    1 523,98 USD  /  16,00 zł
+ *   {{ '1001.00'|money_text }}          1 001,00  (a posted form value; kept as typed if not a decimal)
  *
  * Only figures that really are money go through them. An NBP rate and a share
  * count are not amounts: they are quoted the way NBP and the broker quote them,
@@ -36,6 +37,7 @@ final class MoneyExtension extends AbstractExtension
         return [
             new TwigFilter('money', $this->money(...)),
             new TwigFilter('money_with_currency', $this->moneyWithCurrency(...)),
+            new TwigFilter('money_text', $this->formatter->formatText(...)),
         ];
     }
 

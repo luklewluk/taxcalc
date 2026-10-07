@@ -1,0 +1,68 @@
+{#
+    What FIFO made of one trade, for every year - not only the settled one.
+    Read-only: the inputs live in the "Edytuj" disclosure next to this one.
+#}
+<div class="trade-details">
+    <dl class="trade-details__facts">
+        <div><dt>Instrument</dt><dd>{{ row.name ?: '—' }}{% if row.symbol and row.symbol != row.name %} ({{ row.symbol }}){% endif %}</dd></div>
+        <div><dt>Broker / pula FIFO</dt><dd>{{ row.broker ?: '—' }} · {{ row.pool ?: '—' }}</dd></div>
+        <div><dt>Rodzaj</dt><dd>{{ is_option ? 'opcja' : 'akcje / ETF' }}</dd></div>
+        <div><dt>Kraj</dt><dd>{{ row.country ?: 'brak' }}{% if row.exchange %} <span class="cell-note">giełda {{ row.exchange }}</span>{% endif %}</dd></div>
+        <div><dt>Data i czas</dt><dd>{{ row.date ?: '—' }}{% if row.time and row.time != '00:00:00' %} {{ row.time }}{% endif %}</dd></div>
+        <div><dt>Kierunek</dt><dd>{{ side_label }}{% if is_option and effect_labels[row.effect] is defined %} · {{ effect_labels[row.effect] }}{% endif %}</dd></div>
+        <div><dt>Liczba</dt><dd>{{ row.quantity ?: '—' }}</dd></div>
+        <div><dt>Cena wykonania</dt><dd>{{ row.unit_price ? (row.unit_price|money_text) ~ ' ' ~ row.price_currency : '—' }}</dd></div>
+        <div><dt>Total (kwota rozliczona)</dt><dd>{{ row.total != '' ? (row.total|money_text) ~ ' ' ~ row.currency : '—' }}</dd></div>
+        <div><dt>Prowizja</dt><dd>{{ row.commission != '' ? row.commission|money_text ~ ' ' ~ row.currency : '—' }}</dd></div>
+        <div><dt>AutoFX</dt><dd>{{ row.autofx != '' ? row.autofx|money_text ~ ' ' ~ row.currency : '—' }}</dd></div>
+        <div><dt>ID u brokera</dt><dd>{{ row.external_id starts with 'auto:' ? 'brak (nadany automatycznie)' : (row.external_id ?: '—') }}</dd></div>
+        <div><dt>Źródło</dt><dd>{{ row.source ?: 'ręcznie' }}</dd></div>
+    </dl>
+
+    {% if detail is null %}
+        <p class="note">Wyliczenia FIFO pojawią się, gdy wszystkie transakcje będą poprawne.</p>
+    {% else %}
+        {% for notice in detail.notices %}<p class="flag flag--warning trade-details__notice">{{ notice }}</p>{% endfor %}
+
+        {% if detail.closes is not empty %}
+            {% include '_partials/trade_match_table.html.twig' with {
+                matches: detail.closes,
+                caption: is_option and row.side == 'BUY' ? 'Zamyka wystawione kontrakty' : 'Zamyka partie',
+                other: 'Otwarcie',
+            } %}
+            {% if detail.income is not null %}
+                <p class="trade-details__total">
+                    Dochód z tej transakcji: <strong class="{{ detail.income.isNegative ? 'figure--negative' : '' }}">{{ detail.income|money_with_currency }}</strong>
+                    · rok podatkowy <strong>{{ detail.taxYear }}</strong>
+                    · 19% informacyjnie: <strong>{{ detail.informationalTax|money_with_currency(2) }}</strong>
+                </p>
+            {% endif %}
+        {% endif %}
+
+        {% if detail.closedBy is not empty %}
+            {% include '_partials/trade_match_table.html.twig' with {
+                matches: detail.closedBy,
+                caption: 'Zamknięta przez',
+                other: 'Zamknięcie',
+            } %}
+        {% endif %}
+
+        {% if detail.openQuantity %}
+            <p class="trade-details__open">
+                Pozostaje otwarte: <strong>{{ detail.openQuantity }} {{ is_option ? 'kontr.' : 'szt.' }}</strong>
+                {% if is_option %}({{ detail.openDirection and detail.openDirection.value == 'short' ? 'wystawione' : 'kupione' }}){% endif %}
+                — nic do rozliczenia, dopóki pozycja się nie zamknie.
+            </p>
+        {% elseif detail.closes is empty and detail.closedBy is empty and detail.notices is empty %}
+            <p class="note">FIFO nie sparowało tej transakcji.</p>
+        {% endif %}
+
+        {% if detail.closes is not empty or detail.closedBy is not empty %}
+            <p class="note">
+                Podatek 19% jest tu podany informacyjnie. W zeznaniu liczy się dochód z całego roku, zaokrąglony
+                raz, a straty z innych transakcji go obniżają.
+                {% if is_option %}Opcję rozliczamy w dniu zamknięcia pozycji, nigdy w dniu otwarcia.{% endif %}
+            </p>
+        {% endif %}
+    {% endif %}
+</div>

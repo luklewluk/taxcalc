@@ -175,13 +175,16 @@ rozpoznała HTTPS i wysłała nagłówek HSTS.
 2. **Kalkulator (`/kalkulator`)** — wybierz rok podatkowy i wgraj jeden lub kilka plików CSV
    (do 10 plików, każdy do 5 MB, kodowanie UTF-8). Format każdego pliku jest rozpoznawany
    automatycznie. Na tej stronie znajdziesz też przykładowe pliki do pobrania.
-3. **Ekran roboczy** — po pierwszym imporcie od razu zobaczysz wynik i sześć zakładek:
+3. **Ekran roboczy** — po pierwszym imporcie od razu zobaczysz wynik i siedem zakładek:
    - **PIT-38 / PIT-ZG** — wyłącznie pola właściwych wersji formularzy, oba warianty KIS/NSA
      i ostrzeżenia wpływające na możliwość przepisania wartości,
    - **Wymaga uwagi** — pełna lista problemów blokujących wynik i punktów do weryfikacji,
-   - **Transakcje** — osobne, edytowalne logiczne kupna i sprzedaże; cena wykonania jest
-     informacją audytową, a `Total`/`NetCash` pozostaje rozliczoną kwotą, z której wynikają
-     przychód i koszt,
+   - **Transakcje** — logiczne kupna i sprzedaże tylko do odczytu, osobno akcje i ETF-y,
+     osobno opcje, pogrupowane według instrumentu. „Szczegóły” każdej transakcji pokazują
+     dopasowane partie, kursy NBP, przychód, koszt, dochód i rok podatkowy — także dla lat
+     innych niż wybrany. „Edytuj” otwiera pola transakcji, a zmiana wchodzi do obliczeń po
+     kliknięciu „Zapisz”. Cena wykonania jest informacją audytową, a `Total`/`NetCash`
+     pozostaje rozliczoną kwotą, z której wynikają przychód i koszt,
    - **FIFO** — wynikowe pary FIFO tylko do odczytu, z ceną wykonania obu stron oraz
      kolumnami „Przychód PLN” i „Koszt PLN”,
    - **Dywidendy** — edycja wypłat, podsumowanie pól PIT-38 część G z rozbiciem na kraje
@@ -189,7 +192,8 @@ rozpoznała HTTPS i wysłała nagłówek HSTS.
    - **Opłaty** — samodzielne koszty rachunkowe, ich korekty i przełącznik uwzględnienia,
    - **Ustawienia** — wybory, w których przepisy dopuszczają więcej niż jedno odczytanie.
 
-   Zmiany przeliczają się automatycznie po krótkim opóźnieniu. Przycisk **Przelicz** jest
+   Zmiany dywidend i opłat przeliczają się automatycznie po krótkim opóźnieniu, a zmiany
+   transakcji — po kliknięciu „Zapisz”. Przycisk **Przelicz** jest
    pełnym fallbackiem bez JavaScriptu. Przy błędzie wartości PIT znikają w całości, ale
    wszystkie wpisane dane pozostają w formularzu do poprawy.
 4. **Raport** — pobranie szczegółowego pliku CSV albo otwarcie wersji do wydruku.

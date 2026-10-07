@@ -115,7 +115,7 @@ final class WorkbenchStateFlowTest extends WebTestCase
             'overlap.csv' => self::CSPX_OVERLAP,
         ]);
 
-        self::assertSame(2, $crawler->filter('[data-editor-body="trades"] > tr')->count());
+        self::assertSame(2, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
         self::assertStringContainsString('cały upload odrzucono', mb_strtolower($crawler->filter('body')->text()));
         self::assertSame(0, $crawler->filter('input[value="SPY"]')->count());
     }
@@ -127,8 +127,8 @@ final class WorkbenchStateFlowTest extends WebTestCase
         $crawler = $this->fillTradeCountries($client, $crawler);
         $crawler = $this->uploadMore($client, $crawler, ['spy.csv' => self::SPY_INDEPENDENT]);
 
-        self::assertSame(4, $crawler->filter('[data-editor-body="trades"] > tr')->count());
-        self::assertSame(2, $crawler->filter('[data-editor-body="trades"] input[name$="[symbol]"][value="SPY"]')->count());
+        self::assertSame(4, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
+        self::assertSame(2, $crawler->filter('[data-trade-ledger] input[name$="[symbol]"][value="SPY"]')->count());
     }
 
     public function testInvalidEditFailsClosedAndPreservesTheSubmittedValue(): void
@@ -357,48 +357,13 @@ final class WorkbenchStateFlowTest extends WebTestCase
         self::assertSame(1, $crawler->filter('#row-'.$rowId)->count());
     }
 
-    public function testNoJavascriptBulkCountryActionFillsOnlyBlankRowsInTheSelectedPool(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->firstImport($client, [
-            'cspx.csv' => self::CSPX,
-            'spy.csv' => self::SPY_INDEPENDENT,
-        ]);
-        $payload = $this->payload($crawler);
-        $cspxSource = null;
-        foreach ($payload['trades'] as $index => &$trade) {
-            if ('CSPX' === $trade['symbol'] && null === $cspxSource) {
-                $trade['country'] = 'US';
-                $cspxSource = (string) $index;
-            } elseif ('SPY' === $trade['symbol'] && '' === $trade['country']) {
-                $trade['country'] = 'CA';
-                break;
-            }
-        }
-        unset($trade);
-        self::assertNotNull($cspxSource);
-        $payload['bulk_country'] = $cspxSource;
-
-        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
-        $result = $this->payload($crawler)['trades'];
-        $countries = [];
-        foreach ($result as $trade) {
-            $countries[$trade['symbol']][] = $trade['country'];
-        }
-
-        self::assertSame(['US', 'US'], $countries['CSPX']);
-        self::assertSame(['CA', ''], $countries['SPY']);
-        self::assertSame(1, $crawler->filter('[data-diagnostic-code="country.missing_instrument"]')->count());
-    }
-
-    public function testBulkCountryNeverOverwritesAnExistingCountryAndConflictIsReviewOnly(): void
+    public function testDisagreeingTradeCountriesAreAReviewItemThatKeepsTheResult(): void
     {
         $client = static::createClient();
         $crawler = $this->firstImport($client, ['cspx.csv' => self::CSPX]);
         $payload = $this->payload($crawler);
         $payload['trades'][0]['country'] = 'US';
         $payload['trades'][1]['country'] = 'CA';
-        $payload['bulk_country'] = '0';
 
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
         $result = $this->payload($crawler);

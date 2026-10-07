@@ -1398,24 +1398,6 @@ select {
     background-color: var(--warning-bg);
 }
 
-.needs-country {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.3125rem;
-    margin-top: 0.375rem;
-    color: var(--warning);
-    font-size: 0.75rem;
-    font-weight: 650;
-}
-
-.needs-country::before {
-    content: "";
-    width: 0.4375rem;
-    height: 0.4375rem;
-    border-radius: 50%;
-    background: currentColor;
-}
-
 .row--removed { opacity: 0.42; }
 
 /* Technical columns, revealed by the review toggle (works without JS) */
@@ -1913,7 +1895,6 @@ kbd {
     .table--editable .cell--remove { text-align: left; }
     .table--editable .row-ordinal { display: none; }
     .table--editable tbody tr:first-child td { border-top: 0; }
-    .table--editable .needs-country { grid-column: 2; }
     .table--editable .cell-group--pair { flex-wrap: wrap; }
     .table--editable .input--name,
     .table--editable .input--date,
@@ -2208,7 +2189,6 @@ kbd {
     font: inherit;
     font-size: 0.875rem;
 }
-.trade-editor { min-width: 116rem; }
 .cell-note { display: block; color: var(--ink-2); font-size: 0.72rem; }
 
 /*
@@ -2347,13 +2327,224 @@ kbd {
 .attention-item p { margin: 0 0 0.45rem; }
 .attention-item a { font-size: 0.875rem; font-weight: 650; }
 
-.bulk-country {
-    display: block;
+/*
+ * Transakcje: a read-only ledger. One table per FIFO queue, one <tbody> per
+ * trade - its summary row, then a row holding the "Szczegóły" and "Edytuj"
+ * disclosures. Without JavaScript their <summary> elements are the toggles;
+ * with it (.is-enhanced) the buttons in the summary row are, and the panels
+ * row exists only while one of them is open.
+ */
+.trade-ledger { display: grid; gap: 2rem; }
+
+/* Clear the sticky header and workbench bar when a hash brings a row up. */
+.trade,
+.attention-item { scroll-margin-top: 13rem; }
+
+.ledger-notice {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.25rem 1rem;
+    padding: 0.75rem 1rem;
+    border-radius: var(--r-1);
+    background: var(--warning-bg);
+    color: var(--warning);
+    font-size: 0.875rem;
+}
+
+.ledger-notice p { margin: 0; }
+.ledger-notice .button--link { padding-inline: 0; color: inherit; font-weight: 650; }
+
+.ledger-section { display: grid; gap: 1.25rem; }
+.ledger-section > h3 { margin: 0; font-size: 1.125rem; }
+.ledger-section--new > .note { margin: 0; }
+
+.instrument { display: grid; gap: 0.5rem; min-width: 0; }
+
+.instrument__header {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.25rem 1rem;
+}
+
+.instrument__title { margin: 0; font-size: 1rem; overflow-wrap: anywhere; }
+.instrument__symbol { color: var(--ink-2); font-weight: 500; }
+
+.instrument__meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.875rem;
+    margin: 0;
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+}
+
+.ledger-table th,
+.ledger-table td { vertical-align: top; }
+.ledger-table tbody tr:hover { background: none; }
+.ledger-table .cell--number { text-align: right; white-space: nowrap; }
+.ledger-table .trade__summary > td { border-top: 1px solid var(--hairline); }
+.ledger-table .trade:hover > .trade__summary { background: color-mix(in srgb, var(--accent-tint) 55%, transparent); }
+
+.trade__side { font-weight: 650; }
+.trade__side--sell { color: var(--accent); }
+.trade__result { white-space: nowrap; }
+.trade__actions { text-align: right; white-space: nowrap; }
+.trade__actions .button { min-height: 2rem; font-size: 0.875rem; }
+.ledger-table .trade__panels > td { padding-top: 0; border-top: 0; }
+.trade__panel + .trade__panel { margin-top: 0.5rem; }
+
+.trade__panel > summary {
+    display: inline-flex;
+    align-items: center;
     min-height: 2rem;
-    margin-top: 0.25rem;
-    padding-inline: 0;
+    color: var(--accent);
+    font-size: 0.875rem;
+    font-weight: 650;
+    cursor: pointer;
+}
+
+.trade-ledger.is-enhanced .trade__panel > summary { display: none; }
+.trade-ledger.is-enhanced .trade__panels:not(:has(details[open])) { display: none; }
+
+.trade.is-editing > tr { background: color-mix(in srgb, var(--brand-soft) 55%, transparent); }
+.ledger-table .trade.is-editing:hover > .trade__summary { background: color-mix(in srgb, var(--brand-soft) 55%, transparent); }
+.trade.is-editing > tr > td:first-child { box-shadow: inset 3px 0 0 var(--brand); }
+.trade.is-removed .trade__summary > td:not(.trade__actions) { opacity: 0.5; text-decoration: line-through; }
+
+.flag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3125rem;
+    color: var(--warning);
     font-size: 0.75rem;
-    text-align: left;
+    font-weight: 650;
+}
+
+.flag::before {
+    content: "";
+    flex: none;
+    width: 0.4375rem;
+    height: 0.4375rem;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.flag--warning { color: var(--warning); }
+.flag--error { color: var(--error); }
+a.flag { text-decoration: underline; }
+
+.trade-form {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(11rem, 1fr));
+    gap: 0.75rem 1rem;
+    margin: 0.75rem 0;
+}
+
+.trade-form__field { display: grid; align-content: start; gap: 0.25rem; min-width: 0; }
+.trade-form__field--wide { grid-column: span 2; }
+.trade-form__field label { color: var(--ink-2); font-size: 0.8125rem; font-weight: 600; }
+
+.trade-form__field input,
+.trade-form__field select { width: 100%; font-size: 0.9375rem; padding: 0.4375rem 0.5625rem; }
+
+.trade-form__field input[type="time"] {
+    font: inherit;
+    font-size: 0.9375rem;
+    color: var(--ink);
+    background: var(--surface);
+    border: 1px solid var(--hairline-strong);
+    border-radius: var(--r-1);
+}
+
+.trade-form__messages { display: grid; gap: 0.25rem; margin: 0.75rem 0 0; padding: 0; list-style: none; }
+.trade-form__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+
+.remove-toggle--labelled {
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0.25rem 0.625rem;
+    color: var(--error);
+    font-size: 0.875rem;
+    font-weight: 600;
+}
+
+.remove-toggle--labelled input { accent-color: var(--error); }
+
+.trade-details { display: grid; gap: 1rem; padding: 0.5rem 0 0.75rem; }
+
+.trade-details__facts {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(12rem, 1fr));
+    gap: 0.5rem 1.25rem;
+    margin: 0;
+}
+
+.trade-details__facts dt { color: var(--ink-2); font-size: 0.75rem; font-weight: 650; }
+.trade-details__facts dd { margin: 0; overflow-wrap: anywhere; }
+
+.trade-details__notice,
+.trade-details__total,
+.trade-details__open,
+.trade-details > .note { margin: 0; }
+
+.trade-details__notice { align-items: flex-start; font-size: 0.8125rem; }
+.trade-details__notice::before { margin-top: 0.45em; }
+
+.trade-details__matches caption { padding-inline: 1rem; color: var(--ink); font-weight: 650; }
+.trade-details__unavailable { color: var(--warning); white-space: normal; }
+
+@media (max-width: 47.99rem) {
+    /* One card per trade; the labels the header row carried move inline. */
+    .ledger-table { display: block; }
+    .ledger-table thead { display: none; }
+    .ledger-table tbody,
+    .ledger-table tr { display: block; }
+    .ledger-table .trade { padding: 0.5rem 1rem; border-top: 1px solid var(--hairline); }
+    .ledger-table .trade:first-of-type { border-top: 0; }
+    .ledger-table .trade__summary > td,
+    .ledger-table .trade__panels > td { display: block; padding: 0.25rem 0; border: 0; }
+
+    .ledger-table .trade__summary > td[data-label] {
+        display: grid;
+        grid-template-columns: 6rem minmax(0, 1fr);
+        align-items: baseline;
+        gap: 0.125rem 0.75rem;
+        text-align: left;
+    }
+
+    /* Notes (the time, the tax year) sit under the value, not the label. */
+    .ledger-table .trade__summary > td[data-label] > * { grid-column: 2; }
+
+    .ledger-table .trade__summary > td[data-label]::before {
+        content: attr(data-label);
+        grid-column: 1;
+        color: var(--ink-2);
+        font-size: 0.75rem;
+        font-weight: 650;
+        letter-spacing: 0.03em;
+        text-transform: uppercase;
+    }
+
+    .trade.is-editing > tr > td:first-child { box-shadow: none; }
+    .trade.is-editing { box-shadow: inset 3px 0 0 var(--brand); }
+    .trade__result { white-space: normal; }
+    .trade__actions { display: flex; flex-wrap: wrap; gap: 0.5rem; text-align: left; }
+
+    .trade__actions .button,
+    .trade__panel > summary,
+    .trade-form__actions .button,
+    .remove-toggle--labelled { min-height: var(--tap); font-size: 1rem; }
+
+    .trade-form { grid-template-columns: minmax(0, 1fr); }
+    .trade-form__field--wide { grid-column: auto; }
+
+    .trade-form__field input,
+    .trade-form__field select { min-height: var(--tap); font-size: 1rem; }
+
+    .trade-details__facts { grid-template-columns: minmax(0, 1fr); }
 }
 
 @media (max-width: 54rem) {
@@ -2362,12 +2553,12 @@ kbd {
     .pit-grid { grid-template-columns: 1fr; }
     .workbench-panel { padding: 1rem; }
     .tablist { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .trade-editor { min-width: 0; }
+    .trade,
+    .attention-item { scroll-margin-top: 4.5rem; }
     .table--editable input:not([type="hidden"]),
     .table--editable select,
     .attention-action select,
-    .attention-action .button--link,
-    .bulk-country { min-height: var(--tap); font-size: 1rem; }
+    .attention-action .button--link { min-height: var(--tap); font-size: 1rem; }
 }
 
 @media print {
@@ -2377,7 +2568,13 @@ kbd {
     .tablist,
     .panel-heading .button,
     .table--editable,
-    [data-row-template] { display: none !important; }
+    [data-row-template],
+    [data-new-trades],
+    .trade__panel--edit,
+    .trade__panel > summary,
+    .trade__actions,
+    .ledger-notice .button { display: none !important; }
+    .trade-ledger.is-enhanced .trade__panels { display: table-row; }
     .workbench-panel,
     .workbench-panel[hidden] {
         display: block !important;

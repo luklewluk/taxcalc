@@ -43,6 +43,18 @@ final readonly class MoneyFormatter
         return self::regroup((string) $decimal);
     }
 
+    /**
+     * A posted form value: formatted when it is a plain decimal, otherwise
+     * shown exactly as typed - a summary row must never hide or "fix" input
+     * the editor next to it will reject.
+     */
+    public function formatText(string $value): string
+    {
+        $trimmed = trim($value);
+
+        return 1 === preg_match('/^-?\d+(\.\d+)?$/', $trimmed) ? $this->format(Decimal::of($trimmed)) : $value;
+    }
+
     public function formatWithCurrency(Amount $amount, ?int $scale = null): string
     {
         return $this->format($amount, $scale).' '.$this->currencySymbol($amount->currency());

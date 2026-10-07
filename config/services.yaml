@@ -13,6 +13,11 @@ parameters:
     # oversized upload is bounded before it becomes an array of domain objects.
     app.import.max_rows_per_file: 50000
 
+    # Seconds one full render may spend fetching NBP rates for the Transakcje
+    # details of years other than the settled one. What is left is filled in on
+    # a later render, from a warmer rate cache.
+    app.ledger.rate_budget_seconds: 10.0
+
 services:
     _defaults:
         autowire: true
@@ -26,6 +31,7 @@ services:
             $maxRows: '%app.rows.max%'
             $maxRecords: '%app.rows.max%'
             $maxRowsPerFile: '%app.import.max_rows_per_file%'
+            $rateBudgetSeconds: '%app.ledger.rate_budget_seconds%'
 
     App\:
         resource: '../src/'

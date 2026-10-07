@@ -71,13 +71,16 @@ Nine modules under `src/`, ordered from the inside out:
   `part/whole` exact (`BigRational`) and round once, so proration does not lose money in
   proportion to the amount the way a fixed intermediate scale does.
 - **Fifo** — `FifoMatcher` pairs sells against buys, oldest first, producing `FifoMatch`
-  (one closed position) and `UnmatchedSell` (reported, never thrown - importers turn it
-  into a *fatal* message, see the invariants). Partially consumed lots are prorated exactly
+  (one closed position) and `UnmatchedSell` (reported, never thrown - a review item, not a
+  failed import, see the invariants). Partially consumed lots are prorated exactly
   and the final slice of a lot receives the exact remaining balance, so prorated parts sum
   back to the lot total. Buy lots are never filtered by year. A pool of **options** goes
   through `matchOptionPool()` instead (stock matching is untouched): either side may open,
   the trade's declared `PositionEffect` decides, and what cannot be matched is a
-  `FifoViolation` (also fatal). A pool mixing stocks and options is a violation.
+  `FifoViolation` (a close with nothing to close is a review item, the rest are fatal). A pool
+  mixing stocks and options is a violation. `FifoResult::$openPositions` lists what every
+  queue still holds (`OpenPosition`: the trade, the quantity left, the direction) -
+  informational, for the Transakcje tab; nothing is taxed before a position closes.
 - **Model** — `ClosedPosition`, `Dividend`, and `AccountFee`, the normalized settlement
   records. Editable records carry stable form IDs in addition to content fingerprints.
   `ClosedPosition` carries `InstrumentKind` and `PositionDirection`; build it from a match
@@ -153,9 +156,13 @@ Nine modules under `src/`, ordered from the inside out:
   rate; one unavailable rate blocks the whole report rather than skipping a row), `CsvReportWriter`,
   `NormalizedCsvWriter`, and `CsvCell` (formula-injection guard).
 - **Web** — `UploadedCsvReader` (validation + immediate temp-file deletion),
-  `RowFormMapper` (domain ↔ form array), `WorkbenchCalculator` (re-runs FIFO),
+  `RowFormMapper` (domain ↔ form array; a valid trade row posted without an id gets its
+  `Trade::id()` echoed back, so it keeps one identity from then on), `WorkbenchCalculator`
+  (re-runs FIFO; `SettlementResult` also carries `matchPositions` - the `ClosedPosition` each
+  match became, keyed by match index - plus open positions, unmatched sells and violations),
   `CountryReview` (groups every editable row by instrument, across the Transakcje and
-  Dywidendy tabs, and reports what is wrong with its country), `TaxFormMap` (year-specific
+  Dywidendy tabs, and reports what is wrong with its country), `Ledger\TradeLedgerBuilder`
+  (the Transakcje tab, see the Interface section), `TaxFormMap` (year-specific
   PIT field numbers), `TaxYearProvider`.
 - **Controller / Command / EventListener / Exception** — thin HTTP and console entry
   points, security headers, domain exceptions.
@@ -352,6 +359,39 @@ The public flow is `upload → work with the result`. After the first import,
 - **FIFO input is editable, matches are derived.** `POST /kalkulator/wynik` remaps the form,
   runs FIFO again, and fails closed before building PIT fields. AJAX returns versioned
   summary/FIFO/message/counter fragments; the full POST remains the no-JS fallback.
+- **Transakcje is a read-only ledger.** `TradeLedgerBuilder` splits it into *Akcje i ETF-y* and
+  *Opcje* (only when there are options), one group per FIFO queue (`broker|pool ?: symbol`,
+  exactly the matcher's key), rows stably sorted by date and time - the matcher's own sort.
+  The rows post back in that order, and it cannot move a figure: no queue is split, ties keep
+  their relative order, and match ordinals are counted per queue (a test proves the
+  fingerprints identical). A pool mixing stocks and options stays whole and is flagged.
+  - Every row is a `<tbody data-trade id="row-<id>">`: a summary row, then a row with two
+    `<details>` - *Szczegóły* and *Edytuj*. Every `trades[N][...]` field lives in the closed
+    *Edytuj*; a closed `<details>` still posts, so the round trip is unchanged. **No new field
+    per row** (a test pins the names): 5,000 rows × 21 fields already sit close to
+    `max_input_vars`. Without JS the `<summary>` elements toggle; with JS buttons do.
+  - **A change counts only after *Zapisz*.** *Zapisz* is a real submit
+    (`formaction=…/wynik#row-<id>`, `formnovalidate`); *Anuluj* restores the rendered values.
+    The `formdata` handler makes every other request - the debounced recalculation, a year
+    switch, an export, an upload, a panel action - carry the values the server rendered for
+    every row except the one being saved, and drops unsaved new rows (the form states how many
+    rows it rendered, so that is never read as truncation). One editor with changes at a time;
+    `[data-manual-commit]` keeps keystrokes in the ledger from arming the debounce. *Usuń* is
+    the old `trades[N][remove]` checkbox inside the editor; the server turns it into a
+    tombstone on *Zapisz*.
+  - **Details cover every year.** Each trade shows the lots it closed or the trades that closed
+    it, with NBP rates, the same przychód/koszt split as everywhere
+    (`StockTaxCalculator::calculate([$position])`), the income, the tax year and an
+    informational exact 19% - labelled as such, because the return taxes a whole year rounded
+    once. They are built only on full renders, never in the AJAX JSON, and do not depend on
+    the tax year. Positions the report already converted are reused; the rest go latest close
+    first under a time budget (`app.ledger.rate_budget_seconds`, 10 s) with a per-currency
+    breaker (`MAX_RATE_FAILURES_PER_CURRENCY`); what is left says so, with *Dociągnij brakujące
+    kursy*. When another tab blocks the result but every trade row is valid, the controller
+    settles FIFO anyway for the ledger (`tradesComplete`) without merging its findings.
+  - A row the server rejected (`trade.*`, or a blank id) renders with its editor open. Attention
+    links carry `data-row-intent`: what FIFO could not match (`Diagnostic::opensDetails()`)
+    opens the details, everything else the editor.
 - **Incremental imports are atomic and independent.** A batch touching an existing
   broker/instrument FIFO pool, or requiring an earlier dividend/tax row, is rejected as a
   whole. Stable IDs and tombstones protect manual changes from re-upload revival.
@@ -390,7 +430,10 @@ The public flow is `upload → work with the result`. After the first import,
   background recalculation would leave the server holding countries the visible form no
   longer carries, and would need a second implementation of the instrument identity in JS.
   The server writes through `CountryReview::groups()` on the posted rows, skipping removed
-  ones — the raw post still carries a row the rendered form has already dropped.
+  ones — the raw post still carries a row the rendered form has already dropped. It lives in
+  the attention panel only: the old in-row *Ustaw w pozostałych pustych transakcjach*
+  (`bulk_country`) filled rows client-side and is gone; a ledger group with blank countries
+  links to its panel item instead.
 - **`formnovalidate` is required on every workbench submit.** The form holds `required`
   country selects with blank values, including inside the hidden compatibility block, and
   interactive validation runs *before* the `submit` event — without it every bar button is
@@ -401,8 +444,12 @@ The public flow is `upload → work with the result`. After the first import,
   `innerHTML` writes. Anything user state lives in a replaced fragment needs the same.
 - **Tabs are progressive enhancement.** Without JavaScript all tab panels are sequentially
   visible. With JavaScript they implement `tablist/tab/tabpanel`, arrows, Home/End and hash.
+  A hash that is not a tab name (`#row-…`, `#attention-…`, `#panel-…`) opens the panel that
+  contains its element - a trade row also opens its details - instead of leaving every panel
+  visible.
 - **Paper never loses content.** The dedicated report is read-only and opens disclosures;
-  `print.css` plus the `beforeprint` handler also reveal every panel and disclosure.
+  `print.css` plus the `beforeprint` handler also reveal every panel and disclosure - except a
+  trade's *Edytuj*, which only repeats its summary row as form controls.
 - **Workbench and report panels are wide.** `.container--workbench` removes the old 48rem
   constraint, while `.table-wrapper` retains horizontal scrolling for audit tables.
 - **No inline styles, ever.** `style-src 'self'` has no `unsafe-inline`, so a `style=`

@@ -26,7 +26,9 @@ use App\Web\CountryScope;
 use App\Web\CountrySourceApplier;
 use App\Web\Diagnostic;
 use App\Web\DiagnosticLevel;
+use App\Web\Ledger\TradeLedgerBuilder;
 use App\Web\RowFormMapper;
+use App\Web\SettlementResult;
 use App\Web\SettingsProvider;
 use App\Web\TaxFormMap;
 use App\Web\TaxYearProvider;
@@ -60,7 +62,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     tombstones: list<string>,
  *     errors: list<string>,
  *     diagnostics: list<Diagnostic>,
- *     settings: WorkbenchSettings
+ *     settings: WorkbenchSettings,
+ *     tradesComplete: bool
  * }
  * @phpstan-type WorkbenchContext array{
  *     report: TaxReport|null,
@@ -96,7 +99,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *     expected_positions: int,
  *     disclaimer: string
  * }
- * @phpstan-type PreparedWorkbench array{state: WorkbenchState, context: WorkbenchContext}
+ * @phpstan-type PreparedWorkbench array{state: WorkbenchState, context: WorkbenchContext, settlement: SettlementResult|null}
  */
 final class CalculatorController extends AbstractController
 {
@@ -121,6 +124,7 @@ final class CalculatorController extends AbstractController
         private readonly SettingsProvider $settingsProvider,
         private readonly CountrySourceApplier $countrySourceApplier,
         private readonly TaxRates $taxRates,
+        private readonly TradeLedgerBuilder $tradeLedgerBuilder,
         private readonly int $maxFiles,
         private readonly int $maxBytes,
         private readonly string $examplesDir,
@@ -239,7 +243,7 @@ final class CalculatorController extends AbstractController
             ]);
         }
 
-        return $this->render('calculator/workbench.html.twig', $prepared['context']);
+        return $this->renderWorkbench($prepared);
     }
 
     #[Route('/kalkulator/raport.csv', name: 'app_calculator_report_csv', methods: ['POST'])]
@@ -249,7 +253,7 @@ final class CalculatorController extends AbstractController
         $prepared = $this->prepare($this->readSubmission($request));
         $report = $prepared['context']['report'];
         if (null === $report) {
-            return $this->render('calculator/workbench.html.twig', $prepared['context']);
+            return $this->renderWorkbench($prepared);
         }
 
         $state = $prepared['state'];
@@ -275,7 +279,7 @@ final class CalculatorController extends AbstractController
         $this->assertCsrfToken($request);
         $prepared = $this->prepare($this->readSubmission($request));
         if (null === $prepared['context']['report']) {
-            return $this->render('calculator/workbench.html.twig', $prepared['context']);
+            return $this->renderWorkbench($prepared);
         }
 
         return $this->render('report/print.html.twig', $prepared['context']);
@@ -289,7 +293,7 @@ final class CalculatorController extends AbstractController
             'trades' => [], 'dividends' => [], 'fees' => [], 'legacyPositions' => [],
             'tradeRows' => [], 'dividendRows' => [], 'feeRows' => [], 'legacyRows' => [], 'compatRows' => [],
             'tombstones' => [], 'errors' => [], 'settings' => new WorkbenchSettings(),
-            'diagnostics' => [],
+            'diagnostics' => [], 'tradesComplete' => true,
         ];
     }
 
@@ -311,6 +315,7 @@ final class CalculatorController extends AbstractController
             'errors' => $result->errors(),
             'diagnostics' => $this->importDiagnostics($result),
             'settings' => $settings,
+            'tradesComplete' => true,
         ];
     }
 
@@ -368,11 +373,10 @@ final class CalculatorController extends AbstractController
             $request->request->get('credit_method'),
         );
 
-        // Before the explicit actions on purpose: a click on a bulk button is a
+        // Before the explicit action on purpose: a click on a bulk button is a
         // deliberate answer and must win over a setting.
         $this->countrySourceApplier->apply($rawTrades, $settings->countrySource);
 
-        [$bulkErrors, $bulkDiagnostics] = $this->applyBulkCountry($request, $rawTrades);
         [$groupErrors, $groupDiagnostics] = $this->applyCountryGroup($request, $rawTrades, $rawDividends);
         $this->applyCompatibilityCountries($rawTrades, $rawPositions);
         $legacyInput = [] === $rawTrades
@@ -390,7 +394,6 @@ final class CalculatorController extends AbstractController
         $positionTruncation = $this->truncationErrors('pozycji legacy', $request, 'expected_positions', count($rawPositions));
 
         $errors = [
-            ...$bulkErrors,
             ...$groupErrors,
             ...$tradeTruncation,
             ...$dividendTruncation,
@@ -399,7 +402,6 @@ final class CalculatorController extends AbstractController
             ...$trades->errors, ...$dividends->errors, ...$fees->errors, ...$legacy->errors,
         ];
         $diagnostics = [
-            ...$bulkDiagnostics,
             ...$groupDiagnostics,
             ...$this->diagnosticsFor($tradeTruncation, 'form.truncated_trades', 'transactions'),
             ...$this->diagnosticsFor($dividendTruncation, 'form.truncated_dividends', 'dividends'),
@@ -426,6 +428,9 @@ final class CalculatorController extends AbstractController
             'errors' => $errors,
             'diagnostics' => $diagnostics,
             'settings' => $settings,
+            // Every posted trade row became a trade, so FIFO over them means
+            // something even while another tab blocks the result.
+            'tradesComplete' => [] === $trades->errors && [] === $tradeTruncation,
         ];
     }
 
@@ -514,15 +519,46 @@ final class CalculatorController extends AbstractController
             'disclaimer' => CsvReportWriter::DISCLAIMER,
         ];
 
-        return ['state' => $state, 'context' => $context];
+        return ['state' => $state, 'context' => $context, 'settlement' => $settlement];
     }
 
     /** @param WorkbenchState $state */
     private function workbenchResponse(array $state): Response
     {
-        $prepared = $this->prepare($state);
+        return $this->renderWorkbench($this->prepare($state));
+    }
 
-        return $this->render('calculator/workbench.html.twig', $prepared['context']);
+    /**
+     * Every full render of the workbench, and only those: the ledger's details
+     * may fetch NBP rates for other years, which the debounced AJAX
+     * recalculation must never wait for. They do not depend on the tax year,
+     * so an AJAX year switch leaves them current.
+     *
+     * @param PreparedWorkbench $prepared
+     */
+    private function renderWorkbench(array $prepared): Response
+    {
+        $context = $prepared['context'];
+        $state = $prepared['state'];
+        $settlement = $prepared['settlement'];
+
+        // A result blocked elsewhere (a missing country, a dividend) still
+        // leaves FIFO answerable when every trade row is valid. Its findings
+        // are not merged: the panel lists what blocks the result, and FIFO's
+        // own items join it once the result is computed again.
+        if (null === $settlement && $state['tradesComplete'] && [] !== $state['trades']) {
+            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['legacyPositions']);
+        }
+
+        $context['trade_ledger'] = $this->tradeLedgerBuilder->build(
+            $state['tradeRows'],
+            $context['trade_country_groups'],
+            $settlement,
+            $context['report']->stock->positions ?? [],
+            $context['diagnostics'],
+        );
+
+        return $this->render('calculator/workbench.html.twig', $context);
     }
 
     /**
@@ -977,90 +1013,6 @@ final class CalculatorController extends AbstractController
             $row['country'] = $country;
             $rows[$index] = $row;
         }
-    }
-
-    /**
-     * Server-side fallback for the per-pool country action. The posted group
-     * identifier is deliberately ignored: broker and FIFO pool are recomputed
-     * from the selected row, and only blank countries in that exact group move.
-     *
-     * @param array<mixed> $trades
-     * @return array{list<string>, list<Diagnostic>}
-     */
-    private function applyBulkCountry(Request $request, array &$trades): array
-    {
-        $selected = $request->request->get('bulk_country');
-        if (!is_scalar($selected) || '' === trim((string) $selected)) {
-            return [[], []];
-        }
-
-        $key = (string) $selected;
-        $row = $trades[$key] ?? null;
-        if (!is_array($row)) {
-            $message = 'Nie można ustalić transakcji źródłowej dla zbiorczego ustawienia kraju.';
-
-            return [[$message], [Diagnostic::blocking('country.bulk_row_missing', $message, 'transactions')]];
-        }
-
-        $name = $this->scalarString($row['name'] ?? $row['symbol'] ?? null) ?: 'transakcja';
-
-        if ('' === $this->scalarString($row['country'] ?? null)) {
-            // Review, not blocking: pressing the button before picking a country
-            // is a mis-click, and it must not throw away a PIT result that was
-            // already on screen.
-            return [[], [Diagnostic::review(
-                'country.bulk_value_missing',
-                sprintf('Wybierz kraj przed użyciem przycisku zbiorczego dla %s.', $name),
-                'transactions',
-                self::formRowId($row),
-            )]];
-        }
-
-        try {
-            $country = CountryCode::normalizeRequired($this->scalarString($row['country'] ?? null), $name);
-        } catch (InvalidRecordException $e) {
-            $message = 'Zbiorcze ustawienie kraju: '.$e->getMessage();
-
-            return [[$message], [Diagnostic::blocking(
-                'country.bulk_invalid',
-                $message,
-                'transactions',
-                self::formRowId($row),
-            )]];
-        }
-
-        $queue = $this->formQueueKey($row);
-        foreach ($trades as &$candidate) {
-            if (!is_array($candidate)
-                || $this->formQueueKey($candidate) !== $queue
-                || '' !== $this->scalarString($candidate['country'] ?? null)) {
-                continue;
-            }
-            $candidate['country'] = $country;
-        }
-        unset($candidate);
-
-        return [[], []];
-    }
-
-    /** @param array<mixed> $row */
-    private function formQueueKey(array $row): string
-    {
-        $broker = mb_strtoupper($this->scalarString($row['broker'] ?? null));
-        $pool = $this->scalarString($row['pool'] ?? null);
-        if ('' === $pool) {
-            $pool = $this->scalarString($row['symbol'] ?? null);
-        }
-
-        return $broker.'|'.mb_strtoupper($pool);
-    }
-
-    /** @param array<string, mixed> $row */
-    private static function formRowId(array $row): ?string
-    {
-        $value = $row['id'] ?? null;
-
-        return is_scalar($value) && '' !== trim((string) $value) ? trim((string) $value) : null;
     }
 
     private function assertCsrfToken(Request $request): void
