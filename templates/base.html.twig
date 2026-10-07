@@ -8,6 +8,7 @@
     <meta name="color-scheme" content="light dark">
     <meta name="theme-color" content="#f7f5f0" media="(prefers-color-scheme: light)">
     <meta name="theme-color" content="#0c0e0b" media="(prefers-color-scheme: dark)">
+    <script src="{{ asset('js/theme.js') }}"></script>
     <title>{% block title %}{{ app_name }}{% endblock %}</title>
     <link rel="stylesheet" href="{{ asset('css/app.css') }}">
     <link rel="stylesheet" href="{{ asset('css/print.css') }}" media="print">
@@ -34,6 +35,11 @@
                 {% endif %}
             </ul>
         </nav>
+        <div class="theme-switch" role="group" aria-label="Motyw kolorów" data-role="theme-switch" hidden>
+            <button type="button" class="theme-switch__option" data-theme-choice="auto" aria-pressed="true">Auto</button>
+            <button type="button" class="theme-switch__option" data-theme-choice="light" aria-pressed="false">Jasny</button>
+            <button type="button" class="theme-switch__option" data-theme-choice="dark" aria-pressed="false">Ciemny</button>
+        </div>
     </div>
 </header>
 

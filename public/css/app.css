@@ -14,54 +14,64 @@
  *   --ink-3    hairline emphasis, dots, markers   (~3.4:1 - never words)
  *   --accent   links and small accented text      (>= 5.9:1 on canvas and tint)
  *   --lime     filled actions, only with --on-accent ink on top (>= 12:1)
+ *
+ * Light and dark: every token that differs is one light-dark(light, dark) pair,
+ * so the palette has a single source and the mode is chosen by `color-scheme`
+ * alone. The root follows the operating system; `data-theme` on <html> (set by
+ * js/theme.js from the user's pick) pins one mode, and print.css pins paper to
+ * light. Never add a second, media-gated copy of the palette.
  */
 
 :root {
     color-scheme: light dark;
 
     /* Canvas and surfaces ------------------------------------------------- */
-    --canvas: #f7f5f0;
-    --canvas-deep: #efece3;
-    --surface: #ffffff;
-    --surface-sunken: #f2efe7;
-    --surface-raised: #ffffff;
+    --canvas: light-dark(#f7f5f0, #0c0e0b);
+    --canvas-deep: light-dark(#efece3, #090b08);
+    --surface: light-dark(#ffffff, #171a14);
+    --surface-sunken: light-dark(#f2efe7, #11140e);
+    --surface-raised: light-dark(#ffffff, #1d211a);
 
     /* Ink ----------------------------------------------------------------- */
-    --ink: #101410;
-    --ink-2: #5a5d55;
-    --ink-3: #84867c;
-    --on-accent: #101410;
+    --ink: light-dark(#101410, #f1f3e9);
+    --ink-2: light-dark(#5a5d55, #a9ada0);
+    --ink-3: light-dark(#84867c, #767a6d);
+    --on-accent: light-dark(#101410, #0f1a0c);
 
     /* Accent -------------------------------------------------------------- */
     --lime: #bff055;
-    --lime-deep: #aee23f;
-    --lime-soft: #e7f8c2;
-    --accent: #1f6a2e;
-    --accent-strong: #14461f;
+    --lime-deep: light-dark(#aee23f, #cef472);
+    --lime-soft: light-dark(#e7f8c2, #2a3a18);
+    --accent: light-dark(#1f6a2e, #bfe873);
+    --accent-strong: light-dark(#14461f, #d6f39a);
     --accent-fill: var(--lime);
     --accent-fill-hover: var(--lime-deep);
-    --accent-tint: #eaf7d4;
-    --accent-tint-strong: #dcf0b8;
+    --accent-tint: light-dark(#eaf7d4, #1c2714);
+    --accent-tint-strong: light-dark(#dcf0b8, #24331a);
 
     /* Lines and elevation -------------------------------------------------- */
-    --hairline: rgba(16, 20, 16, 0.10);
-    --hairline-strong: rgba(16, 20, 16, 0.22);
-    --shadow-1: 0 1px 2px rgba(16, 20, 16, 0.05);
-    --shadow-2: 0 2px 6px rgba(16, 20, 16, 0.05), 0 12px 28px -18px rgba(16, 20, 16, 0.30);
-    --shadow-3: 0 4px 12px rgba(16, 20, 16, 0.06), 0 26px 56px -30px rgba(16, 20, 16, 0.40);
+    --hairline: light-dark(rgba(16, 20, 16, 0.10), rgba(241, 243, 233, 0.11));
+    --hairline-strong: light-dark(rgba(16, 20, 16, 0.22), rgba(241, 243, 233, 0.24));
+    --shadow-1: 0 1px 2px light-dark(rgba(16, 20, 16, 0.05), rgba(0, 0, 0, 0.5));
+    --shadow-2:
+        0 2px 6px light-dark(rgba(16, 20, 16, 0.05), rgba(0, 0, 0, 0.45)),
+        0 12px 28px -18px light-dark(rgba(16, 20, 16, 0.30), rgba(0, 0, 0, 0.8));
+    --shadow-3:
+        0 4px 12px light-dark(rgba(16, 20, 16, 0.06), rgba(0, 0, 0, 0.5)),
+        0 26px 56px -30px light-dark(rgba(16, 20, 16, 0.40), rgba(0, 0, 0, 0.9));
 
     /* Decorative glow behind the top of every page ------------------------- */
-    --glow-a: rgba(191, 240, 85, 0.34);
-    --glow-b: rgba(31, 106, 46, 0.10);
+    --glow-a: light-dark(rgba(191, 240, 85, 0.34), rgba(191, 240, 85, 0.10));
+    --glow-b: light-dark(rgba(31, 106, 46, 0.10), rgba(120, 200, 140, 0.06));
 
     /* Status -------------------------------------------------------------- */
-    --error: #9f2d20;
-    --error-bg: #fbeae7;
-    --warning: #7a4a06;
-    --warning-bg: #fbf1dc;
-    --info: #25505f;
-    --info-bg: #e6f0f3;
-    --negative: #9f2d20;
+    --error: light-dark(#9f2d20, #ff9d92);
+    --error-bg: light-dark(#fbeae7, #2f1512);
+    --warning: light-dark(#7a4a06, #f0c579);
+    --warning-bg: light-dark(#fbf1dc, #2e2410);
+    --info: light-dark(#25505f, #a8d2df);
+    --info-bg: light-dark(#e6f0f3, #14262c);
+    --negative: light-dark(#9f2d20, #ff9d92);
 
     /* Shape --------------------------------------------------------------- */
     --r-1: 12px;
@@ -78,45 +88,9 @@
     --ease: cubic-bezier(0.2, 0.8, 0.3, 1);
 }
 
-@media (prefers-color-scheme: dark) {
-    :root {
-        --canvas: #0c0e0b;
-        --canvas-deep: #090b08;
-        --surface: #171a14;
-        --surface-sunken: #11140e;
-        --surface-raised: #1d211a;
-
-        --ink: #f1f3e9;
-        --ink-2: #a9ada0;
-        --ink-3: #767a6d;
-        --on-accent: #0f1a0c;
-
-        --lime: #bff055;
-        --lime-deep: #cef472;
-        --lime-soft: #2a3a18;
-        --accent: #bfe873;
-        --accent-strong: #d6f39a;
-        --accent-tint: #1c2714;
-        --accent-tint-strong: #24331a;
-
-        --hairline: rgba(241, 243, 233, 0.11);
-        --hairline-strong: rgba(241, 243, 233, 0.24);
-        --shadow-1: 0 1px 2px rgba(0, 0, 0, 0.5);
-        --shadow-2: 0 2px 6px rgba(0, 0, 0, 0.45), 0 12px 28px -18px rgba(0, 0, 0, 0.8);
-        --shadow-3: 0 4px 12px rgba(0, 0, 0, 0.5), 0 26px 56px -30px rgba(0, 0, 0, 0.9);
-
-        --glow-a: rgba(191, 240, 85, 0.10);
-        --glow-b: rgba(120, 200, 140, 0.06);
-
-        --error: #ff9d92;
-        --error-bg: #2f1512;
-        --warning: #f0c579;
-        --warning-bg: #2e2410;
-        --info: #a8d2df;
-        --info-bg: #14262c;
-        --negative: #ff9d92;
-    }
-}
+/* The user's pick beats the operating system; no pick means "follow it". */
+:root[data-theme="light"] { color-scheme: light; }
+:root[data-theme="dark"] { color-scheme: dark; }
 
 *, *::before, *::after { box-sizing: border-box; }
 
@@ -315,21 +289,29 @@ code {
     position: sticky;
     top: 0;
     z-index: 10;
+    /* Vertical padding lives here: `.container` owns the inner element's. */
+    padding-block: 0.5rem;
     background: color-mix(in srgb, var(--canvas) 82%, transparent);
     backdrop-filter: saturate(180%) blur(18px);
     -webkit-backdrop-filter: saturate(180%) blur(18px);
     border-bottom: 1px solid var(--hairline);
 }
 
+/*
+ * Brand on the left, navigation and the theme switch packed on the right. On a
+ * phone whatever does not fit wraps to a second row instead of overflowing.
+ */
 .site-header__inner {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
-    justify-content: space-between;
-    gap: 1.25rem;
-    min-height: 3.5rem;
+    justify-content: flex-end;
+    gap: 0.5rem 1.25rem;
+    min-height: 2.5rem;
 }
 
 .site-header__brand {
+    margin-right: auto;
     display: inline-flex;
     align-items: center;
     gap: 0.5625rem;
@@ -409,6 +391,47 @@ code {
 .site-nav a[aria-current="page"] {
     background: var(--accent-tint);
     color: var(--accent);
+}
+
+/*
+ * Theme switch: a segmented pill in the language of the nav links. The markup
+ * ships it hidden and js/theme.js reveals it - without script there is nothing
+ * to remember a pick with, and the page follows the operating system anyway.
+ */
+.theme-switch {
+    display: inline-flex;
+    flex: none;
+    gap: 0.125rem;
+    padding: 0.1875rem;
+    border-radius: var(--r-pill);
+    background: color-mix(in srgb, var(--ink-3) 14%, transparent);
+}
+
+.theme-switch__option {
+    min-height: 1.875rem;
+    padding: 0 0.6875rem;
+    border: 0;
+    border-radius: var(--r-pill);
+    background: transparent;
+    color: var(--ink-2);
+    font: inherit;
+    font-size: 0.8125rem;
+    font-weight: 550;
+    cursor: pointer;
+    transition: background-color 0.15s var(--ease), color 0.15s var(--ease);
+}
+
+.theme-switch__option:hover { color: var(--ink); }
+
+.theme-switch__option[aria-pressed="true"] {
+    background: var(--surface);
+    box-shadow: var(--shadow-1), inset 0 0 0 1px var(--hairline);
+    color: var(--ink);
+}
+
+/* On a phone the header wraps to three rows; pinned, it would eat a fifth of the screen. */
+@media (max-width: 34rem) {
+    .site-header { position: static; }
 }
 
 /* Progress steps ---------------------------------------------------------- */
@@ -1995,9 +2018,9 @@ kbd {
 /* Higher contrast: drop the decorative washes and firm up every line. */
 @media (prefers-contrast: more) {
     :root {
-        --ink-2: #43463f;
-        --hairline: rgba(16, 20, 16, 0.28);
-        --hairline-strong: rgba(16, 20, 16, 0.55);
+        --ink-2: light-dark(#43463f, #c9ccbf);
+        --hairline: light-dark(rgba(16, 20, 16, 0.28), rgba(241, 243, 233, 0.32));
+        --hairline-strong: light-dark(rgba(16, 20, 16, 0.55), rgba(241, 243, 233, 0.60));
         --glow-a: transparent;
         --glow-b: transparent;
     }

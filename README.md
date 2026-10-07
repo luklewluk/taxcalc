@@ -50,8 +50,10 @@ historia transakcji, salda i identyfikator rachunku. Ten kalkulator jest zbudowa
 - **możesz uruchomić u siebie** — jedno polecenie i liczysz na własnym komputerze.
 
 Między żądaniami dane wracają jako pola formularza w bieżącej karcie. Serwer jest
-bezstanowy; aplikacja nie używa `localStorage` ani `sessionStorage`, a odświeżenie strony
-bez ponowienia formularza kasuje dane robocze.
+bezstanowy, a odświeżenie strony bez ponowienia formularza kasuje dane robocze. Aplikacja
+nie przechowuje w przeglądarce żadnych danych — jedynym wpisem w `localStorage` jest
+wybrany motyw kolorów (`pit38-theme`: `light` albo `dark`; tryb „Auto”, czyli motyw
+systemu, nie zapisuje niczego).
 
 ## Wymagania
 

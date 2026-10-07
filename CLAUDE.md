@@ -349,6 +349,15 @@ The public flow is `upload → work with the result`. After the first import,
 - **No inline styles, ever.** `style-src 'self'` has no `unsafe-inline`, so a `style=`
   attribute is silently dropped — add a class instead. There is no `url()` anywhere in the
   CSS: the chevrons and the step connector are drawn with borders.
+- **Theme: the system by default, a pick in `localStorage`.** Every colour token that differs
+  between modes is one `light-dark(light, dark)` pair in `:root`; never add a second,
+  media-gated copy of the palette. `:root` carries `color-scheme: light dark`,
+  `:root[data-theme="light|dark"]` pins one, and `print.css` pins paper to light. The header's
+  *Auto / Jasny / Ciemny* switch ships `hidden`; `public/js/theme.js` reveals it and stores
+  only `pit38-theme` (`light`/`dark`, removed for Auto). It loads **without `defer` in
+  `<head>`, before the stylesheet**, on every layout including the report and the error page —
+  a deferred script flashes the system theme on each navigation. That one word is the only
+  thing kept in the browser; workbench state never is.
 - **`--ink-3` is for rules and dots, not words.** It is a 3.3:1 grey on the light canvas;
   text uses `--ink` or `--ink-2`.
 

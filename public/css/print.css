@@ -10,6 +10,15 @@
     margin: 12mm;
 }
 
+/*
+ * Paper is always light, whatever the screen shows: every colour token is a
+ * light-dark() pair, so pinning the scheme here resolves all of them at once.
+ * `:root[data-theme]` matches the specificity of the screen's dark pick, and
+ * this sheet loads after app.css.
+ */
+:root,
+:root[data-theme] { color-scheme: light; }
+
 body,
 body.printable {
     background: #fff;
