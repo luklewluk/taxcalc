@@ -13,7 +13,8 @@ use App\Import\Degiro\Isin;
  *
  * Lives in the web layer rather than in the importers on purpose. Importers
  * always propose the listing-exchange country and carry the venue code along in
- * `trades[N][exchange]`; that plus the ISIN-shaped symbol is everything needed
+ * `trades[N][exchange]`; that plus the ISIN (the symbol for DEGIRO, the pool for
+ * the IBKR Activity Statement) is everything needed
  * to compute either reading, so the setting stays reversible without a
  * re-import. Note that {@see RowFormMapper::formToTrade()} rebuilds `Trade`
  * without the venue code, so the form row - not the domain object - is the only
@@ -37,8 +38,7 @@ final readonly class CountrySourceApplier
 
             /** @var array<mixed> $row */
             $fromExchange = ExchangeCountry::country(self::str($row, 'exchange'));
-            $symbol = mb_strtoupper(self::str($row, 'symbol') ?: self::str($row, 'pool'));
-            $fromIsin = Isin::isWellFormed($symbol) ? Isin::country($symbol) : '';
+            $fromIsin = Isin::country(self::isin($row));
 
             [$wanted, $other] = CountrySource::Isin === $source
                 ? [$fromIsin, $fromExchange]
@@ -58,6 +58,27 @@ final readonly class CountrySourceApplier
             $row['country'] = $wanted;
             $tradeRows[$index] = $row;
         }
+    }
+
+    /**
+     * The ISIN a row is keyed on, wherever its format keeps it: DEGIRO uses it
+     * as the symbol, the IBKR Activity Statement as the `ISIN@CURRENCY` pool
+     * next to a ticker symbol.
+     *
+     * @param array<mixed> $row
+     */
+    private static function isin(array $row): string
+    {
+        $pool = mb_strtoupper(self::str($row, 'pool'));
+        $candidates = [mb_strtoupper(self::str($row, 'symbol')), $pool, explode('@', $pool, 2)[0]];
+
+        foreach ($candidates as $candidate) {
+            if (Isin::isWellFormed($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return '';
     }
 
     /** @param array<mixed> $row */

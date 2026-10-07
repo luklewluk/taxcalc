@@ -54,6 +54,25 @@ final class CountrySourceApplierTest extends TestCase
         self::assertSame('CN', $rows[0]['country']);
     }
 
+    public function testAnIbkrRowFindsItsIsinInThePool(): void
+    {
+        // The Activity Statement keys its queue on ISIN@CURRENCY and keeps the
+        // ticker as the symbol: an Irish ETF listed in London.
+        $row = ['id' => 't2', 'broker' => 'IBKR', 'pool' => 'IE000BETA002@USD', 'symbol' => 'BBB',
+            'name' => 'BETA ETF', 'country' => 'GB', 'exchange' => 'XLON'];
+
+        self::assertSame('IE', $this->apply([$row], CountrySource::Isin)[0]['country']);
+        self::assertSame('GB', $this->apply([['country' => 'IE'] + $row], CountrySource::Exchange)[0]['country']);
+    }
+
+    public function testATickerPoolHasNoIsinToOffer(): void
+    {
+        $row = ['id' => 't3', 'broker' => 'IBKR', 'pool' => 'AAA@USD', 'symbol' => 'AAA',
+            'name' => 'AAA', 'country' => 'US', 'exchange' => 'XNAS'];
+
+        self::assertSame('US', $this->apply([$row], CountrySource::Isin)[0]['country']);
+    }
+
     public function testSwitchingBackToTheExchangeRederivesTheProposal(): void
     {
         $rows = $this->apply([self::row(['country' => 'CN'])], CountrySource::Exchange);

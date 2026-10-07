@@ -8,7 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 calculator. Symfony **8.1** on PHP **8.4+** (developed on 8.5), available both as a web
 application and as CLI commands.
 
-Reads Interactive Brokers and DEGIRO exports (legacy normalized CSVs remain deprecated),
+Reads Interactive Brokers (Activity Statement, Flex, Dividend Detail) and DEGIRO exports
+(legacy normalized CSVs remain deprecated),
 converts amounts using NBP D-1 rates, matches sells to buys with FIFO, and produces
 PIT-38 / PIT-ZG figures.
 
@@ -82,7 +83,7 @@ Nine modules under `src/`, ordered from the inside out:
   weekends and holidays, bounded at 10 days) and decorated by `CachedNbpRateProvider`.
 - **Import** — `FormatDetector` identifies a file from its structure (never from its name);
   `CsvImportService` routes it to the matching importer and de-duplicates by fingerprint.
-  Seven importers implement `ImporterInterface` (auto-collected via `#[AutoconfigureTag]`).
+  Eight importers implement `ImporterInterface` (auto-collected via `#[AutoconfigureTag]`).
   `NumberParser` and `DateParser` handle the notations brokers and spreadsheets produce.
   **Importers never leak exceptions on bad data** — they return `ImportMessage`s. The
   batch then fails closed: one broken row/file blocks the whole calculation rather than
@@ -120,6 +121,24 @@ Nine modules under `src/`, ordered from the inside out:
   but assembles payments across the whole batch, because a dividend and the tax withheld on
   it are two rows that routinely land in two exports. Aggregating per file reported the
   withholding as zero.
+  `Import/Ibkr/` holds the **IBKR Activity Statement** plumbing (excluded from the container
+  like `Degiro/`). `ActivityStatementReader` reads the sectioned file through a real CSV
+  parser (`"2026-06-22, 09:55:39"` has a comma) and keys each `Data` row by the header *in
+  force* - Trades re-declares its header for Forex (`Comm in USD`), and Financial Instrument
+  Information (ISIN, `Listing Exch`) comes *after* Trades, so the whole file is read before
+  mapping. It keeps only the sections the importer names: Account Information (name, account
+  number) is never held. `IbkrActivityStatementImporter` is both a trade source and a batch
+  importer - one statement feeds FIFO and the cross-file dividend assembly, and
+  `CsvImportService` routes such a file down both paths. Settled cash is `Proceeds + Comm/Fee`
+  in the trade currency (the sell fee is known, so the przychód split applies); the queue is
+  `ISIN@CURRENCY` with the ticker as `symbol`; IDs are synthetic (content + occurrence
+  ordinal, `TradeIdScope::Fill`); `IbkrExchange` turns IBKR's exchange codes into MICs
+  (IBKR's `TSE` is Toronto, `TSEJ` Tokyo) so `ExchangeCountry` and `CountrySourceApplier`
+  work unchanged - the applier finds the ISIN in `pool` when `symbol` is a ticker. AS amounts
+  get at least two decimals: FIFO prorates at the amount's own scale, and IBKR prints a round
+  trade as `-1000`. Dividends join their withholding by ISIN, currency and day across files;
+  reversals and withholding without a payment that day are Review items, interest
+  withholding is ignored.
 - **Tax** — `TaxRates` (19% Polish rate + treaty withholding caps), `StockTaxCalculator`,
   `DividendTaxCalculator`, `TaxYearFilter`, `CreditMethod`. Results are immutable DTOs in
   `Tax\Result`. The dividend calculator produces **two** credit scenarios, never one:
@@ -243,6 +262,12 @@ Nine modules under `src/`, ordered from the inside out:
   would be a guess.
 - **Trades from different brokers never share a pool.** One broker's IDs say nothing about
   another's, and the matching keys mean different things.
+- **One IBKR trade format per settlement.** Flex and the Activity Statement key their queues
+  differently (`ticker@CCY` vs `ISIN@CCY`) and are batched per importer, so the same sale
+  in both would settle twice. A batch with trades from both is fatal, and the incremental
+  upload guard compares `broker|symbol` as well as `broker|pool`. Activity Statement dividends
+  next to Dividend Detail / Flex dividends are a Review item: both state a country, so
+  `mergeOverlappingDividends` will not collapse them.
 - **The declared przychód is the gross amount due, not the settled cash.** `Total`/`NetCash` is
   the cash that moved and stays the record (and the position's identity), but the three cases
   are not symmetric and every surface must show the same split. The *buy* fee is already inside

@@ -526,6 +526,10 @@ final class CalculatorController extends AbstractController
         foreach ($state['trades'] as $trade) {
             $tradeIds[$trade->id()] = true;
             $queues[$this->queueKey($trade)] = true;
+            // The same paper from another export of the same broker keys its
+            // queue differently (IBKR Flex: ticker@CCY, Activity Statement:
+            // ISIN@CCY), so the queues alone would let one sale settle twice.
+            $queues[$this->instrumentKey($trade)] = true;
         }
 
         $newTrades = [];
@@ -536,7 +540,7 @@ final class CalculatorController extends AbstractController
             $newTrades[] = $trade;
         }
         foreach ($newTrades as $trade) {
-            if (isset($queues[$this->queueKey($trade)])) {
+            if (isset($queues[$this->queueKey($trade)]) || isset($queues[$this->instrumentKey($trade)])) {
                 $message = sprintf(
                     'Nowy batch dotyka istniejącej kolejki FIFO %s / %s. Cały upload odrzucono; dotychczasowa praca pozostała bez zmian.',
                     $trade->broker ?: 'broker',
@@ -629,6 +633,11 @@ final class CalculatorController extends AbstractController
     private function queueKey(Trade $trade): string
     {
         return $trade->broker.'|'.($trade->fifoPool ?: $trade->symbol);
+    }
+
+    private function instrumentKey(Trade $trade): string
+    {
+        return 'instrument:'.$trade->broker.'|'.mb_strtoupper($trade->symbol);
     }
 
     /**

@@ -29,6 +29,7 @@ final class ExampleFileTest extends WebTestCase
     {
         yield 'degiro transactions' => ['degiro-transakcje.csv'];
         yield 'degiro account statement' => ['degiro-rachunek.csv'];
+        yield 'ibkr activity statement' => ['ibkr-activity-statement.csv'];
     }
 
     #[DataProvider('maliciousNames')]

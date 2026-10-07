@@ -88,7 +88,7 @@ final class UiSurfacesTest extends WebTestCase
         self::assertContains('Jak pobrać pliki z IBKR', $summaries);
         self::assertContains('Jak pobrać pliki z DEGIRO', $summaries);
         self::assertContains('Przykładowe pliki', $summaries);
-        self::assertSame(2, $crawler->filterXPath('//details//a[starts-with(@href, "/przyklady/")]')->count());
+        self::assertSame(3, $crawler->filterXPath('//details//a[starts-with(@href, "/przyklady/")]')->count());
         self::assertSame([], self::openDisclosures($crawler));
         self::assertStringNotContainsString('pozycje-zamkniete.csv', $crawler->filter('body')->text());
     }

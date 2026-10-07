@@ -52,6 +52,22 @@
         <details class="disclosure disclosure--card">
             <summary>Jak pobrać pliki z IBKR</summary>
             <div class="disclosure__body">
+                <p>
+                    Najprościej: <strong>Activity Statement</strong> — nie wymaga żadnej konfiguracji. W portalu IBKR
+                    wybierz <em>Performance &amp; Reports → Statements → Activity</em>, okres <em>Annual</em>
+                    (albo <em>Custom Date Range</em>, najwyżej rok), format <em>CSV</em> i język <em>English</em>,
+                    a potem pobierz plik. Powtórz to dla każdego roku od pierwszego zakupu papierów, które
+                    sprzedawałeś, i wgraj wszystkie pliki naraz — kalkulator połączy je w jedną kolejkę FIFO.
+                </p>
+                <p>
+                    Jeden wyciąg zawiera transakcje, dywidendy i podatek u źródła. Kraj dochodu kalkulator
+                    proponuje z giełdy notowania, a dla dywidend z prefiksu ISIN — sprawdź go w zakładkach
+                    Transakcje i Dywidendy.
+                </p>
+                <p>
+                    Alternatywnie zapytania Flex — nie łącz ich z Activity Statement w jednym rozliczeniu, bo każdy
+                    format ma własną kolejkę FIFO:
+                </p>
                 <ul class="list-plain">
                     <li>
                         <strong>Transakcje giełdowe:</strong> <em>Performance &amp; Reports → Flex Queries</em>,

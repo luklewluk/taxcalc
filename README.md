@@ -271,7 +271,53 @@ oba separatory, ten **stojący dalej** jest separatorem dziesiętnym, więc `1,2
 i `1.431,00` czytane są poprawnie. Dla DEGIRO jednoznaczne wartości w całym pliku ustalają
 konwencję dla niejednoznacznych zapisów typu `1,234`; sprzeczne konwencje przerywają import.
 
-### 1. Interactive Brokers — transakcje (Flex)
+### 1. Interactive Brokers — Activity Statement (zalecany)
+
+```csv
+Statement,Data,Title,Activity Statement
+Account Information,Data,Account,UXXXXXXXX
+Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+Trades,Data,Order,Stocks,USD,AAA,"2025-02-03, 10:15:00",10,100,101,-1000,-1,1001,0,10,O
+Trades,Data,Order,Stocks,USD,AAA,"2025-09-15, 15:42:10",-4,130,131,520,-1,-400.4,118.6,-4,C;P
+Dividends,Header,Currency,Date,Description,Amount
+Dividends,Data,USD,2025-06-12,AAA(US000ALFA001) Cash Dividend USD 0.50 per Share (Ordinary Dividend),5
+Withholding Tax,Header,Currency,Date,Description,Amount,Code
+Withholding Tax,Data,USD,2025-06-12,AAA(US000ALFA001) Cash Dividend USD 0.50 per Share - US Tax,-0.75,
+Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,
+```
+
+Standardowy wyciąg z aktywności — **nie wymaga konfigurowania zapytań Flex**. Jeden plik
+zawiera transakcje, dywidendy i podatek u źródła. Format jest rozpoznawany po wierszu
+`Statement,Data,Title,Activity Statement` (raport musi być wygenerowany po angielsku).
+
+- **Transakcje** — sekcja `Trades`, wiersze `Order` klasy `Stocks`. Kwoty są w walucie
+  transakcji: rozliczona gotówka to `Proceeds + Comm/Fee`, a prowizja jest znana osobno, więc
+  przy sprzedaży przychód i koszty zbycia są rozdzielane jak dla DEGIRO. Czas wykonania
+  (`Date/Time`, z sekundami) ustala kolejność FIFO; kupno i sprzedaż jednej kolejki z tym
+  samym czasem przerywają import.
+- **ISIN i giełda** pochodzą z sekcji `Financial Instrument Information` na końcu pliku.
+  Kolejka FIFO to `ISIN@WALUTA` (przeżywa zmianę tickera między rocznymi wyciągami), a kraj
+  jest proponowany z giełdy notowania (`Listing Exch`, np. `NASDAQ` → US, `LSEETF` → GB);
+  ustawienie „Kraj transakcji” przełącza go na prefiks ISIN.
+- **Dywidendy** — sekcje `Dividends` i `Payment In Lieu Of Dividends`, podatek z
+  `Withholding Tax`; wypłata jest łączona z podatkiem po ISIN, walucie i dniu, także między
+  plikami. Storna i korekty podatku bez wypłaty z tego samego dnia trafiają do „Wymaga uwagi”.
+  Podatek od odsetek jest pomijany.
+- **Pomijane** są wymiany walut (`Forex`). Inne klasy aktywów (np. futures, obligacje) są
+  pomijane z pozycją w „Wymaga uwagi”, bo pola PIT-38 ich nie obejmują.
+- **Przerywają import:** operacje korporacyjne (sekcja `Corporate Actions` albo wiersz bez
+  kwoty), transakcje anulowane lub korygowane (kody `Ca`, `Co`) i sprzedaż bez zakupu.
+
+Wyciąg obejmuje najwyżej rok, więc pobierz plik **za każdy rok** od pierwszego zakupu
+papierów, które sprzedawałeś, i wgraj wszystkie naraz. **Nie łącz** Activity Statement z
+zapytaniami Flex — każdy format ma własną kolejkę FIFO, więc import z obu jest odrzucany.
+Sekcja `Account Information` (nazwisko, numer rachunku) **nie jest w ogóle czytana**.
+
+Gdzie znaleźć: *Performance & Reports → Statements → Activity*, okres *Annual* (lub
+*Custom Date Range*), format *CSV*, język *English*.
+
+### 2. Interactive Brokers — transakcje (Flex)
 
 ```csv
 "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
@@ -289,7 +335,7 @@ jako audytowa cena wykonania, ale nie zmienia kwoty podatkowej.
 
 Gdzie znaleźć: *Performance & Reports → Flex Queries → Trades*.
 
-### 2. Interactive Brokers — dywidendy (zestawienie aktywności)
+### 3. Interactive Brokers — dywidendy (zestawienie aktywności)
 
 ```csv
 "CurrencyPrimary","Symbol","Multiplier","Date/Time","Amount","Type","TransactionID"
@@ -308,7 +354,7 @@ Pozostałe typy (np. `Deposits/Withdrawals`) są pomijane z informacją. Ten for
 Gdzie znaleźć: *Flex Queries → Cash Transactions* (dodaj typy `Dividends`
 oraz `Withholding Tax`).
 
-### 3. Interactive Brokers — Dividend Detail (dokumenty podatkowe) — zalecany
+### 4. Interactive Brokers — Dividend Detail (dokumenty podatkowe)
 
 ```csv
 Account,Header,AccountNumber,AccountAlias,Name,BaseCurrency,
@@ -334,7 +380,7 @@ Gdzie znaleźć: *Performance & Reports → Tax Documents → Dividend Detail*.
 > Rekordy, które podają **różne** kraje, nie są scalane: to realny konflikt danych,
 > który powinieneś rozstrzygnąć sam w zakładce Dywidendy.
 
-### 4. DEGIRO — transakcje (Transactions)
+### 5. DEGIRO — transakcje (Transactions)
 
 ```csv
 Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
@@ -418,7 +464,7 @@ Gdzie znaleźć: portfel DEGIRO → *Aktywność (Activity)* → *Transakcje (Tr
 zakres dat obejmujący także lata zakupów → *Eksport → CSV*. Instrukcja brokera:
 <https://www.degiro.com/uk/helpdesk/tax/tax-treaties/which-reports-are-there-and-where-can-i-find-them>.
 
-### 5. DEGIRO — zestawienie konta (Account statement)
+### 6. DEGIRO — zestawienie konta (Account statement)
 
 ```csv
 Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
@@ -514,7 +560,7 @@ Gdzie znaleźć: portfel DEGIRO → *Aktywność (Activity)* → *Zestawienie ko
 > dopasowywane **osobno dla każdego brokera**: identyfikatory są unikalne tylko u wystawcy,
 > a kolejka FIFO jednego brokera jest kluczowana ISIN-em, drugiego symbolem.
 
-### 6. Format własny — pozycje zamknięte (deprecated)
+### 7. Format własny — pozycje zamknięte (deprecated)
 
 Format pozostaje obsługiwany wyłącznie dla zgodności. Import pokazuje ostrzeżenie, a gotowe
 pary trafiają do zwiniętej sekcji legacy i nie są ponownie dopasowywane przez FIFO.
@@ -527,7 +573,7 @@ PKO,PL,PLN,2024-01-15,1000.00,2025-03-10,1180.50
 
 Kwoty są **łączne dla pozycji**, nie za sztukę. Precyzja większa niż grosze jest zachowywana.
 
-### 7. Format własny — dywidendy (deprecated)
+### 8. Format własny — dywidendy (deprecated)
 
 Format pozostaje obsługiwany dla starszych integracji i przy imporcie jest oznaczany jako
 wycofywany. Nie jest promowany w głównym interfejsie ani w publicznych przykładach.
@@ -542,7 +588,7 @@ VUSD,IE,USD,2025-04-02,56.75,0
 Ujemny znak jest normalizowany wyłącznie w brokerowych formatach IBKR, które go tak
 definiują. W formacie własnym i formularzu wartość ujemna jest błędem.
 
-Publiczne przykłady aktualnych eksportów DEGIRO znajdziesz w katalogu [`examples/`](examples/)
+Publiczne przykłady aktualnych eksportów DEGIRO i IBKR Activity Statement znajdziesz w katalogu [`examples/`](examples/)
 oraz do pobrania ze strony `/kalkulator`.
 
 ## Metodyka podatkowa
@@ -830,7 +876,7 @@ src/
 ├─ Fifo/           dopasowanie FIFO z proporcjonalnym podziałem kosztu
 ├─ Model/          ClosedPosition, Dividend, AccountFee — rekordy rozliczenia
 ├─ CurrencyRate/   kursy NBP: interfejs, klient HTTP, cache, przeliczanie D-1
-├─ Import/         rozpoznawanie formatu, parsery liczb i dat, 7 importerów
+├─ Import/         rozpoznawanie formatu, parsery liczb i dat, 8 importerów
 │  └─ Degiro/      pozycyjny czytnik CSV, aliasy nagłówków, ISIN
 ├─ Tax/            stawki, kalkulator akcji, kalkulator dywidend, filtr roku
 ├─ Report/         budowanie raportu, eksport CSV odporny na formuły

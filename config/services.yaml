@@ -33,6 +33,7 @@ services:
             - '../src/Kernel.php'
             - '../src/Money/'
             - '../src/Import/Degiro/'
+            - '../src/Import/Ibkr/'
             - '../src/Import/Dto/'
             - '../src/Tax/Result/'
             - '../src/CurrencyRate/ExchangedAmount.php'

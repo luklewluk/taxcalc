@@ -45,6 +45,24 @@ final class FormatDetectorTest extends TestCase
             CsvFormat::IbkrDividendDetail,
         ];
 
+        yield 'ibkr activity statement' => [
+            "\u{FEFF}Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,BrokerName,Interactive Brokers Ireland Limited\n"
+            ."Statement,Data,Title,Activity Statement\n"
+            ."Statement,Data,Period,\"January 1, 2026 - October 6, 2026\"\n"
+            ."Account Information,Header,Field Name,Field Value\n"
+            ."Account Information,Data,Account,UXXXXXXXX\n",
+            CsvFormat::IbkrActivityStatement,
+        ];
+
+        // A statement generated in another language says nothing we can map
+        // safely; it is reported as unrecognized rather than half-read.
+        yield 'ibkr activity statement, other language' => [
+            "Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,Title,Kontoauszug\n",
+            CsvFormat::Unknown,
+        ];
+
         yield 'normalized positions' => [
             "name,country,currency,buy_date,buy_total_amount,sell_date,sell_total_amount\n"
             ."Apple,US,USD,2020-05-04,71.8275,2020-12-16,127.4\n",

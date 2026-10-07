@@ -9,6 +9,7 @@ enum CsvFormat: string
     case IbkrTrades = 'ibkr_trades';
     case IbkrActivityDividends = 'ibkr_activity_dividends';
     case IbkrDividendDetail = 'ibkr_dividend_detail';
+    case IbkrActivityStatement = 'ibkr_activity_statement';
     case DegiroTransactions = 'degiro_transactions';
     case DegiroAccount = 'degiro_account';
     case NormalizedPositions = 'normalized_positions';
@@ -21,6 +22,7 @@ enum CsvFormat: string
             self::IbkrTrades => 'IBKR - transakcje giełdowe',
             self::IbkrActivityDividends => 'IBKR - dywidendy (zestawienie aktywności)',
             self::IbkrDividendDetail => 'IBKR - dywidendy (Dividend Detail / dokumenty podatkowe)',
+            self::IbkrActivityStatement => 'IBKR - wyciąg z aktywności (Activity Statement)',
             self::DegiroTransactions => 'DEGIRO - transakcje giełdowe',
             self::DegiroAccount => 'DEGIRO - zestawienie konta (dywidendy)',
             self::NormalizedPositions => 'Format własny - pozycje zamknięte',

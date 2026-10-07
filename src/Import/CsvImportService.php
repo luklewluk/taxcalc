@@ -86,8 +86,16 @@ final readonly class CsvImportService
          */
         $recordBatches = [];
 
+        /**
+         * Formats present in this upload, with the raw trades each contributed.
+         *
+         * @var array<string, int> $formats
+         */
+        $formats = [];
+
         foreach ($sources as $source) {
             $format = $this->formatDetector->detect($source);
+            $formats[$format->value] ??= 0;
 
             if (CsvFormat::Unknown === $format) {
                 $result = $result->withMessages([ImportMessage::error(
@@ -117,6 +125,7 @@ final readonly class CsvImportService
                 $tradeBatches[$importer::class] = $batch;
 
                 $rawTrades += count($extraction->trades);
+                $formats[$format->value] += count($extraction->trades);
                 $result = $result->withMessages(self::messagesForTab($extraction->messages, 'transactions'));
 
                 if ($rawTrades > $this->maxRecords) {
@@ -130,7 +139,11 @@ final readonly class CsvImportService
                     )]);
                 }
 
-                continue;
+                // A statement can carry trades *and* records assembled across
+                // files (the IBKR Activity Statement: trades plus dividends).
+                if (!$importer instanceof BatchImporterInterface) {
+                    continue;
+                }
             }
 
             if ($importer instanceof BatchImporterInterface) {
@@ -162,8 +175,39 @@ final readonly class CsvImportService
             $result = $result->merge(self::resultWithMessageTarget($imported, self::targetTab($format)));
         }
 
+        if (($formats[CsvFormat::IbkrTrades->value] ?? 0) > 0 && ($formats[CsvFormat::IbkrActivityStatement->value] ?? 0) > 0) {
+            // Each format keeps its own FIFO queue, so a sale present in both
+            // would be settled twice - and a buy in one could never cover a
+            // sale in the other.
+            return new ImportResult([], [], [...$result->messages, ImportMessage::error(
+                'Import',
+                'Transakcje IBKR wgrano z dwóch rodzajów zestawień: zapytania Flex i Activity Statement. '
+                .'Każde z nich ma własną kolejkę FIFO, więc ta sama sprzedaż rozliczyłaby się dwa razy. '
+                .'Wybierz jeden format IBKR dla wszystkich lat i wgraj tylko jego pliki.',
+            )->forTab('attention')]);
+        }
+
+        $statementDividends = 0;
         foreach ($recordBatches as [$batchImporter, $batchSources, $targetTab]) {
-            $result = $result->merge(self::resultWithMessageTarget($batchImporter->importMany($batchSources), $targetTab));
+            $batchResult = $batchImporter->importMany($batchSources);
+            if ($batchImporter->supports(CsvFormat::IbkrActivityStatement)) {
+                $statementDividends += count($batchResult->dividends);
+            }
+
+            $result = $result->merge(self::resultWithMessageTarget($batchResult, $targetTab));
+        }
+
+        if ($statementDividends > 0
+            && (isset($formats[CsvFormat::IbkrDividendDetail->value]) || isset($formats[CsvFormat::IbkrActivityDividends->value]))) {
+            // Overlap is merged only when exactly one record states a country;
+            // the Activity Statement proposes one from the ISIN, so the same
+            // payment can survive twice.
+            $result = $result->withMessages([ImportMessage::review(
+                'Import',
+                'Dywidendy IBKR wgrano zarówno z Activity Statement, jak i z innego zestawienia (Dividend Detail '
+                .'lub zapytania Flex). Te same wypłaty mogą się dublować - zostaw dywidendy z jednego źródła '
+                .'albo sprawdź zakładkę Dywidendy.',
+            )->forTab('dividends')]);
         }
 
         foreach ($tradeBatches as [$tradeImporter, $trades]) {
@@ -204,7 +248,8 @@ final readonly class CsvImportService
             CsvFormat::IbkrActivityDividends, CsvFormat::IbkrDividendDetail, CsvFormat::NormalizedDividends => 'dividends',
             // A DEGIRO account statement can contain both dividends and fees,
             // so file-level errors stay on the attention list itself.
-            CsvFormat::DegiroAccount, CsvFormat::Unknown => 'attention',
+            // So can an IBKR Activity Statement: trades, dividends and withholding.
+            CsvFormat::DegiroAccount, CsvFormat::IbkrActivityStatement, CsvFormat::Unknown => 'attention',
         };
     }
 

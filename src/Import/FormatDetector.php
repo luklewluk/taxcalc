@@ -40,6 +40,13 @@ final class FormatDetector
             if (str_starts_with(ltrim($line), 'DividendDetail,')) {
                 return CsvFormat::IbkrDividendDetail;
             }
+
+            // The Activity Statement names itself in its Statement section. Only
+            // the English title is recognised: the column names the importer
+            // maps are English too, and a translated file is not guessed at.
+            if ('Statement,Data,Title,Activity Statement' === rtrim(trim($line), ',')) {
+                return CsvFormat::IbkrActivityStatement;
+            }
         }
 
         $header = self::headerColumns($lines[0]);
