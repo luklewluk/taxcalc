@@ -50,10 +50,11 @@
         </table>
     </div>
     <p class="note">
-        Przychód to kwota należna, czyli <strong>(Total + prowizja + AutoFX) × kurs</strong> ze strony
-        sprzedaży. Koszt to <strong>Total × kurs</strong> ze strony zakupu (prowizja zakupu jest już w
-        tym Total) powiększony o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> ze
-        strony sprzedaży. Kolumny „Total” pokazują kwotę rozliczoną z pliku brokera.
+        Przychód to kwota należna, czyli <strong>(Total + prowizja + AutoFX) ze strony sprzedaży × kurs
+        z dnia zamknięcia pozycji</strong> (dla akcji i opcji kupionych to dzień sprzedaży). Koszt to
+        <strong>Total × kurs</strong> ze strony zakupu (prowizja zakupu jest już w tym Total) powiększony
+        o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> z dnia sprzedaży. Kolumny
+        „Total” pokazują kwotę rozliczoną z pliku brokera.
     </p>
     {% if report.stock.hasOptions %}
         <p class="note">

@@ -117,6 +117,20 @@ final class FifoOptionMatchingTest extends TestCase
         self::assertSame('1', (string) $result->violations[0]->quantity);
     }
 
+    public function testACloseThenOpenWithNothingToCloseIsAViolationNotAnOpen(): void
+    {
+        // The long call it closes was opened in a statement that was not
+        // uploaded: opening the whole quantity short would lose that sale.
+        $result = (new FifoMatcher())->match([
+            self::option('2026-06-01', '-3', '598.05', '1.95', PositionEffect::CloseThenOpen),
+            self::option('2026-07-01', '2', '180.00', '1.30', PositionEffect::Close),
+        ]);
+
+        self::assertSame([], $result->matches);
+        self::assertSame(FifoViolationKind::UnmatchedClose, $result->violations[0]->kind);
+        self::assertSame('3', (string) $result->violations[0]->quantity);
+    }
+
     public function testOpeningAgainstAnOppositePositionIsAViolation(): void
     {
         $result = (new FifoMatcher())->match([

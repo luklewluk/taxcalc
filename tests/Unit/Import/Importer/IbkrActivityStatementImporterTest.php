@@ -338,6 +338,78 @@ final class IbkrActivityStatementImporterTest extends TestCase
         self::assertSame('0.98', (string) $result->dividends[0]->withheldTax->value());
     }
 
+    public function testTheSamePaymentInTwoOverlappingStatementsIsCountedOnce(): void
+    {
+        $statement = self::statement([], more: [
+            self::DIVIDENDS_HEADER,
+            'Dividends,Data,USD,2026-09-30,AAA(US000ALFA001) Cash Dividend USD 0.65 per Share (Ordinary Dividend),6.5',
+            self::WITHHOLDING_HEADER,
+            'Withholding Tax,Data,USD,2026-09-30,AAA(US000ALFA001) Cash Dividend USD 0.65 per Share - US Tax,-0.98,',
+        ]);
+
+        $result = (new IbkrActivityStatementImporter(new FifoMatcher()))->importMany([
+            new CsvSource('annual.csv', $statement),
+            new CsvSource('annual (1).csv', $statement),
+        ]);
+
+        self::assertCount(1, $result->dividends);
+        self::assertSame('6.5', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('0.98', (string) $result->dividends[0]->withheldTax->value());
+    }
+
+    public function testTwoIdenticalPaymentRowsInOneStatementAreBothKept(): void
+    {
+        $row = 'Dividends,Data,USD,2026-09-30,AAA(US000ALFA001) Cash Dividend USD 0.65 per Share (Ordinary Dividend),6.5';
+        $result = $this->import(self::statement([], more: [self::DIVIDENDS_HEADER, $row, $row]));
+
+        self::assertSame('13.0', (string) $result->dividends[0]->grossAmount->value());
+    }
+
+    public function testAReversalAndARepostInTheSameYearLeaveOnlyTheRepost(): void
+    {
+        $result = $this->import(self::statement([], more: [
+            self::DIVIDENDS_HEADER,
+            'Dividends,Data,USD,2025-03-03,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),100',
+            'Dividends,Data,USD,2025-06-02,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),-100',
+            'Dividends,Data,USD,2025-06-03,AAA(US000ALFA001) Cash Dividend USD 0.80 per Share (Ordinary Dividend),80',
+        ]));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(1, $result->dividends);
+        self::assertSame('80', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('2025-06-03', $result->dividends[0]->date->format('Y-m-d'));
+        self::assertStringContainsString('2025-03-03', self::joined(self::ofLevel($result->messages, MessageLevel::Review)));
+    }
+
+    public function testAWithholdingRefundInTheSameYearReducesTheCredit(): void
+    {
+        $result = $this->import(self::statement([], more: [
+            self::DIVIDENDS_HEADER,
+            'Dividends,Data,USD,2025-03-03,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),100',
+            self::WITHHOLDING_HEADER,
+            'Withholding Tax,Data,USD,2025-03-03,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share - US Tax,-30,',
+            'Withholding Tax,Data,USD,2025-05-10,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share - US Tax,15,',
+        ]));
+
+        self::assertCount(1, $result->dividends);
+        self::assertSame('100', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('15', (string) $result->dividends[0]->withheldTax->value());
+        self::assertStringContainsString('skorygowano', self::joined(self::ofLevel($result->messages, MessageLevel::Review)));
+    }
+
+    public function testACorrectionBookedInTheNextYearDoesNotReachBack(): void
+    {
+        $result = $this->import(self::statement([], more: [
+            self::DIVIDENDS_HEADER,
+            'Dividends,Data,USD,2025-12-15,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),100',
+            'Dividends,Data,USD,2026-02-03,AAA(US000ALFA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),-100',
+        ]));
+
+        self::assertCount(1, $result->dividends);
+        self::assertSame('2025-12-15', $result->dividends[0]->date->format('Y-m-d'));
+        self::assertStringContainsString('koryguje rok', self::joined(self::ofLevel($result->messages, MessageLevel::Review)));
+    }
+
     public function testAReversedPaymentIsSkippedAndReported(): void
     {
         $result = $this->import(self::statement([], more: [
@@ -473,6 +545,81 @@ final class IbkrActivityStatementImporterTest extends TestCase
         $review = self::joined(self::ofLevel($result->messages, MessageLevel::Review));
         self::assertStringContainsString(self::PUT, $review);
         self::assertStringContainsString('cenie wykonania', $review);
+    }
+
+    public function testACallSpreadExercisedAndAssignedAtOneInstantIsSettledNotRefused(): void
+    {
+        $long = 'AAA 17APR26 100 C';
+        $short = 'AAA 17APR26 105 C';
+        $content = self::statement([
+            self::trade($long, '2026-03-02, 10:00:00', '1', '3', '-300', '-0.65', 'O', category: self::OPTIONS),
+            self::trade($short, '2026-03-02, 10:00:01', '-1', '1.5', '150', '-0.65', 'O', category: self::OPTIONS),
+            self::trade($long, '2026-04-17, 16:20:00', '-1', '0', '0', '0', 'C;Ex', category: self::OPTIONS),
+            self::trade($short, '2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C', category: self::OPTIONS),
+            // IBKR prints the delivered shares with one timestamp; the sale
+            // happens to come first in the file.
+            self::trade('AAA', '2026-04-17, 16:20:00', '-100', '105', '10500', '0', 'A;C'),
+            self::trade('AAA', '2026-04-17, 16:20:00', '100', '100', '-10000', '0', 'Ex;O'),
+        ], [
+            self::FII_AAA,
+            self::FII_OPTIONS_HEADER,
+            'Financial Instrument Information,Data,Equity and Index Options,AAA   260417C00100000,'.$long.',2002,AAA,CBOE,100,2026-04-17,2026-04,C,100,',
+            'Financial Instrument Information,Data,Equity and Index Options,AAA   260417C00105000,'.$short.',2003,AAA,CBOE,100,2026-04-17,2026-04,C,105,',
+        ]);
+
+        $result = $this->import($content);
+
+        self::assertSame([], $result->errors());
+        $shares = array_values(array_filter($result->positions, static fn ($p): bool => 'AAA' === $p->symbol));
+        self::assertCount(1, $shares);
+        self::assertSame('10000.00', (string) $shares[0]->buyAmount->value());
+        self::assertSame('10500.00', (string) $shares[0]->sellAmount->value());
+        self::assertStringContainsString('ten sam czas', self::joined(self::ofLevel($result->messages, MessageLevel::Review)));
+    }
+
+    public function testTwoPutsAssignedAtOneInstantAreSettledInFileOrder(): void
+    {
+        $high = 'AAA 17APR26 50 P';
+        $low = 'AAA 17APR26 45 P';
+        $content = self::statement([
+            self::trade($high, '2026-03-02, 10:00:00', '-1', '2', '200', '-1.05', 'O', category: self::OPTIONS),
+            self::trade($low, '2026-03-02, 10:00:01', '-1', '1', '100', '-1.05', 'O', category: self::OPTIONS),
+            self::trade($high, '2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C', category: self::OPTIONS),
+            self::trade($low, '2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C', category: self::OPTIONS),
+            self::trade('AAA', '2026-04-17, 16:20:00', '100', '50', '-5000', '0', 'A;O'),
+            self::trade('AAA', '2026-04-17, 16:20:00', '100', '45', '-4500', '0', 'A;O'),
+        ], [
+            self::FII_AAA,
+            self::FII_OPTIONS_HEADER,
+            'Financial Instrument Information,Data,Equity and Index Options,AAA   260417P00050000,'.$high.',2004,AAA,CBOE,100,2026-04-17,2026-04,P,50,',
+            'Financial Instrument Information,Data,Equity and Index Options,AAA   260417P00045000,'.$low.',2005,AAA,CBOE,100,2026-04-17,2026-04,P,45,',
+        ]);
+
+        $result = $this->import($content);
+
+        self::assertSame([], $result->errors());
+        self::assertCount(2, $result->positions, 'Both written puts close; the shares stay open.');
+    }
+
+    public function testOrdinaryExecutionsAtOneInstantAreStillRefused(): void
+    {
+        $result = $this->import(self::statement([
+            self::trade('AAA', '2025-03-03, 10:00:00', '1', '100', '-100', '-1'),
+            self::trade('AAA', '2025-03-03, 10:00:00', '1', '101', '-101', '-1'),
+        ]));
+
+        self::assertNotSame([], $result->errors());
+    }
+
+    public function testABlankUnderlyingFallsBackToTheSeriesSymbol(): void
+    {
+        $result = $this->import(self::statement([
+            self::option('2026-03-02, 10:00:00', '-1', '2', '200', '-1.05', 'O'),
+            self::option('2026-04-17, 16:20:00', '1', '0', '0', '0', 'A;C'),
+            self::trade('AAA', '2026-04-17, 16:20:00', '100', '50', '-5000', '0', 'A;O'),
+        ], [self::FII_AAA, self::FII_OPTIONS_HEADER, str_replace(',2001,AAA,CBOE,', ',2001,,CBOE,', self::FII_PUT)]));
+
+        self::assertSame([], $result->errors());
     }
 
     public function testAnAssignmentWithoutDeliveredSharesIsFatal(): void

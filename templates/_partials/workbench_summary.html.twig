@@ -44,7 +44,7 @@
                 <p class="reconciliation">
                     W przychodzie i w kosztach: <strong>{{ stock.disposalCost|money }} zł</strong>
                     prowizji i opłat AutoFX od sprzedaży. Przychodem jest kwota należna, a te opłaty
-                    są kosztem odpłatnego zbycia{{ stock.hasOptions ? ' — przy opcji wystawionej prowizja od wystawienia jest przeliczana kursem z dnia wystawienia, a przychód z dnia zamknięcia' : ' — dochód jest ten sam' }}.
+                    są kosztem odpłatnego zbycia{{ stock.hasWrittenOptions ? ' — przy opcji wystawionej prowizja od wystawienia jest przeliczana kursem z dnia wystawienia, a przychód z dnia zamknięcia' : ' — dochód jest ten sam' }}.
                 </p>
             {% endif %}
             {% if stock.hasOptions %}

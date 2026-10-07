@@ -88,6 +88,9 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
     /** Codes marking shares delivered by an option assignment or exercise. */
     private const array DELIVERY_CODES = ['A', 'Ex', 'AEx', 'MEx', 'GEA'];
 
+    /** Prefix of the synthetic ID of shares delivered by an option assignment or exercise. */
+    private const string DELIVERY_ID = 'auto:dlv:';
+
     /** `SYMBOL(ISIN) ...` at the start of every dividend and withholding description. */
     private const string PAYMENT_DESCRIPTION = '/^(?<symbol>[^(]+)\((?<isin>[A-Z]{2}[A-Z0-9]{9}\d)\)/';
 
@@ -234,7 +237,7 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
 
                 if ($isOption) {
                     $effect = self::optionEffect($symbol, $date, $codes);
-                    $underlying = $instrument['underlying'] ?? strtok($symbol, ' ');
+                    $underlying = ($instrument['underlying'] ?? '') ?: (string) strtok($symbol, ' ');
                     $closesAtNothing = self::assertOptionCash($symbol, $date, $codes, $effect, $proceeds, $fee);
 
                     if ($closesAtNothing && $delivery) {
@@ -326,7 +329,11 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                     $date,
                     $quantity,
                     Amount::fromDecimal(self::atLeastCents($cash->abs()), $currency),
-                    externalId: 'auto:'.substr(hash('sha256', $signature.'|'.$ordinal), 0, 24),
+                    // Shares delivered by an assignment or exercise are marked in
+                    // the ID, the one field this importer owns, so matchTrades()
+                    // can tell them from executions when timestamps tie.
+                    externalId: ($delivery && !$isOption ? self::DELIVERY_ID : 'auto:')
+                        .substr(hash('sha256', $signature.'|'.$ordinal), 0, 24),
                     source: sprintf('%s (%s)', $source->name, CsvFormat::IbkrActivityStatement->label()),
                     instrument: new InstrumentDetails($instrument['name'] ?? $symbol, $country, $exchangeCode),
                     fillOrdinal: $ordinal,
@@ -427,7 +434,7 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             ));
         }
 
-        return new TradeExtraction($trades, $messages);
+        return new TradeExtraction(self::deliveriesInBeforeOut($trades), $messages);
     }
 
     public function matchTrades(array $trades): ImportResult
@@ -436,13 +443,14 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             return new ImportResult();
         }
 
-        $orderingMessages = self::ambiguousOrderingErrors($trades);
-        if ([] !== $orderingMessages) {
-            return new ImportResult([], [], $orderingMessages);
+        [$orderingErrors, $orderingNotes] = self::ambiguousOrderingErrors($trades);
+        if ([] !== $orderingErrors) {
+            return new ImportResult([], [], $orderingErrors);
         }
 
         $fifo = $this->fifoMatcher->match($trades);
         [$countryByPool, $messages] = self::poolCountries($trades);
+        $messages = [...$messages, ...$orderingNotes];
 
         /** @var array<string, string> $poolById */
         $poolById = [];
@@ -530,6 +538,17 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
         $withholdingOnly = [];
         $messages = [];
 
+        /**
+         * Payment rows already taken, across every file. An Annual statement and
+         * a Custom period that overlaps it - or the same file picked twice -
+         * repeat the same rows, and summing them would double the dividend and
+         * the tax withheld on it.
+         *
+         * @var array<string, true> $seen
+         */
+        $seen = [];
+        $duplicates = 0;
+
         foreach ($sources as $source) {
             try {
                 $statement = ActivityStatementReader::read(
@@ -543,7 +562,42 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
                 continue;
             }
 
-            foreach ([...$statement->rows(self::DIVIDENDS), ...$statement->rows(self::PAYMENT_IN_LIEU)] as $row) {
+            // A row is identified by its content and by which occurrence of that
+            // content it is *within its own file*: two genuinely identical rows
+            // in one statement stay two, the same row in another file drops out.
+            /** @var array<string, int> $ordinals */
+            $ordinals = [];
+            $fresh = static function (string $section, ActivityStatementRow $row) use (&$seen, &$ordinals, &$duplicates): bool {
+                $signature = implode('|', [
+                    $section,
+                    $row->get('currency'),
+                    $row->get('date'),
+                    $row->get('description'),
+                    $row->get('amount'),
+                ]);
+                $key = $signature.'|'.($ordinals[$signature] = ($ordinals[$signature] ?? 0) + 1);
+
+                if (isset($seen[$key])) {
+                    ++$duplicates;
+
+                    return false;
+                }
+
+                $seen[$key] = true;
+
+                return true;
+            };
+
+            $paymentRows = [];
+            foreach ([self::DIVIDENDS, self::PAYMENT_IN_LIEU] as $section) {
+                foreach ($statement->rows($section) as $row) {
+                    if ($fresh($section, $row)) {
+                        $paymentRows[] = $row;
+                    }
+                }
+            }
+
+            foreach ($paymentRows as $row) {
                 try {
                     $payment = self::payment($row);
                     if (null === $payment) {
@@ -567,6 +621,10 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             }
 
             foreach ($statement->rows(self::WITHHOLDING) as $row) {
+                if (!$fresh(self::WITHHOLDING, $row)) {
+                    continue;
+                }
+
                 try {
                     $payment = self::payment($row);
                     // Withholding on credit interest names no instrument;
@@ -585,32 +643,101 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             }
         }
 
-        $dividends = [];
+        /**
+         * Every payment day of every paper, oldest first. A day with only
+         * withholding rows (a later refund or top-up) is a group too.
+         *
+         * @var array<string, array{symbol: string, isin: string, currency: string, date: DateTimeImmutable, file: string, gross: Decimal, tax: Decimal}> $groups
+         */
+        $groups = [];
+        foreach ($payments as $key => [$symbol, $isin, $currency, $date, $file]) {
+            $groups[$key] = ['symbol' => $symbol, 'isin' => $isin, 'currency' => $currency, 'date' => $date,
+                'file' => $file, 'gross' => $gross[$key], 'tax' => $withheld[$key] ?? Decimal::zero()];
+        }
+        foreach ($withholdingOnly as $key => [$symbol, $currency, $date, $file]) {
+            $groups[$key] ??= ['symbol' => $symbol, 'isin' => explode('|', $key)[0], 'currency' => $currency,
+                'date' => $date, 'file' => $file, 'gross' => Decimal::zero(), 'tax' => $withheld[$key]];
+        }
+        uasort($groups, static fn (array $a, array $b): int => $a['date'] <=> $b['date']);
+
+        /** @var list<string> $corrections */
+        $corrections = [];
         /** @var list<string> $reversals */
         $reversals = [];
         /** @var list<string> $refunds */
         $refunds = [];
+        /** @var array<string, list<string>> $paymentsByPaper "ISIN|CCY" => keys of positive payments, oldest first */
+        $paymentsByPaper = [];
+
+        foreach ($groups as $key => $group) {
+            $paper = $group['isin'].'|'.$group['currency'];
+            if ($group['gross']->isPositive()) {
+                $paymentsByPaper[$paper][] = $key;
+
+                continue;
+            }
+
+            // A reversal, a refund or a top-up of withholding. Within the year
+            // of the payment it corrects, it nets against that payment - the
+            // most recent one of the same paper - so a reversed and re-posted
+            // dividend counts once and a refund lowers the credit. It never
+            // reaches back into an earlier year: that year was settled already.
+            $target = null;
+            $last = array_key_last($paymentsByPaper[$paper] ?? []);
+            if (null !== $last) {
+                $candidate = $paymentsByPaper[$paper][$last];
+                if ($groups[$candidate]['date']->format('Y') === $group['date']->format('Y')) {
+                    $target = $candidate;
+                }
+            }
+
+            unset($groups[$key]);
+
+            if (null === $target) {
+                if ($group['gross']->isNegative()) {
+                    $reversals[] = sprintf('%s (%s %s, %s)', $group['symbol'], (string) $group['gross'], $group['currency'], $group['date']->format('Y-m-d'));
+                } elseif (!$group['tax']->isZero()) {
+                    $refunds[] = sprintf('%s (%s %s, %s)', $group['symbol'], (string) $group['tax'], $group['currency'], $group['date']->format('Y-m-d'));
+                }
+
+                continue;
+            }
+
+            $payment = $groups[$target];
+            $payment['gross'] = $payment['gross']->plus($group['gross']);
+            $payment['tax'] = $payment['tax']->plus($group['tax']);
+            $groups[$target] = $payment;
+            $corrections[] = sprintf(
+                '%s z %s - wpis z %s (brutto %s, podatek %s %s)',
+                $group['symbol'],
+                $payment['date']->format('Y-m-d'),
+                $group['date']->format('Y-m-d'),
+                (string) $group['gross'],
+                (string) $group['tax'],
+                $group['currency'],
+            );
+        }
+
+        $dividends = [];
+        /** @var list<string> $inconsistent */
+        $inconsistent = [];
         $inferredCountry = false;
         $unknownCountry = false;
 
-        foreach ($payments as $key => [$symbol, $isin, $currency, $date, $file]) {
-            $amount = $gross[$key];
-            $tax = $withheld[$key] ?? Decimal::zero();
-            unset($withholdingOnly[$key]);
-
+        foreach ($groups as ['symbol' => $symbol, 'isin' => $isin, 'currency' => $currency, 'date' => $date, 'file' => $file, 'gross' => $amount, 'tax' => $tax]) {
             if (!$amount->isPositive()) {
-                // A reversal posted on its own: the cash moved now, but it is
-                // not income now - it corrects the year the payment was settled
-                // in. `Dividend` refuses a non-positive gross anyway.
-                $reversals[] = sprintf('%s (%s %s, %s)', $symbol, (string) $amount, $currency, $date->format('Y-m-d'));
+                // Reversed in full within the year. With withholding left over
+                // the corrections do not add up, which the user must see.
+                if (!$tax->isZero()) {
+                    $inconsistent[] = sprintf('%s z %s (podatek %s %s)', $symbol, $date->format('Y-m-d'), (string) $tax, $currency);
+                }
 
                 continue;
             }
 
             if ($tax->isPositive()) {
-                // More refunded than withheld on this day: the refund belongs
-                // to an earlier payment. The dividend is kept with no credit,
-                // which can only overstate the tax, and the user is told.
+                // More refunded than withheld: the dividend is kept with no
+                // credit, which can only overstate the tax, and the user is told.
                 $refunds[] = sprintf('%s (%s %s, %s)', $symbol, (string) $tax, $currency, $date->format('Y-m-d'));
                 $tax = Decimal::zero();
             }
@@ -641,10 +768,27 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             '' === $country ? $unknownCountry = true : $inferredCountry = true;
         }
 
-        foreach ($withholdingOnly as $key => [$symbol, $currency, $date]) {
-            if (!$withheld[$key]->isZero()) {
-                $refunds[] = sprintf('%s (%s %s, %s)', $symbol, (string) $withheld[$key], $currency, $date->format('Y-m-d'));
-            }
+        if ([] !== $corrections) {
+            $messages[] = ImportMessage::review('Import', sprintf(
+                'W tym samym roku skorygowano wypłaty: %s. Korekty zmieniły kwotę brutto lub podatek pobrany '
+                .'dywidendy, której dotyczą - sprawdź wynik w zakładce Dywidendy.',
+                implode('; ', $corrections),
+            ))->forTab('dividends');
+        }
+
+        if ([] !== $inconsistent) {
+            $messages[] = ImportMessage::review('Import', sprintf(
+                'Po korektach wypłata nie ma kwoty brutto, ale zostaje podatek u źródła: %s. Pominięto ją - '
+                .'sprawdź zestawienie i w razie potrzeby wpisz dywidendę ręcznie.',
+                implode('; ', $inconsistent),
+            ))->forTab('dividends');
+        }
+
+        if ($duplicates > 0) {
+            $messages[] = ImportMessage::info('Import', sprintf(
+                'Pominięto %d wiersz(y) dywidend lub podatku u źródła powtórzonych w kilku wyciągach.',
+                $duplicates,
+            ));
         }
 
         if ([] !== $reversals) {
@@ -658,8 +802,9 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
 
         if ([] !== $refunds) {
             $messages[] = ImportMessage::review('Import', sprintf(
-                'Korekty podatku u źródła bez wypłaty z tego samego dnia: %s. Nie przypisano ich do żadnej '
-                .'dywidendy - jeśli dotyczą wypłaty z innego roku, skoryguj tamten rok.',
+                'Korekty podatku u źródła bez wypłaty z tego samego roku albo zwroty większe niż pobrany podatek: '
+                .'%s. Nie przypisano ich do żadnej dywidendy - jeśli dotyczą wypłaty z innego roku, skoryguj tamten '
+                .'rok; jeśli tej samej dywidendy, zmniejsz jej podatek pobrany w zakładce Dywidendy.',
                 implode('; ', $refunds),
             ))->forTab('dividends');
         }
@@ -726,7 +871,7 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             ];
 
             // After a ticker change IBKR lists every symbol the contract has
-            // carried in one field ("CNDX, CSNDX"); trades use either. An
+            // carried in one field ("AAA, AAAX"); trades use either. An
             // option is listed under its OCC code ("AAA   260116P00050000")
             // while trades name it by the description ("AAA 16JAN26 50 P").
             $symbols = explode(',', $row->get('symbol'));
@@ -1024,9 +1169,14 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
      * and a sell of one queue at the same second, or two buys at different
      * costs, would leave FIFO to the order of rows in the file.
      *
+     * Shares delivered by assignments and exercises are the exception: IBKR
+     * prints every delivery of one expiry with the same timestamp, so ties
+     * are routine there. Those were already put in a fixed order by
+     * {@see deliveriesInBeforeOut()} and are reported for review instead.
+     *
      * @param list<Trade> $trades
      *
-     * @return list<ImportMessage>
+     * @return array{list<ImportMessage>, list<ImportMessage>} fatal errors, review notes
      */
     private static function ambiguousOrderingErrors(array $trades): array
     {
@@ -1037,10 +1187,22 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
         }
 
         $messages = [];
+        $notes = [];
         foreach ($groups as $atInstant) {
             $buys = array_values(array_filter($atInstant, static fn (Trade $trade): bool => $trade->isBuy()));
             $sells = array_values(array_filter($atInstant, static fn (Trade $trade): bool => $trade->isSell()));
             $first = $atInstant[0];
+
+            if (count($atInstant) > 1 && [] === array_filter($atInstant, static fn (Trade $trade): bool => !self::isDelivery($trade))) {
+                $notes[] = ImportMessage::review('Import', sprintf(
+                    'Akcje %s z przydziału lub wykonania kilku opcji mają ten sam czas (%s). Kupna ułożono przed '
+                    .'sprzedażami, a kupna w kolejności z pliku - sprawdź, czy tak przebiegło rozliczenie.',
+                    $first->symbol,
+                    $first->date->format('Y-m-d H:i:s'),
+                ))->forTab('transactions');
+
+                continue;
+            }
 
             if ([] !== $buys && [] !== $sells) {
                 $messages[] = ImportMessage::error('Import', sprintf(
@@ -1070,6 +1232,46 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
             }
         }
 
-        return $messages;
+        return [$messages, $notes];
+    }
+
+    private static function isDelivery(Trade $trade): bool
+    {
+        return str_starts_with($trade->externalId ?? '', self::DELIVERY_ID);
+    }
+
+    /**
+     * Puts the deliveries of one instant in a fixed order - shares in before
+     * shares out, otherwise the order of the file - without moving any other
+     * row. The order has to live in the trade list itself: the workbench
+     * re-runs FIFO on the rows as posted, and FIFO keeps ties in list order.
+     *
+     * @param list<Trade> $trades
+     *
+     * @return list<Trade>
+     */
+    private static function deliveriesInBeforeOut(array $trades): array
+    {
+        /** @var array<string, list<int>> $groups */
+        $groups = [];
+        foreach ($trades as $index => $trade) {
+            if (self::isDelivery($trade)) {
+                $groups[$trade->fifoPool.'|'.$trade->date->format('Y-m-d H:i:s')][] = $index;
+            }
+        }
+
+        foreach ($groups as $indexes) {
+            $ordered = [
+                ...array_filter($indexes, static fn (int $i): bool => $trades[$i]->isBuy()),
+                ...array_filter($indexes, static fn (int $i): bool => !$trades[$i]->isBuy()),
+            ];
+            $moved = array_map(static fn (int $i): Trade => $trades[$i], $ordered);
+            foreach ($indexes as $position => $slot) {
+                $trades[$slot] = $moved[$position];
+            }
+        }
+
+        // Slots were only overwritten, never added; re-index to keep a list.
+        return array_values($trades);
     }
 }

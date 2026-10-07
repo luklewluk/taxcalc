@@ -46,10 +46,46 @@ final class OptionsFlowTest extends WebTestCase
         self::assertStringContainsString('4,00 zł', $stock->text());
         self::assertStringContainsString('W tym opcje', $stock->text());
 
+        self::assertStringContainsString('kursem z dnia wystawienia', $stock->text());
+        self::assertStringNotContainsString('dochód jest ten sam', $stock->text());
+
         $fifo = $crawler->filter('#panel-fifo')->text();
+        self::assertStringContainsString('kurs z dnia zamknięcia pozycji', $fifo);
         self::assertStringContainsString('opcja · krótka', $fifo);
         self::assertStringContainsString('KIS', $fifo);
         self::assertStringContainsString('2026-01-15', $fifo, 'The premium is converted at the rate before the expiry.');
+    }
+
+    public function testWithoutAWrittenOptionTheFeeSplitLeavesTheIncomeAlone(): void
+    {
+        $client = static::createClient();
+        // The sample's stocks of 2025 only: the sell fees move between the
+        // fields, the income does not.
+        $payload = $this->importSample($client);
+        $payload['trades'] = array_values(array_filter($payload['trades'], static fn (array $row): bool => 'STK' === $row['asset']));
+        // The form states how many rows it sent; a shorter post reads as truncated.
+        $payload['expected_trades'] = (string) count($payload['trades']);
+        $crawler = $this->recalculate($client, $payload, '2025');
+
+        self::assertStringContainsString('dochód jest ten sam', $crawler->filter('[aria-labelledby="pit-akcje"]')->text(), $crawler->filter('#panel-attention')->text(''));
+    }
+
+    public function testABoughtOptionAloneStillLeavesTheIncomeAlone(): void
+    {
+        $client = static::createClient();
+        $payload = $this->importSample($client);
+        // The sample's 2025 options include a bought call sold at a profit;
+        // keep only it and the stocks, so no written option is left.
+        $payload['trades'] = array_values(array_filter(
+            $payload['trades'],
+            static fn (array $row): bool => 'STK' === $row['asset'] || str_contains($row['symbol'], ' C'),
+        ));
+        $payload['expected_trades'] = (string) count($payload['trades']);
+        $crawler = $this->recalculate($client, $payload, '2025');
+
+        $stock = $crawler->filter('[aria-labelledby="pit-akcje"]')->text();
+        self::assertStringContainsString('Akcje, ETF-y i opcje', $stock);
+        self::assertStringContainsString('dochód jest ten sam', $stock);
     }
 
     public function testTheOptionIsNotIncomeOfTheYearItWasWritten(): void

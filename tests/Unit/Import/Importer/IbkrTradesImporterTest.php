@@ -74,6 +74,24 @@ final class IbkrTradesImporterTest extends TestCase
         self::assertCount(1, $result->positions);
     }
 
+    public function testSkippedOptionsReachTheAttentionPanelButCurrencyConversionsDoNot(): void
+    {
+        $result = $this->import([
+            '"CASH","EUR.PLN","20240101","1000","4.3","-4300.00","1","EUR"',
+            '"OPT","AAA 240119C00100000","20240102","1","2.5","-250.65","4","USD"',
+        ]);
+
+        $review = array_values(array_filter(
+            $result->messages,
+            static fn (\App\Import\ImportMessage $m): bool => \App\Import\MessageLevel::Review === $m->level,
+        ));
+
+        self::assertCount(1, $review);
+        self::assertStringContainsString('"OPT"', $review[0]->message);
+        self::assertStringContainsString('Activity Statement', $review[0]->message);
+        self::assertSame('transactions', $review[0]->targetTab);
+    }
+
     public function testOpenPositionsAreNotReported(): void
     {
         $result = $this->import(['"STK","AAA","20240101","5","10","-50.00","1","USD"']);

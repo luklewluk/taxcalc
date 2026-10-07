@@ -110,6 +110,16 @@ final class FifoMatcher
                 continue;
             }
 
+            // A close - or the closing half of `C;O` - with nothing open on the
+            // other side means its opening is in a statement that was not
+            // uploaded. Opening the whole quantity instead would drop that
+            // closing sale or buy from the return without a trace.
+            if ([] === self::openLots($lots[$opposite])) {
+                $violations[] = self::violation(FifoViolationKind::UnmatchedClose, $trade, $trade->quantity->abs());
+
+                continue;
+            }
+
             // A buy closes written options, a sell closes bought ones.
             $direction = $trade->isBuy() ? PositionDirection::Short : PositionDirection::Long;
             [$closed, $left] = $this->closeAgainst($lots[$opposite], $trade, $direction, $sequence);

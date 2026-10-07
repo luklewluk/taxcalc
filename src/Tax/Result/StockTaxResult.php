@@ -53,6 +53,22 @@ final readonly class StockTaxResult
     }
 
     /**
+     * Whether any position is a written option: only there does moving the
+     * fee into the costs change the income (the writing fee keeps the writing
+     * day's rate, the przychód takes the closing day's).
+     */
+    public function hasWrittenOptions(): bool
+    {
+        foreach ($this->positions as $calculated) {
+            if ($calculated->position->isOption() && $calculated->position->isShort()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
      * The options' share of field 22, summed from per-position figures that
      * were each rounded once - so it reconciles with the FIFO table.
      */

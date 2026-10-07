@@ -139,15 +139,27 @@ final class IbkrTradesImporter extends AbstractCsvImporter implements TradeSourc
         }
 
         foreach ($skippedAssetClasses as $assetClass => $count) {
-            $messages[] = ImportMessage::info(
+            // Currency conversions are not disposals of anything; every other
+            // class is income PIT-38 needs, so leaving it out has to be seen -
+            // an info message never reaches the web UI.
+            if ('CASH' === $assetClass) {
+                $messages[] = ImportMessage::info($source->name, sprintf(
+                    'Pominięto %d wymian(ę/y) walut (CASH) - to nie są transakcje papierami wartościowymi.',
+                    $count,
+                ));
+
+                continue;
+            }
+
+            $messages[] = ImportMessage::review(
                 $source->name,
                 sprintf(
-                    'Pominięto %d wiersz(y) klasy aktywów "%s" - ten format obsługuje wyłącznie akcje i ETF-y (STK). '
-                    .'Opcje rozlicza import z Activity Statement.',
+                    'Pominięto %d wiersz(y) klasy aktywów "%s" - ten format obsługuje wyłącznie akcje i ETF-y (STK), '
+                    .'więc pola 22/23 PIT-38 ich nie obejmują. Opcje rozlicza import z Activity Statement.',
                     $count,
                     $assetClass,
                 ),
-            );
+            )->forTab('transactions');
         }
 
         return new TradeExtraction($trades, $messages);
