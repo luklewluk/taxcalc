@@ -69,7 +69,15 @@ final readonly class Trade
         public string $stableId = '',
         /** Optional explicit FIFO pool key when the display symbol is ambiguous. */
         public string $fifoPool = '',
+        public InstrumentKind $kind = InstrumentKind::Stock,
+        /** Required for an option, ignored for a stock; see {@see PositionEffect}. */
+        public ?PositionEffect $effect = null,
     ) {
+    }
+
+    public function isOption(): bool
+    {
+        return InstrumentKind::Option === $this->kind;
     }
 
     public function isBuy(): bool
@@ -88,10 +96,19 @@ final readonly class Trade
             return $this->stableId;
         }
 
-        return hash('sha256', implode('|', [
+        $fields = [
             'trade', $this->broker, $this->fifoPool, $this->symbol, $this->date->format('Y-m-d H:i:s'),
             (string) $this->quantity, (string) $this->grossAmount->value(),
             $this->grossAmount->currency(), $this->externalId ?? '', (string) $this->fillOrdinal,
-        ]));
+        ];
+
+        // Appended only for options, so every stock trade keeps the identity a
+        // workbench posted before options existed (stable IDs, tombstones).
+        if ($this->isOption()) {
+            $fields[] = $this->kind->value;
+            $fields[] = $this->effect->value ?? '';
+        }
+
+        return hash('sha256', implode('|', $fields));
     }
 }

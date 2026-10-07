@@ -40,4 +40,49 @@ final readonly class StockTaxResult
     {
         return [] === $this->positions && [] === $this->accountingFees;
     }
+
+    public function hasOptions(): bool
+    {
+        foreach ($this->positions as $calculated) {
+            if ($calculated->position->isOption()) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * The options' share of field 22, summed from per-position figures that
+     * were each rounded once - so it reconciles with the FIFO table.
+     */
+    public function optionRevenue(): Amount
+    {
+        $sum = Amount::zero('PLN')->toScale(2);
+        foreach ($this->positions as $calculated) {
+            if ($calculated->position->isOption()) {
+                $sum = $sum->plus($calculated->revenue->pln);
+            }
+        }
+
+        return $sum;
+    }
+
+    /**
+     * The options' share of field 23: acquisition cost plus cost of disposal.
+     */
+    public function optionCost(): Amount
+    {
+        $sum = Amount::zero('PLN')->toScale(2);
+        foreach ($this->positions as $calculated) {
+            if ($calculated->position->isOption()) {
+                $sum = $sum->plus($calculated->cost->pln);
+                if (null !== $calculated->disposalCost) {
+                    $sum = $sum->plus($calculated->disposalCost->pln);
+                }
+            }
+        }
+
+        return $sum;
+    }
 }

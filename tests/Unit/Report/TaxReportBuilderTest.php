@@ -5,6 +5,11 @@ declare(strict_types=1);
 namespace App\Tests\Unit\Report;
 
 use App\CurrencyRate\ExchangeInterface;
+use App\CurrencyRate\NbpExchange;
+use App\Fifo\InstrumentKind;
+use App\Fifo\PositionDirection;
+use App\Money\Decimal;
+use App\Tests\Support\DateGatedNbpRateProvider;
 use App\Model\AccountFee;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
@@ -61,6 +66,35 @@ final class TaxReportBuilderTest extends TestCase
         self::assertSame('0.00', (string) $report->totalTaxNsa->value());
         self::assertNotEmpty($report->errors);
         self::assertStringContainsString('JPY', implode(' ', $report->errors));
+    }
+
+    public function testAWrittenOptionNeedsTheRatesOfBothItsOpeningAndClosingDays(): void
+    {
+        $option = new ClosedPosition(
+            'AAA 16JAN26 50 P',
+            'US',
+            'USD',
+            new DateTimeImmutable('2026-01-16'),
+            Amount::of('0', 'USD'),
+            new DateTimeImmutable('2025-12-15'),
+            Amount::of('99', 'USD'),
+            Decimal::of('1'),
+            'f.csv',
+            sellCommission: Amount::of('1', 'USD'),
+            kind: InstrumentKind::Option,
+            direction: PositionDirection::Short,
+        );
+
+        foreach (['2026-01-16', '2025-12-15'] as $missing) {
+            $exchange = new NbpExchange(new DateGatedNbpRateProvider([$missing]));
+            $report = self::builder($exchange)->build([$option], [], 2026);
+
+            self::assertSame([], $report->stock->positions, $missing);
+            self::assertStringContainsString('2026-01-16', implode(' ', $report->errors), 'The message names the closing day.');
+        }
+
+        $report = self::builder(new NbpExchange(new DateGatedNbpRateProvider([])))->build([$option], [], 2026);
+        self::assertCount(1, $report->stock->positions);
     }
 
     public function testDividendWarningsSurfaceOnTheReport(): void

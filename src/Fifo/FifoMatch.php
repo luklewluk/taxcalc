@@ -45,18 +45,31 @@ final readonly class FifoMatch
         /** Audit-only broker execution prices; FIFO amounts still come from Total/NetCash. */
         public ?Amount $buyUnitPrice = null,
         public ?Amount $sellUnitPrice = null,
+        public InstrumentKind $kind = InstrumentKind::Stock,
+        public PositionDirection $direction = PositionDirection::Long,
     ) {
+    }
+
+    /**
+     * The day the position closed: the sell, or for a written option the buy.
+     */
+    public function closeDate(): DateTimeImmutable
+    {
+        return PositionDirection::Short === $this->direction ? $this->buyDate : $this->sellDate;
     }
 
     /**
      * The instrument details to display for this position.
      *
-     * The sell leg wins: it is the later of the two, so after a rename it
-     * carries the name the instrument goes by now.
+     * The closing leg wins: it is the later of the two, so after a rename it
+     * carries the name the instrument goes by now. For a written option that
+     * is the buy.
      */
     public function instrument(): ?InstrumentDetails
     {
-        return $this->sellInstrument ?? $this->buyInstrument;
+        return PositionDirection::Short === $this->direction
+            ? $this->buyInstrument ?? $this->sellInstrument
+            : $this->sellInstrument ?? $this->buyInstrument;
     }
 
     /**

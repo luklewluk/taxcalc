@@ -35,14 +35,199 @@ final class FifoMatcher
 
         $matches = [];
         $unmatched = [];
+        $violations = [];
 
         foreach ($bySymbol as $symbolTrades) {
-            $result = $this->matchSymbol($symbolTrades);
+            $kinds = array_unique(array_map(static fn (Trade $trade): string => $trade->kind->value, $symbolTrades));
+            if (count($kinds) > 1) {
+                $first = $symbolTrades[0];
+                $violations[] = new FifoViolation(
+                    FifoViolationKind::MixedInstrumentKinds,
+                    $first->symbol,
+                    $first->date,
+                    $first->quantity->abs(),
+                    $first->id(),
+                );
+
+                continue;
+            }
+
+            $result = InstrumentKind::Option === $symbolTrades[0]->kind
+                ? $this->matchOptionPool($symbolTrades)
+                : $this->matchSymbol($symbolTrades);
             $matches = [...$matches, ...$result->matches];
             $unmatched = [...$unmatched, ...$result->unmatchedSells];
+            $violations = [...$violations, ...$result->violations];
         }
 
-        return new FifoResult($matches, $unmatched);
+        return new FifoResult($matches, $unmatched, $violations);
+    }
+
+    /**
+     * One option series. Either side may open a position, and the trade's
+     * declared {@see PositionEffect} - never the order of rows - says whether
+     * it opens or closes: inferring it would turn a buy-to-close whose writing
+     * sale was not uploaded into a long lot and lose the premium silently.
+     *
+     * Kept apart from {@see matchSymbol()} so stock matching stays exactly what
+     * it was.
+     *
+     * @param list<Trade> $trades all belonging to a single option series
+     */
+    private function matchOptionPool(array $trades): FifoResult
+    {
+        usort($trades, static fn (Trade $a, Trade $b) => $a->date <=> $b->date);
+
+        /** @var array{long: list<OpenLot>, short: list<OpenLot>} $lots */
+        $lots = ['long' => [], 'short' => []];
+        $matches = [];
+        $violations = [];
+        $sequence = 0;
+
+        foreach ($trades as $trade) {
+            if ($trade->quantity->isZero()) {
+                continue;
+            }
+
+            $own = $trade->isBuy() ? 'long' : 'short';
+            $opposite = $trade->isBuy() ? 'short' : 'long';
+
+            if (null === $trade->effect) {
+                $violations[] = self::violation(FifoViolationKind::MissingEffect, $trade, $trade->quantity->abs());
+
+                continue;
+            }
+
+            if (PositionEffect::Open === $trade->effect) {
+                if ([] !== self::openLots($lots[$opposite])) {
+                    $violations[] = self::violation(FifoViolationKind::OpenAgainstOpposite, $trade, $trade->quantity->abs());
+
+                    continue;
+                }
+
+                $lots[$own][] = new OpenLot($trade);
+
+                continue;
+            }
+
+            // A buy closes written options, a sell closes bought ones.
+            $direction = $trade->isBuy() ? PositionDirection::Short : PositionDirection::Long;
+            [$closed, $left] = $this->closeAgainst($lots[$opposite], $trade, $direction, $sequence);
+            $matches = [...$matches, ...$closed];
+
+            [$quantityLeft, $amountLeft, $commissionLeft, $autoFxLeft] = $left;
+            if (!$quantityLeft->isPositive()) {
+                continue;
+            }
+
+            if (PositionEffect::Close === $trade->effect) {
+                $violations[] = self::violation(FifoViolationKind::UnmatchedClose, $trade, $quantityLeft);
+
+                continue;
+            }
+
+            $lots[$own][] = OpenLot::remainderOf($trade, $quantityLeft, $amountLeft, $commissionLeft, $autoFxLeft);
+        }
+
+        return new FifoResult($matches, [], $violations);
+    }
+
+    /**
+     * Closes as much of `$closer` as the open lots allow, oldest lot first.
+     *
+     * For a long position the lot is the buy and the closer the sell; for a
+     * written one the lot is the sell (the premium received) and the closer
+     * the buy. Slicing is the same as for stocks: the closer is prorated, the
+     * lot gives up exact remainders.
+     *
+     * @param list<OpenLot> $lots
+     *
+     * @return array{list<FifoMatch>, array{Decimal, Amount, ?Amount, ?Amount}} the matches and what is left
+     *                                                                           of the closer
+     */
+    private function closeAgainst(array $lots, Trade $closer, PositionDirection $direction, int &$sequence): array
+    {
+        $qtyLeft = $closer->quantity->abs();
+        $qtyTotal = $qtyLeft;
+        $amountLeft = $closer->grossAmount->abs();
+        $commissionLeft = $closer->commission?->abs();
+        $autoFxLeft = $closer->autoFx?->abs();
+        $matches = [];
+
+        foreach ($lots as $lot) {
+            if (!$qtyLeft->isPositive()) {
+                break;
+            }
+
+            if (!$lot->remainingQuantity->isPositive()) {
+                continue;
+            }
+
+            $matchedQty = $lot->remainingQuantity->min($qtyLeft);
+            $lotQtyBefore = $lot->remainingQuantity;
+            $lotAmount = $lot->take($matchedQty);
+            [$lotCommission, $lotAutoFx] = $lot->takeFees($matchedQty, $lotQtyBefore);
+
+            $closerAmount = $this->slice($amountLeft, $matchedQty, $qtyLeft, $qtyTotal, $closer->grossAmount->abs());
+            $closerCommission = $this->sliceOptional($closer->commission, $commissionLeft, $matchedQty, $qtyLeft, $qtyTotal);
+            $closerAutoFx = $this->sliceOptional($closer->autoFx, $autoFxLeft, $matchedQty, $qtyLeft, $qtyTotal);
+
+            $long = PositionDirection::Long === $direction;
+            [$buy, $sell] = $long ? [$lot->trade, $closer] : [$closer, $lot->trade];
+
+            $matches[] = new FifoMatch(
+                $closer->symbol,
+                $buy->date,
+                $sell->date,
+                $matchedQty,
+                $long ? $lotAmount : $closerAmount,
+                $long ? $closerAmount : $lotAmount,
+                $buy->externalId,
+                $sell->externalId,
+                $buy->source,
+                $sell->source,
+                ++$sequence,
+                $buy->instrument,
+                $sell->instrument,
+                $long ? $lotCommission : $closerCommission,
+                $long ? $closerCommission : $lotCommission,
+                $long ? $lotAutoFx : $closerAutoFx,
+                $long ? $closerAutoFx : $lotAutoFx,
+                $closer->broker,
+                $buy->id(),
+                $sell->id(),
+                $buy->unitPrice,
+                $sell->unitPrice,
+                InstrumentKind::Option,
+                $direction,
+            );
+
+            $qtyLeft = $qtyLeft->minus($matchedQty);
+            $amountLeft = $amountLeft->minus($closerAmount);
+            if (null !== $commissionLeft && null !== $closerCommission) {
+                $commissionLeft = $commissionLeft->minus($closerCommission);
+            }
+            if (null !== $autoFxLeft && null !== $closerAutoFx) {
+                $autoFxLeft = $autoFxLeft->minus($closerAutoFx);
+            }
+        }
+
+        return [$matches, [$qtyLeft, $amountLeft, $commissionLeft, $autoFxLeft]];
+    }
+
+    /**
+     * @param list<OpenLot> $lots
+     *
+     * @return list<OpenLot>
+     */
+    private static function openLots(array $lots): array
+    {
+        return array_values(array_filter($lots, static fn (OpenLot $lot): bool => $lot->remainingQuantity->isPositive()));
+    }
+
+    private static function violation(FifoViolationKind $kind, Trade $trade, Decimal $quantity): FifoViolation
+    {
+        return new FifoViolation($kind, $trade->symbol, $trade->date, $quantity, $trade->id());
     }
 
     /**

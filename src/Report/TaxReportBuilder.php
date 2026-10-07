@@ -78,9 +78,12 @@ final readonly class TaxReportBuilder
                 continue;
             }
 
+            // Every day the calculator will ask for - for a written option the
+            // przychód is converted at the closing buy, not at the sale.
             $failure = $this->rateFailure(function () use ($position): void {
-                $this->exchange->toPln($position->buyAmount, $position->buyDate);
-                $this->exchange->toPln($position->sellAmount, $position->sellDate);
+                foreach ($position->conversionDates() as $date) {
+                    $this->exchange->toPln($position->sellAmount, $date);
+                }
             });
 
             if (null === $failure) {
@@ -92,7 +95,7 @@ final readonly class TaxReportBuilder
             $message = sprintf(
                 'Nie można przeliczyć pozycji %s (%s): %s Całe obliczenie zostało przerwane, aby nie zwrócić częściowego podatku.',
                 $position->name,
-                $position->sellDate->format('Y-m-d'),
+                $position->closeDate()->format('Y-m-d'),
                 $failure,
             );
             $errors[] = $message;

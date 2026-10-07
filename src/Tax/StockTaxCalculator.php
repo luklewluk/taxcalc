@@ -23,8 +23,14 @@ use App\Tax\Result\CalculatedAccountFee;
  *
  * The declared przychód is the gross amount due, not the settled cash: a broker
  * reports proceeds net of its sell fee, and that fee belongs in the costs
- * instead. Income is unaffected by the reallocation - only the split between
- * the two declared fields.
+ * instead. For stocks and bought options income is unaffected by the
+ * reallocation - only the split between the two declared fields.
+ *
+ * Options settle when the position closes (art. 17 ust. 1b). The przychód is
+ * therefore converted at the rate before {@see ClosedPosition::revenueDate()},
+ * which for a written option is the closing buy, not the day the premium was
+ * received; each cost keeps the rate of the day it was paid (art. 11a ust. 2),
+ * so the commission on writing an option uses the writing day's rate.
  */
 final readonly class StockTaxCalculator
 {
@@ -66,7 +72,7 @@ final readonly class StockTaxCalculator
                 : $position->sellAmount->plus($disposalFee);
 
             $cost = $this->exchange->toPln($position->buyAmount, $position->buyDate);
-            $revenue = $this->exchange->toPln($grossProceeds, $position->sellDate);
+            $revenue = $this->exchange->toPln($grossProceeds, $position->revenueDate());
             $disposal = null === $disposalFee
                 ? null
                 : $this->exchange->toPln($disposalFee, $position->sellDate);

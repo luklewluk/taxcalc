@@ -10,9 +10,11 @@ use App\Model\Dividend;
 /**
  * Selects the records that belong to a settlement year.
  *
- * A position belongs to the year of its *sale*, because that is when the income
- * is realised. The purchase may be arbitrarily older - which is why the FIFO
- * matcher never drops old buy lots. Dividends belong to the year they were paid.
+ * A position belongs to the year it *closed*, because that is when the income
+ * is realised: the sale of a stock or a bought option, the closing buy (or the
+ * expiry) of a written option. The opening leg may be arbitrarily older - which
+ * is why the FIFO matcher never drops old lots. Dividends belong to the year
+ * they were paid.
  */
 final class TaxYearFilter
 {

@@ -31,6 +31,22 @@ final class OpenLot
     }
 
     /**
+     * A lot opened by what is left of a trade after it closed the opposite
+     * position (an option order coded `C;O`). Slices are still prorated from
+     * the whole trade, and the final one still takes the exact remainder.
+     */
+    public static function remainderOf(Trade $trade, Decimal $quantity, Amount $amount, ?Amount $commission, ?Amount $autoFx): self
+    {
+        $lot = new self($trade);
+        $lot->remainingQuantity = $quantity;
+        $lot->remainingAmount = $amount;
+        $lot->remainingCommission = $commission;
+        $lot->remainingAutoFx = $autoFx;
+
+        return $lot;
+    }
+
+    /**
      * Consume `$quantity` from this lot and return the matching cost basis.
      *
      * The final slice returns the exact remaining balance, so repeated partial

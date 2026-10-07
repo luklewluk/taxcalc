@@ -5,14 +5,21 @@ declare(strict_types=1);
 namespace App\Model;
 
 use App\Exception\InvalidRecordException;
+use App\Fifo\InstrumentKind;
+use App\Fifo\PositionDirection;
 use App\Money\Amount;
 use App\Money\Decimal;
 use DateTimeImmutable;
 
 /**
- * A normalized, fully closed stock position: one buy leg matched to one sell
- * leg. This is the common shape every importer produces and the only shape the
- * tax calculator understands.
+ * A normalized, fully closed position: one buy leg matched to one sell leg.
+ * This is the common shape every importer produces and the only shape the tax
+ * calculator understands.
+ *
+ * Przychód is always the sell leg and koszt the buy leg. For a stock or a bought
+ * option the sell closes the position; for a written option (`Short`) the sell
+ * opened it and the buy closes it - which moves the tax year and the date the
+ * przychód is converted at to the buy leg, see {@see closeDate()}.
  */
 final readonly class ClosedPosition
 {
@@ -54,12 +61,41 @@ final readonly class ClosedPosition
         /** Audit-only execution prices. Tax amounts remain buyAmount/sellAmount. */
         public ?Amount $buyUnitPrice = null,
         public ?Amount $sellUnitPrice = null,
+        public InstrumentKind $kind = InstrumentKind::Stock,
+        public PositionDirection $direction = PositionDirection::Long,
     ) {
         // Invariants live here because this is the one type every importer
         // produces and every form submission is mapped into. A negative or zero
         // leg would otherwise turn into a plausible-looking tax figure.
-        self::assertPositive('kwota zakupu', $buyAmount, $currency);
-        self::assertPositive('kwota sprzedaży', $sellAmount, $currency);
+        if (InstrumentKind::Option !== $kind) {
+            if (PositionDirection::Short === $direction) {
+                throw new InvalidRecordException(
+                    'Krótka sprzedaż akcji nie jest obsługiwana - sprzedaż musi mieć pokrycie we wcześniejszym zakupie.',
+                );
+            }
+
+            self::assertPositive('kwota zakupu', $buyAmount, $currency);
+            self::assertPositive('kwota sprzedaży', $sellAmount, $currency);
+        } else {
+            // An option expires or is assigned at nothing, so its *closing* leg
+            // may be zero - and then it cannot have cost a fee. The opening leg
+            // is a premium that was really paid or received.
+            $long = PositionDirection::Long === $direction;
+            self::assertPositive($long ? 'kwota zakupu' : 'kwota sprzedaży', $long ? $buyAmount : $sellAmount, $currency);
+            self::assertNotNegative($long ? 'kwota sprzedaży' : 'kwota zakupu', $long ? $sellAmount : $buyAmount, $currency);
+
+            $closing = $long ? $sellAmount : $buyAmount;
+            $closingFees = $long ? [$sellCommission, $sellAutoFx] : [$buyCommission, $buyAutoFx];
+            foreach ($closingFees as $fee) {
+                if ($closing->isZero() && null !== $fee && !$fee->isZero()) {
+                    throw new InvalidRecordException(sprintf(
+                        'Zamknięcie opcji kwotą 0 (wygaśnięcie, przydział) nie może mieć opłaty %s %s.',
+                        (string) $fee->value(),
+                        $fee->currency(),
+                    ));
+                }
+            }
+        }
 
         if (null !== $quantity && !$quantity->isPositive()) {
             throw InvalidRecordException::quantityMustBePositive((string) $quantity);
@@ -117,6 +153,17 @@ final readonly class ClosedPosition
         }
     }
 
+    private static function assertNotNegative(string $field, Amount $amount, string $currency): void
+    {
+        if ($amount->currency() !== $currency) {
+            throw InvalidRecordException::currencyMismatch($field, $currency, $amount->currency());
+        }
+
+        if ($amount->isNegative()) {
+            throw InvalidRecordException::amountMustNotBeNegative($field, $amount);
+        }
+    }
+
     private static function assertPositive(string $field, Amount $amount, string $currency): void
     {
         if ($amount->currency() !== $currency) {
@@ -128,13 +175,65 @@ final readonly class ClosedPosition
         }
     }
 
+    public function isOption(): bool
+    {
+        return InstrumentKind::Option === $this->kind;
+    }
+
+    public function isShort(): bool
+    {
+        return PositionDirection::Short === $this->direction;
+    }
+
+    public function openDate(): DateTimeImmutable
+    {
+        return $this->isShort() ? $this->sellDate : $this->buyDate;
+    }
+
+    /**
+     * The day the position closed: the sale, or for a written option the buy
+     * that closed it (buy-to-close, expiry, assignment).
+     */
+    public function closeDate(): DateTimeImmutable
+    {
+        return $this->isShort() ? $this->buyDate : $this->sellDate;
+    }
+
+    /**
+     * The day the przychód arises, whose preceding business day's NBP rate
+     * converts it (art. 11a ust. 1). An option premium is przychód only when
+     * the position closes (art. 17 ust. 1b), so for a written option that is
+     * the closing buy, not the day the premium was received.
+     */
+    public function revenueDate(): DateTimeImmutable
+    {
+        return $this->closeDate();
+    }
+
+    /**
+     * Every day whose NBP rate this position needs: the cost on the buy, the
+     * disposal fee on the sell, and the przychód on {@see revenueDate()}.
+     *
+     * @return list<DateTimeImmutable>
+     */
+    public function conversionDates(): array
+    {
+        $dates = [];
+        foreach ([$this->buyDate, $this->sellDate, $this->revenueDate()] as $date) {
+            $dates[$date->format('Y-m-d')] ??= $date;
+        }
+
+        return array_values($dates);
+    }
+
     /**
      * The tax year a position belongs to is the year the income was realised,
-     * i.e. the year of the *sale*. The buy may well be from an earlier year.
+     * i.e. the year it *closed* - the sale for a stock. The opening leg may
+     * well be from an earlier year.
      */
     public function taxYear(): int
     {
-        return (int) $this->sellDate->format('Y');
+        return (int) $this->closeDate()->format('Y');
     }
 
     /**
@@ -149,11 +248,15 @@ final readonly class ClosedPosition
      */
     public function fingerprint(): string
     {
+        // Appended only for options, so every stock position keeps the identity
+        // a workbench posted before options existed.
+        $kind = $this->isOption() ? '|'.$this->kind->value.'|'.$this->direction->value : '';
+
         if (null !== $this->lineageKey) {
-            return hash('sha256', 'position-lineage|'.$this->lineageKey);
+            return hash('sha256', 'position-lineage|'.$this->lineageKey.$kind);
         }
 
-        return hash('sha256', implode('|', [
+        return hash('sha256', $kind.implode('|', [
             'position',
             $this->name,
             $this->countryCode,
