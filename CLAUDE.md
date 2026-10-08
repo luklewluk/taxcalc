@@ -356,7 +356,7 @@ Nine modules under `src/`, ordered from the inside out:
   and 23 moves. For a *written* option it is not quite: the writing fee keeps the writing day's
   rate while the przychód takes the closing day's (see the options invariant). A position whose
   source reported no sell fee (a blank DEGIRO fee cell, an IBKR commission rebate, an
-  aggregated order whose fills disagree) keeps a przychód equal to the settled cash, and the FIFO footnote says so
+  aggregated order whose fills disagree) keeps a przychód equal to the settled cash, and the FIFO tab's explanations say so
   rather than pretending the split was made. Never derive the fee from `Total − quantity × price`.
 - **A prorated fee slice is never negative.** `OpenLot::takeOptional()` rounds each non-final
   slice half-up from the whole and lets the last one take the remainder, so the slices can
@@ -404,7 +404,10 @@ The public flow is `upload → work with the result`. After the first import,
   cells read `position.buyAmount`/`position.sellAmount`, deliberately **not**
   `cost.original`/`revenue.original`: after the reallocation `revenue.original` is the gross
   amount, and printing it under a header named after the broker's own column would read as a
-  double count. The footnote carries both formulas.
+  double count. Both formulas, with the options, named-lot and missing-fee notes, sit below the
+  table in one collapsed *Wyjaśnienia obliczeń* disclosure (`data-calc-notes`) inside the `fifo`
+  fragment; `data-keep-open` keeps it open across an AJAX rewrite, and the read-only report
+  renders it open (`expanded`).
 - **FIFO input is editable, matches are derived.** `POST /kalkulator/wynik` remaps the form,
   runs FIFO again, and fails closed before building PIT fields. AJAX returns versioned
   summary/FIFO/message/counter fragments; the full POST remains the no-JS fallback.

@@ -50,42 +50,56 @@
             </tbody>
         </table>
     </div>
-    <p class="note">
-        Przychód to kwota należna, czyli <strong>(Total + prowizja + AutoFX) ze strony sprzedaży × kurs
-        z dnia zamknięcia pozycji</strong> (dla akcji i opcji kupionych to dzień sprzedaży). Koszt to
-        <strong>Total × kurs</strong> ze strony zakupu (prowizja zakupu jest już w tym Total) powiększony
-        o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> z dnia sprzedaży. Kolumny
-        „Total” pokazują kwotę rozliczoną z pliku brokera.
-    </p>
-    {% if report.stock.hasOptions %}
-        <p class="note">
-            Opcje rozliczamy w dniu <strong>zamknięcia</strong> pozycji — odkupu lub sprzedaży zamykającej,
-            wygaśnięcia albo przydziału lub wykonania — nigdy w dniu otwarcia (art. 17 ust. 1 pkt 10 i ust. 1b
-            oraz art. 23 ust. 1 pkt 38a ustawy o PIT; interpretacja KIS 0113-KDIPT2-3.4011.645.2025.3.KKA
-            z 7.11.2025). Przy opcji wystawionej (pozycja krótka) strona „Sprzedaż” to wystawienie: premia
-            jest przychodem przeliczonym kursem z dnia roboczego przed zamknięciem (art. 11a ust. 1), a
-            prowizja od wystawienia kosztem po kursie sprzed wystawienia. Wygaśnięcie i przydział zamykają
-            opcję kwotą 0. Akcje z przydziału lub wykonania wchodzą do FIFO po cenie wykonania — premia nie
-            zmienia ich kosztu nabycia. Cena opcji jest podana za jedną akcję bazową, a Total uwzględnia
-            mnożnik. Jeśli w latach ubiegłych rozliczałeś premię w dniu jej otrzymania, nie rozliczaj jej
-            ponownie.
-        </p>
-    {% endif %}
-    {% if report.stock.positions|filter(item => item.position.lotMethod.value == 'specific')|length > 0 %}
-        <p class="note">
-            Pozycje oznaczone „wskazana partia” mają koszt partii wybranej w mapie partii, a nie najstarszej.
-            Kolejność FIFO z art. 30b ust. 7 ustawy o PIT stosuje się, gdy nie da się ustalić, które papiery
-            zbyto; jeśli broker pozwolił wskazać partię, można przyjąć jej koszt (interpretacja indywidualna
-            Dyrektora KIS z 13.02.2026, 0112-KDIL2-1.4011.929.2025.1.TR). Interpretacja chroni tylko
-            wnioskodawcę — zachowaj potwierdzenie wyboru partii od brokera.
-        </p>
-    {% endif %}
-    {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}
-        <p class="note">
-            Część pozycji nie zgłasza prowizji sprzedaży (pusta kolumna opłaty, zwrot prowizji
-            zamiast opłaty, sklejone zlecenie o niespójnych transzach). Dla nich przychód pozostaje
-            kwotą rozliczoną, bo prowizji nie da się z niej wydzielić — pola PIT-38 22 i 23 są o tę
-            opłatę zaniżone, ale podatek jest ten sam.
-        </p>
-    {% endif %}
+    {#
+        Collapsed under one button, below the table: the formulas and the legal
+        notes explain the figures but would otherwise push them off the screen.
+        Inside the fragment, so a recalculation rebuilds it for the right year;
+        data-keep-open lets app.js keep it open across that rewrite. The
+        read-only report passes expanded: paper never loses content.
+    #}
+    <div class="disclosure-group calc-notes">
+        <details class="disclosure" data-calc-notes data-keep-open="calc-notes"{{ expanded|default(false) ? ' open' : '' }}>
+            <summary>Wyjaśnienia obliczeń</summary>
+            <div class="disclosure__body">
+                <p>
+                    Przychód to kwota należna, czyli <strong>(Total + prowizja + AutoFX) ze strony sprzedaży × kurs
+                    z dnia zamknięcia pozycji</strong> (dla akcji i opcji kupionych to dzień sprzedaży). Koszt to
+                    <strong>Total × kurs</strong> ze strony zakupu (prowizja zakupu jest już w tym Total) powiększony
+                    o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> z dnia sprzedaży. Kolumny
+                    „Total” pokazują kwotę rozliczoną z pliku brokera.
+                </p>
+                {% if report.stock.hasOptions %}
+                    <p>
+                        Opcje rozliczamy w dniu <strong>zamknięcia</strong> pozycji — odkupu lub sprzedaży zamykającej,
+                        wygaśnięcia albo przydziału lub wykonania — nigdy w dniu otwarcia (art. 17 ust. 1 pkt 10 i ust. 1b
+                        oraz art. 23 ust. 1 pkt 38a ustawy o PIT; interpretacja KIS 0113-KDIPT2-3.4011.645.2025.3.KKA
+                        z 7.11.2025). Przy opcji wystawionej (pozycja krótka) strona „Sprzedaż” to wystawienie: premia
+                        jest przychodem przeliczonym kursem z dnia roboczego przed zamknięciem (art. 11a ust. 1), a
+                        prowizja od wystawienia kosztem po kursie sprzed wystawienia. Wygaśnięcie i przydział zamykają
+                        opcję kwotą 0. Akcje z przydziału lub wykonania wchodzą do FIFO po cenie wykonania — premia nie
+                        zmienia ich kosztu nabycia. Cena opcji jest podana za jedną akcję bazową, a Total uwzględnia
+                        mnożnik. Jeśli w latach ubiegłych rozliczałeś premię w dniu jej otrzymania, nie rozliczaj jej
+                        ponownie.
+                    </p>
+                {% endif %}
+                {% if report.stock.positions|filter(item => item.position.lotMethod.value == 'specific')|length > 0 %}
+                    <p>
+                        Pozycje oznaczone „wskazana partia” mają koszt partii wybranej w mapie partii, a nie najstarszej.
+                        Kolejność FIFO z art. 30b ust. 7 ustawy o PIT stosuje się, gdy nie da się ustalić, które papiery
+                        zbyto; jeśli broker pozwolił wskazać partię, można przyjąć jej koszt (interpretacja indywidualna
+                        Dyrektora KIS z 13.02.2026, 0112-KDIL2-1.4011.929.2025.1.TR). Interpretacja chroni tylko
+                        wnioskodawcę — zachowaj potwierdzenie wyboru partii od brokera.
+                    </p>
+                {% endif %}
+                {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}
+                    <p>
+                        Część pozycji nie zgłasza prowizji sprzedaży (pusta kolumna opłaty, zwrot prowizji
+                        zamiast opłaty, sklejone zlecenie o niespójnych transzach). Dla nich przychód pozostaje
+                        kwotą rozliczoną, bo prowizji nie da się z niej wydzielić — pola PIT-38 22 i 23 są o tę
+                        opłatę zaniżone, ale podatek jest ten sam.
+                    </p>
+                {% endif %}
+            </div>
+        </details>
+    </div>
 {% endif %}

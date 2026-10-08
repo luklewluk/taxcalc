@@ -2485,6 +2485,9 @@ a.flag { text-decoration: underline; }
 .lot-board__reset .button--link { padding-inline: 0; }
 .lot-pairs-title { margin: 0 0 0.75rem; font-size: 1.125rem; }
 
+/* The FIFO tab's formulas and legal notes, collapsed below the pairs table. */
+.calc-notes { margin-top: 2rem; }
+
 .lot-queue {
     border: 1px solid var(--hairline);
     border-radius: var(--r-1);

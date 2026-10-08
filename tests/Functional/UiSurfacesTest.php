@@ -313,11 +313,20 @@ final class UiSurfacesTest extends WebTestCase
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro.csv' => self::DEGIRO_WITH_FEE]);
-        $note = $crawler->filter('#panel-fifo [data-fragment="fifo"] .note')->first()->text();
+        // Below the table, collapsed under "Wyjaśnienia obliczeń".
+        $notes = $crawler->filter('#panel-fifo [data-fragment="fifo"] details[data-calc-notes]');
+        self::assertSame(1, $notes->count());
+        self::assertNull($notes->attr('open'));
+        self::assertSame('Wyjaśnienia obliczeń', trim($notes->filter('summary')->text()));
+        $note = $notes->filter('p')->first()->text();
 
         self::assertStringContainsString('Total + prowizja + AutoFX', $note);
         self::assertStringContainsString('prowizja zakupu jest już w', $note);
         self::assertStringNotContainsString('opłat nie doliczono drugi raz', $note);
+
+        // Paper never loses content: the read-only report prints it open.
+        $print = $client->request('POST', '/kalkulator/raport', $this->payload($crawler));
+        self::assertSame(1, $print->filter('details[data-calc-notes][open]')->count());
     }
 
     /**
@@ -339,7 +348,7 @@ final class UiSurfacesTest extends WebTestCase
 
         self::assertSame(0, $crawler->filter('.message--error')->count());
         self::assertGreaterThan(0, $crawler->filter('#panel-fifo [data-fragment="fifo"] tbody tr')->count());
-        self::assertStringContainsString('nie zgłasza prowizji', $crawler->filter('#panel-fifo [data-fragment="fifo"] .note')->last()->text());
+        self::assertStringContainsString('nie zgłasza prowizji', $crawler->filter('#panel-fifo [data-fragment="fifo"] [data-calc-notes] p')->last()->text());
     }
 
     /**

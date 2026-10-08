@@ -54,6 +54,7 @@ final class LotSelectionFlowTest extends WebTestCase
         $board = $crawler->filter('#panel-fifo [data-lot-board]');
         self::assertSame(1, $board->count());
         self::assertSame(0, $crawler->filter('[data-fragment] [data-lot-board]')->count());
+        self::assertStringNotContainsString('0112-KDIL2', $board->text(), 'The legal basis lives in the explanations, not in the intro.');
 
         [$first, $second, $sale] = $this->ids($crawler);
         self::assertSame(1, $board->filter('#lot-open-'.$first)->count());

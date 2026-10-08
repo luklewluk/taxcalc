@@ -645,6 +645,16 @@
         var timer = null;
         var controller = null;
         var revision = 0;
+        // A disclosure the reader opened inside a fragment, such as the FIFO
+        // tab's "Wyjaśnienia obliczeń", stays open across rewrites - also
+        // through a year that has nothing to explain and so no disclosure.
+        var keptOpen = {};
+        workbench.addEventListener('toggle', function (event) {
+            var details = event.target;
+            if (details instanceof HTMLDetailsElement && details.hasAttribute('data-keep-open')) {
+                keptOpen[details.getAttribute('data-keep-open') || ''] = details.open;
+            }
+        }, true);
         var recalculate = function (switchToProblem) {
             revision += 1;
             var revisionInput = workbench.querySelector('[data-revision]');
@@ -691,6 +701,12 @@
                     }
                 });
 
+                Object.keys(keptOpen).forEach(function (key) {
+                    var details = workbench.querySelector('details[data-keep-open="' + key + '"]');
+                    if (keptOpen[key] && details instanceof HTMLDetailsElement) {
+                        details.open = true;
+                    }
+                });
                 Object.keys(staged).forEach(function (groupId) {
                     var select = workbench.querySelector('[data-country-group-select="' + groupId + '"]');
                     if (select instanceof HTMLSelectElement) {
