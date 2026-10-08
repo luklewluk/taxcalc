@@ -45,15 +45,26 @@
                 <li><a href="{{ path('app_home') }}"{{ current_route == 'app_home' ? ' aria-current="page"' : '' }}>Start</a></li>
                 <li><a href="{{ path('app_calculator') }}"{{ current_route == 'app_calculator' ? ' aria-current="page"' : '' }}>Kalkulator</a></li>
                 {% if app_repository_url %}
-                    <li><a href="{{ app_repository_url }}" rel="noopener noreferrer">Kod</a></li>
+                    <li><a href="{{ app_repository_url|trim('/', 'right') }}/issues" rel="noopener noreferrer">Zgłoś problem</a></li>
                 {% endif %}
             </ul>
         </nav>
-        <div class="theme-switch" role="group" aria-label="Motyw kolorów" data-role="theme-switch" hidden>
-            <button type="button" class="theme-switch__option" data-theme-choice="auto" aria-pressed="true">Auto</button>
-            <button type="button" class="theme-switch__option" data-theme-choice="light" aria-pressed="false">Jasny</button>
-            <button type="button" class="theme-switch__option" data-theme-choice="dark" aria-pressed="false">Ciemny</button>
-        </div>
+        {# One round button: the system theme until the first click, then light or dark. #}
+        <button type="button" class="theme-toggle" data-role="theme-toggle" data-theme-state="auto"
+                aria-label="Motyw: automatyczny (jak w systemie). Przełącz motyw." title="Przełącz motyw" hidden>
+            <svg data-icon="auto" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="8" fill="none" stroke="currentColor" stroke-width="2"/>
+                <path d="M12 4a8 8 0 0 1 0 16z" fill="currentColor"/>
+            </svg>
+            <svg data-icon="light" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <circle cx="12" cy="12" r="4" fill="currentColor"/>
+                <path d="M12 2.5v2M12 19.5v2M2.5 12h2M19.5 12h2M5.3 5.3l1.4 1.4M17.3 17.3l1.4 1.4M5.3 18.7l1.4-1.4M17.3 6.7l1.4-1.4"
+                      fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+            </svg>
+            <svg data-icon="dark" viewBox="0 0 24 24" width="18" height="18" aria-hidden="true" focusable="false">
+                <path d="M20.5 14.2A8.5 8.5 0 0 1 9.8 3.5a8.5 8.5 0 1 0 10.7 10.7z" fill="currentColor"/>
+            </svg>
+        </button>
     </div>
 </header>
 

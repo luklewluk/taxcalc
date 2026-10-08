@@ -977,3 +977,14 @@ Szczegóły w [CONTRIBUTING.md](CONTRIBUTING.md).
 ## Licencja
 
 [MIT](LICENSE).
+
+### Znaki towarowe
+
+Loga Interactive Brokers i DEGIRO (`public/img/brokers/`) są znakami towarowymi ich
+właścicieli i nie są objęte licencją MIT. Strona pokazuje je wyłącznie po to, by wskazać,
+z eksportami których brokerów kalkulator współpracuje; projekt nie jest z nimi powiązany.
+Źródła: logo IBKR ze strony
+[interactivebrokers.com/design](https://www.interactivebrokers.com/design/assets-logos-ibkr.php),
+logo DEGIRO z [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Degiro_logo.svg).
+Pliki zapisano bez zmian wyglądu; usunięto z nich jedynie arkusz stylów (zastąpiony
+atrybutami `fill`) i metadane edytora.

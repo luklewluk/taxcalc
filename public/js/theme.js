@@ -1,13 +1,17 @@
 /**
- * Colour theme: follows the operating system unless the user picks one.
+ * Colour theme: follows the operating system until the user picks one.
  *
  * Loaded without `defer` in <head>, before the stylesheet, so a pick is applied
  * before the first paint - a deferred script would flash the system theme on
  * every page. CSP allows no inline script, hence a file of its own.
  *
+ * One round button in the header. It starts on "auto" (no stored pick); a click
+ * pins the opposite of what is on screen, and from then on it flips between
+ * light and dark.
+ *
  * The pick is the only thing this application keeps in the browser: one word,
  * `light` or `dark`, under `pit38-theme`. Never financial data, never workbench
- * state. "Auto" removes the entry rather than storing it.
+ * state. "Auto" is simply the absence of the entry.
  */
 (function () {
     'use strict';
@@ -28,11 +32,7 @@
 
     function write(mode) {
         try {
-            if (mode === 'auto') {
-                window.localStorage.removeItem(KEY);
-            } else {
-                window.localStorage.setItem(KEY, mode);
-            }
+            window.localStorage.setItem(KEY, mode);
         } catch (error) {
             // The pick still applies to this page; it just is not remembered.
         }
@@ -78,30 +78,50 @@
     var current = read();
     apply(current);
 
-    function sync(group) {
-        group.querySelectorAll('[data-theme-choice]').forEach(function (button) {
-            button.setAttribute('aria-pressed', String(button.getAttribute('data-theme-choice') === current));
-        });
+    var systemDark = typeof window.matchMedia === 'function'
+        ? window.matchMedia('(prefers-color-scheme: dark)')
+        : null;
+
+    /** What is on screen: the pick, or the system's theme while there is none. */
+    function effective() {
+        if (current !== 'auto') {
+            return current;
+        }
+
+        return systemDark && systemDark.matches ? 'dark' : 'light';
+    }
+
+    var NAMES = {auto: 'automatyczny (jak w systemie)', light: 'jasny', dark: 'ciemny'};
+
+    function sync(toggle) {
+        var label = 'Motyw: ' + NAMES[current] + '. Przełącz na '
+            + (effective() === 'dark' ? 'jasny' : 'ciemny') + '.';
+        toggle.setAttribute('data-theme-state', current);
+        toggle.setAttribute('aria-label', label);
+        toggle.setAttribute('title', label);
     }
 
     document.addEventListener('DOMContentLoaded', function () {
-        var groups = document.querySelectorAll('[data-role="theme-switch"]');
+        var toggles = document.querySelectorAll('[data-role="theme-toggle"]');
 
-        groups.forEach(function (group) {
-            sync(group);
-            group.hidden = false;
+        toggles.forEach(function (toggle) {
+            sync(toggle);
+            toggle.hidden = false;
 
-            group.addEventListener('click', function (event) {
-                var button = event.target instanceof Element ? event.target.closest('[data-theme-choice]') : null;
-                if (!button) {
-                    return;
-                }
-
-                current = button.getAttribute('data-theme-choice');
+            toggle.addEventListener('click', function () {
+                current = effective() === 'dark' ? 'light' : 'dark';
                 apply(current);
                 write(current);
-                groups.forEach(sync);
+                toggles.forEach(sync);
             });
         });
+
+        // While on "auto" the label says what a click will do, and that
+        // follows the system.
+        if (systemDark && typeof systemDark.addEventListener === 'function') {
+            systemDark.addEventListener('change', function () {
+                toggles.forEach(sync);
+            });
+        }
     });
 })();

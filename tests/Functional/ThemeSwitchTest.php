@@ -53,27 +53,25 @@ final class ThemeSwitchTest extends WebTestCase
         self::assertThemeScriptPrecedesStylesheet($client->request('POST', '/kalkulator/raport', $payload));
     }
 
-    public function testHeaderShipsAHiddenThreeWaySwitchThatDefaultsToTheSystem(): void
+    public function testHeaderShipsOneHiddenRoundToggleThatStartsOnTheSystemTheme(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/');
 
-        $switch = $crawler->filter('.site-header [data-role="theme-switch"]');
-        self::assertCount(1, $switch);
-        self::assertNotNull($switch->attr('hidden'), 'Without JavaScript the switch cannot do anything.');
-        self::assertSame('group', $switch->attr('role'));
-        self::assertNotEmpty($switch->attr('aria-label'));
+        self::assertCount(0, $crawler->filter('[data-role="theme-switch"], [data-theme-choice]'));
 
-        $buttons = $switch->filter('button[data-theme-choice]');
-        self::assertSame(['auto', 'light', 'dark'], $buttons->each(
-            static fn (Crawler $button): string => (string) $button->attr('data-theme-choice'),
+        $toggle = $crawler->filter('.site-header button[data-role="theme-toggle"]');
+        self::assertCount(1, $toggle);
+        self::assertSame('button', $toggle->attr('type'));
+        self::assertNotNull($toggle->attr('hidden'), 'Without JavaScript the toggle cannot do anything.');
+        self::assertSame('auto', $toggle->attr('data-theme-state'));
+        self::assertNotEmpty($toggle->attr('aria-label'));
+
+        $icons = $toggle->filter('svg');
+        self::assertSame(['auto', 'light', 'dark'], $icons->each(
+            static fn (Crawler $icon): string => (string) $icon->attr('data-icon'),
         ));
-        self::assertSame(['button', 'button', 'button'], $buttons->each(
-            static fn (Crawler $button): string => (string) $button->attr('type'),
-        ));
-        self::assertSame(['true', 'false', 'false'], $buttons->each(
-            static fn (Crawler $button): string => (string) $button->attr('aria-pressed'),
-        ));
+        $icons->each(static fn (Crawler $icon) => self::assertSame('true', $icon->attr('aria-hidden')));
     }
 
     public function testTokensFollowTheColorSchemeAndPaperIsAlwaysLight(): void
@@ -93,7 +91,7 @@ final class ThemeSwitchTest extends WebTestCase
 
         self::assertMatchesRegularExpression('/:root\[data-theme\]\s*\{\s*color-scheme:\s*light;/', $print);
 
-        foreach (['localStorage', 'pit38-theme', 'data-theme', 'aria-pressed', 'theme-color'] as $needle) {
+        foreach (['localStorage', 'pit38-theme', 'data-theme', 'data-theme-state', 'aria-label', 'prefers-color-scheme', 'theme-color'] as $needle) {
             self::assertStringContainsString($needle, $script);
         }
     }

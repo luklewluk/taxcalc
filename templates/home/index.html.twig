@@ -13,7 +13,7 @@
             </p>
             <p class="hero__actions">
                 <a class="button button--primary button--large button--next" href="{{ path('app_calculator') }}">Oblicz podatek</a>
-                <a class="button" href="#jak-to-dziala">Jak to działa</a>
+                <a class="button" href="#faq">Jak to działa</a>
             </p>
             <p class="hero__meta">Działa z eksportami IBKR i DEGIRO.</p>
         </div>
@@ -40,44 +40,21 @@
         <li class="chip">Bez śledzenia</li>
     </ul>
 
-    <section class="section" aria-labelledby="jak-to-dziala">
-        <p class="eyebrow">Przebieg</p>
-        <h2 id="jak-to-dziala">Wgraj → pracuj z wynikiem</h2>
-        <ol class="flow">
-            <li class="flow__step">
-                <span class="flow__num" aria-hidden="true">1</span>
-                <h3 class="flow__title">Wgraj</h3>
-                <p class="flow__text">Pliki CSV od brokera. Format rozpoznaje się sam.</p>
-            </li>
-            <li class="flow__step">
-                <span class="flow__num" aria-hidden="true">2</span>
-                <h3 class="flow__title">Pracuj z wynikiem</h3>
-                <p class="flow__text">Edytuj transakcje, dywidendy i opłaty; wynik oraz FIFO przeliczają się na jednym ekranie.</p>
-            </li>
-        </ol>
+    <section class="section section--tight" aria-labelledby="brokerzy">
+        <h2 id="brokerzy" class="visually-hidden">Obsługiwani brokerzy</h2>
+        {# Trademarks of their owners, shown only to say which exports work. #}
+        <ul class="broker-logos">
+            <li><img src="{{ asset('img/brokers/interactive-brokers.svg') }}" alt="Interactive Brokers" width="452" height="69"></li>
+            <li><img class="broker-logo--degiro" src="{{ asset('img/brokers/degiro.svg') }}" alt="DEGIRO" width="722" height="102"></li>
+        </ul>
     </section>
 
-    <section class="section" aria-labelledby="brokerzy">
-        <p class="eyebrow">Źródła danych</p>
-        <h2 id="brokerzy">Skąd mogą pochodzić dane</h2>
-        <dl class="brokers">
-            <div>
-                <dt>Interactive Brokers</dt>
-                <dd>Activity Statement — transakcje, dywidendy i podatek u źródła w jednym pliku, bez konfiguracji. Obsługiwane są też zapytania Flex i Dividend Detail.</dd>
-            </div>
-            <div>
-                <dt>DEGIRO</dt>
-                <dd>Transakcje i zestawienie konta, w dowolnym języku eksportu.</dd>
-            </div>
-        </dl>
-    </section>
-
-    <section class="section" aria-labelledby="szczegoly">
-        <p class="eyebrow">Dobrze wiedzieć</p>
-        <h2 id="szczegoly">Szczegóły</h2>
+    <section class="section" aria-labelledby="faq">
+        <p class="eyebrow">FAQ</p>
+        <h2 id="faq">Najczęstsze pytania</h2>
         <div class="disclosure-group">
             <details class="disclosure">
-                <summary>Co się dzieje z moimi danymi</summary>
+                <summary>Co się dzieje z moimi danymi?</summary>
                 <div class="disclosure__body">
                     <ul class="list-plain">
                         <li>Aplikacja nie ma bazy danych — plik jest czytany w pamięci, w obrębie jednego żądania.</li>
@@ -90,7 +67,18 @@
             </details>
 
             <details class="disclosure">
-                <summary>Jak liczy kalkulator</summary>
+                <summary>Jakie pliki obsługuje kalkulator?</summary>
+                <div class="disclosure__body">
+                    <ul class="list-plain">
+                        <li><strong>Interactive Brokers</strong> — Activity Statement: transakcje, dywidendy i podatek u źródła w jednym pliku CSV, bez konfiguracji. Obsługiwane są też zapytania Flex i Dividend Detail.</li>
+                        <li><strong>DEGIRO</strong> — transakcje i zestawienie konta w CSV, w dowolnym języku eksportu.</li>
+                    </ul>
+                    <p>Format rozpoznaje się sam, po zawartości pliku, a nie po jego nazwie. Kilka plików naraz — także od różnych brokerów — możesz wgrać jednocześnie.</p>
+                </div>
+            </details>
+
+            <details class="disclosure">
+                <summary>Jak liczy kalkulator?</summary>
                 <div class="disclosure__body">
                     <ul class="list-plain">
                         <li>Każda kwota przeliczana jest kursem średnim NBP z ostatniego dnia roboczego poprzedzającego transakcję (zasada D-1).</li>
@@ -104,7 +92,7 @@
             </details>
 
             <details class="disclosure">
-                <summary>Stawki umowne przyjmowane domyślnie</summary>
+                <summary>Jakie stawki umowne przyjmuje kalkulator?</summary>
                 <div class="disclosure__body">
                     <p>
                         Te stawki ograniczają jedynie kwotę podatku zagranicznego możliwą do odliczenia

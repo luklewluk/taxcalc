@@ -49,15 +49,12 @@ final class UiSurfacesTest extends WebTestCase
         parent::tearDown();
     }
 
-    public function testLandingExplainsTheTwoStageFlowAndPrivacy(): void
+    public function testLandingExplainsThePrivacyModel(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/');
         $text = $crawler->filter('body')->text();
 
-        self::assertSame(['Wgraj', 'Pracuj z wynikiem'], $crawler->filter('.flow__title')->each(
-            static fn (Crawler $node): string => $node->text(),
-        ));
         self::assertStringContainsString('Bez konta', $text);
         self::assertStringContainsString('Bez bazy danych', $text);
         self::assertStringContainsString('Bez śledzenia', $text);

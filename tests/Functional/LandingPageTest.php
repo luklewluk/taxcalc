@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tests\Functional;
 
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
+use Symfony\Component\DomCrawler\Crawler;
 
 final class LandingPageTest extends WebTestCase
 {
@@ -49,6 +50,57 @@ final class LandingPageTest extends WebTestCase
         self::assertStringContainsString('Interactive Brokers', $text);
         self::assertStringContainsString('DEGIRO', $text);
         self::assertStringContainsString('CSV', $text);
+    }
+
+    public function testTheSupportedBrokersAreShownByTheirLocalLogos(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/');
+
+        $logos = $crawler->filter('.broker-logos img');
+        self::assertSame(['Interactive Brokers', 'DEGIRO'], $logos->each(
+            static fn (Crawler $logo): string => (string) $logo->attr('alt'),
+        ));
+        $logos->each(static function (Crawler $logo): void {
+            $src = (string) $logo->attr('src');
+            self::assertDoesNotMatchRegularExpression('#^(https?:)?//#', $src);
+            self::assertFileExists(dirname(__DIR__, 2).'/public'.$src);
+            self::assertNotNull($logo->attr('width'));
+            self::assertNotNull($logo->attr('height'));
+        });
+    }
+
+    public function testTheNavigationReportsProblemsInsteadOfLinkingTheCode(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/');
+
+        $links = $crawler->filter('.site-nav a');
+        self::assertSame(['Start', 'Kalkulator', 'Zgłoś problem'], $links->each(
+            static fn (Crawler $link): string => trim($link->text()),
+        ));
+        self::assertStringEndsWith('/issues', (string) $links->last()->attr('href'));
+    }
+
+    public function testTheDetailsAreAnFaqAndTheFlowSectionIsGone(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/');
+        $text = $crawler->filter('main')->text();
+
+        $faq = $crawler->filter('section[aria-labelledby="faq"]');
+        self::assertCount(1, $faq);
+        self::assertSame('FAQ', trim($faq->filter('.eyebrow')->text()));
+        self::assertSame('Najczęstsze pytania', trim($faq->filter('h2#faq')->text()));
+        $faq->filter('details > summary')->each(
+            static fn (Crawler $question) => self::assertStringEndsWith('?', trim($question->text())),
+        );
+        self::assertSame('#faq', $crawler->filter('.hero__actions a[href^="#"]')->attr('href'));
+
+        self::assertCount(0, $crawler->filter('.flow, #jak-to-dziala, #szczegoly'));
+        self::assertStringNotContainsString('Przebieg', $text);
+        self::assertStringNotContainsString('Dobrze wiedzieć', $text);
+        self::assertStringNotContainsString('Źródła danych', $text);
     }
 
     public function testNoThirdPartyResourcesAreReferenced(): void
