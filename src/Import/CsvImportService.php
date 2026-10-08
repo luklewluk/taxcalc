@@ -27,10 +27,10 @@ use Symfony\Component\DependencyInjection\Attribute\AutowireIterator;
  * considered together.
  *
  * The pool is per *format*, not global. Identifiers are only unique within the
- * broker that issued them, matching keys mean different things (a ticker here,
- * an ISIN there), and one broker's statements say nothing about another's
- * holdings - so an IBKR upload and a DEGIRO upload are matched side by side and
- * both sets of positions come back.
+ * broker that issued them, matching keys mean different things (ISIN and
+ * currency here, the ISIN alone there), and one broker's statements say nothing
+ * about another's holdings - so an IBKR upload and a DEGIRO upload are matched
+ * side by side and both sets of positions come back.
  *
  * Dividend files can need the same treatment: a {@see BatchImporterInterface}
  * sees every uploaded file of its format at once, because the DEGIRO account
@@ -86,16 +86,8 @@ final readonly class CsvImportService
          */
         $recordBatches = [];
 
-        /**
-         * Formats present in this upload, with the raw trades each contributed.
-         *
-         * @var array<string, int> $formats
-         */
-        $formats = [];
-
         foreach ($sources as $source) {
             $format = $this->formatDetector->detect($source);
-            $formats[$format->value] ??= 0;
 
             if (CsvFormat::Unknown === $format) {
                 $result = $result->withMessages([ImportMessage::error(
@@ -125,7 +117,6 @@ final readonly class CsvImportService
                 $tradeBatches[$importer::class] = $batch;
 
                 $rawTrades += count($extraction->trades);
-                $formats[$format->value] += count($extraction->trades);
                 $result = $result->withMessages(self::messagesForTab($extraction->messages, 'transactions'));
 
                 if ($rawTrades > $this->maxRecords) {
@@ -155,59 +146,11 @@ final readonly class CsvImportService
             }
 
             $imported = $importer->import($source);
-            if (CsvFormat::NormalizedPositions === $format) {
-                $imported = new ImportResult(
-                    $imported->positions,
-                    $imported->dividends,
-                    [...$imported->messages, ImportMessage::warning(
-                        $source->name,
-                        'Format własny gotowych par jest przestarzały. Dane pozostają obsługiwane w sekcji legacy, '
-                        .'ale nowe importy powinny zawierać osobne transakcje kupna i sprzedaży.',
-                    )],
-                    legacyPositions: $imported->positions,
-                );
-            } elseif (CsvFormat::NormalizedDividends === $format) {
-                $imported = $imported->withMessages([ImportMessage::warning(
-                    $source->name,
-                    'Własny format CSV dywidend jest zachowany wyłącznie dla zgodności i będzie wycofywany.',
-                )]);
-            }
             $result = $result->merge(self::resultWithMessageTarget($imported, self::targetTab($format)));
         }
 
-        if (($formats[CsvFormat::IbkrTrades->value] ?? 0) > 0 && ($formats[CsvFormat::IbkrActivityStatement->value] ?? 0) > 0) {
-            // Each format keeps its own FIFO queue, so a sale present in both
-            // would be settled twice - and a buy in one could never cover a
-            // sale in the other.
-            return new ImportResult([], [], [...$result->messages, ImportMessage::error(
-                'Import',
-                'Transakcje IBKR wgrano z dwóch rodzajów zestawień: zapytania Flex i Activity Statement. '
-                .'Każde z nich ma własną kolejkę FIFO, więc ta sama sprzedaż rozliczyłaby się dwa razy. '
-                .'Wybierz jeden format IBKR dla wszystkich lat i wgraj tylko jego pliki.',
-            )->forTab('attention')]);
-        }
-
-        $statementDividends = 0;
         foreach ($recordBatches as [$batchImporter, $batchSources, $targetTab]) {
-            $batchResult = $batchImporter->importMany($batchSources);
-            if ($batchImporter->supports(CsvFormat::IbkrActivityStatement)) {
-                $statementDividends += count($batchResult->dividends);
-            }
-
-            $result = $result->merge(self::resultWithMessageTarget($batchResult, $targetTab));
-        }
-
-        if ($statementDividends > 0
-            && (isset($formats[CsvFormat::IbkrDividendDetail->value]) || isset($formats[CsvFormat::IbkrActivityDividends->value]))) {
-            // Overlap is merged only when exactly one record states a country;
-            // the Activity Statement proposes one from the ISIN, so the same
-            // payment can survive twice.
-            $result = $result->withMessages([ImportMessage::review(
-                'Import',
-                'Dywidendy IBKR wgrano zarówno z Activity Statement, jak i z innego zestawienia (Dividend Detail '
-                .'lub zapytania Flex). Te same wypłaty mogą się dublować - zostaw dywidendy z jednego źródła '
-                .'albo sprawdź zakładkę Dywidendy.',
-            )->forTab('dividends')]);
+            $result = $result->merge(self::resultWithMessageTarget($batchImporter->importMany($batchSources), $targetTab));
         }
 
         foreach ($tradeBatches as [$tradeImporter, $trades]) {
@@ -224,7 +167,6 @@ final readonly class CsvImportService
                 $matched->messages,
                 $trades,
                 $matched->fees,
-                $matched->legacyPositions,
             ), 'transactions');
             $result = $result->merge($matched)->withMessages(self::messagesForTab($tradeMessages, 'transactions'));
         }
@@ -244,8 +186,7 @@ final readonly class CsvImportService
     private static function targetTab(CsvFormat $format): string
     {
         return match ($format) {
-            CsvFormat::IbkrTrades, CsvFormat::DegiroTransactions, CsvFormat::NormalizedPositions => 'transactions',
-            CsvFormat::IbkrActivityDividends, CsvFormat::IbkrDividendDetail, CsvFormat::NormalizedDividends => 'dividends',
+            CsvFormat::DegiroTransactions => 'transactions',
             // A DEGIRO account statement can contain both dividends and fees,
             // so file-level errors stay on the attention list itself.
             // So can an IBKR Activity Statement: trades, dividends and withholding.
@@ -276,7 +217,6 @@ final readonly class CsvImportService
             self::messagesForTab($result->messages, $targetTab),
             $result->trades,
             $result->fees,
-            $result->legacyPositions,
         );
     }
 
@@ -560,7 +500,7 @@ final readonly class CsvImportService
     ): ?Amount {
         // A partial price would suggest that it describes the whole order. If
         // even one fill lacks it, keep the aggregated audit field explicitly
-        // unknown while preserving all taxable Total/NetCash amounts.
+        // unknown while preserving all taxable settled amounts.
         if (null === $left || null === $right) {
             return null;
         }
@@ -619,9 +559,6 @@ final readonly class CsvImportService
             $dividends[] = $dividend;
         }
 
-        [$dividends, $mergeMessages] = $this->mergeOverlappingDividends($dividends);
-        $messages = [...$messages, ...$mergeMessages];
-
         if ($duplicates > 0) {
             $messages[] = ImportMessage::warning(
                 'Import',
@@ -634,7 +571,6 @@ final readonly class CsvImportService
             $dividends,
             count($result->trades),
             count($result->fees),
-            count($result->legacyPositions),
         );
         $messages = [...$messages, ...$capMessages];
 
@@ -646,7 +582,6 @@ final readonly class CsvImportService
             $messages,
             $result->trades,
             $result->fees,
-            $result->legacyPositions,
         );
     }
 
@@ -667,105 +602,6 @@ final readonly class CsvImportService
     }
 
     /**
-     * Collapses the same payment reported by two different IBKR exports.
-     *
-     * The activity export carries no country while the Dividend Detail export
-     * does, so the two records are not byte-identical and the content
-     * fingerprint keeps both - taxing the dividend twice. Records are merged
-     * only when everything economically relevant matches (symbol, currency,
-     * date, gross, withheld) and exactly one country is stated; the record that
-     * names the country wins because it is strictly richer.
-     *
-     * Records that disagree on a stated country are both kept: that is a real
-     * data conflict for the user to resolve, not a duplicate.
-     *
-     * @param list<Dividend> $dividends
-     *
-     * @return array{list<Dividend>, list<ImportMessage>}
-     */
-    private function mergeOverlappingDividends(array $dividends): array
-    {
-        /** @var array<string, list<int>> $groups */
-        $groups = [];
-        foreach ($dividends as $index => $dividend) {
-            $groups[self::dividendPaymentKey($dividend)][] = $index;
-        }
-
-        $drop = [];
-        $messages = [];
-
-        foreach ($groups as $indexes) {
-            if (count($indexes) < 2) {
-                continue;
-            }
-
-            $withCountry = [];
-            $withoutCountry = [];
-            $countries = [];
-
-            foreach ($indexes as $index) {
-                $code = strtoupper(trim($dividends[$index]->countryCode));
-                if ('' === $code) {
-                    $withoutCountry[] = $index;
-
-                    continue;
-                }
-
-                $withCountry[] = $index;
-                $countries[$code] = true;
-            }
-
-            // Merge only when the country is unambiguous and something to merge.
-            if (1 !== count($countries) || [] === $withoutCountry) {
-                continue;
-            }
-
-            $keep = $dividends[$withCountry[0]];
-            foreach ($withoutCountry as $index) {
-                $drop[$index] = true;
-            }
-
-            $messages[] = ImportMessage::warning('Import', sprintf(
-                'Scalono %d rekord(y) tej samej dywidendy %s z %s (%s %s) pochodzące z różnych zestawień; '
-                .'zachowano wersję z krajem "%s". Sprawdź, czy to na pewno ta sama wypłata.',
-                count($withoutCountry) + 1,
-                $keep->name,
-                $keep->date->format('Y-m-d'),
-                (string) $keep->grossAmount->value(),
-                $keep->currency,
-                $keep->countryCode,
-            ));
-        }
-
-        if ([] === $drop) {
-            return [$dividends, $messages];
-        }
-
-        $kept = [];
-        foreach ($dividends as $index => $dividend) {
-            if (!isset($drop[$index])) {
-                $kept[] = $dividend;
-            }
-        }
-
-        return [$kept, $messages];
-    }
-
-    /**
-     * Everything that identifies a payment, deliberately excluding the country.
-     */
-    private static function dividendPaymentKey(Dividend $dividend): string
-    {
-        return implode('|', [
-            mb_strtoupper($dividend->name),
-            $dividend->currency,
-            $dividend->date->format('Y-m-d'),
-            (string) $dividend->grossAmount->value()->toScale(4),
-            (string) $dividend->withheldTax->value()->toScale(4),
-        ]);
-    }
-
-    /**
      * @param list<ClosedPosition> $positions
      * @param list<Dividend>       $dividends
      *
@@ -776,15 +612,11 @@ final readonly class CsvImportService
         array $dividends,
         int $tradeCount,
         int $feeCount,
-        int $legacyPositionCount,
     ): array
     {
-        // Matched positions are derived from logical trades, so counting both
-        // would halve the effective limit. Legacy pairs are primary records.
-        $positionCount = 0 === $tradeCount && 0 === $legacyPositionCount
-            ? count($positions)
-            : $legacyPositionCount;
-        $total = $tradeCount + $positionCount + count($dividends) + $feeCount;
+        // Positions are derived from the logical trades, so counting both would
+        // halve the effective limit.
+        $total = $tradeCount + count($dividends) + $feeCount;
         if ($total <= $this->maxRecords) {
             return [$positions, $dividends, []];
         }

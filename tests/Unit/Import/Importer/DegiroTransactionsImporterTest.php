@@ -30,7 +30,7 @@ final class DegiroTransactionsImporterTest extends TestCase
 
         self::assertTrue($importer->supports(CsvFormat::DegiroTransactions));
         self::assertFalse($importer->supports(CsvFormat::DegiroAccount));
-        self::assertFalse($importer->supports(CsvFormat::IbkrTrades));
+        self::assertFalse($importer->supports(CsvFormat::IbkrActivityStatement));
     }
 
     public function testMatchesABuyAgainstASellAndUsesTheSettledTotalAsTheAmount(): void

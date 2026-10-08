@@ -15,18 +15,6 @@ use App\Import\Degiro\DegiroHeader;
  */
 final class FormatDetector
 {
-    /**
-     * Required header columns per flat (single-section) format.
-     *
-     * @var array<string, array{CsvFormat, list<string>}>
-     */
-    private const array FLAT_FORMATS = [
-        'ibkr_trades' => [CsvFormat::IbkrTrades, ['assetclass', 'symbol', 'tradedate', 'quantity', 'netcash', 'currencyprimary']],
-        'ibkr_dividends' => [CsvFormat::IbkrActivityDividends, ['currencyprimary', 'symbol', 'date/time', 'amount', 'type']],
-        'positions' => [CsvFormat::NormalizedPositions, ['name', 'country', 'currency', 'buy_date', 'buy_total_amount', 'sell_date', 'sell_total_amount']],
-        'dividends' => [CsvFormat::NormalizedDividends, ['name', 'country', 'currency', 'date', 'amount', 'tax_paid']],
-    ];
-
     public function detect(CsvSource $source): CsvFormat
     {
         $lines = $source->firstLines(40);
@@ -34,16 +22,11 @@ final class FormatDetector
             return CsvFormat::Unknown;
         }
 
-        // The sectioned tax statement is identified by its section marker
-        // rather than by a header row, because the file holds several sections.
+        // The Activity Statement holds several sections, so it is identified by
+        // the title in its Statement section rather than by a header row. Only
+        // the English title is recognised: the column names the importer maps
+        // are English too, and a translated file is not guessed at.
         foreach ($lines as $line) {
-            if (str_starts_with(ltrim($line), 'DividendDetail,')) {
-                return CsvFormat::IbkrDividendDetail;
-            }
-
-            // The Activity Statement names itself in its Statement section. Only
-            // the English title is recognised: the column names the importer
-            // maps are English too, and a translated file is not guessed at.
             if ('Statement,Data,Title,Activity Statement' === rtrim(trim($line), ',')) {
                 return CsvFormat::IbkrActivityStatement;
             }
@@ -52,12 +35,6 @@ final class FormatDetector
         $header = self::headerColumns($lines[0]);
         if ([] === $header) {
             return CsvFormat::Unknown;
-        }
-
-        foreach (self::FLAT_FORMATS as [$format, $required]) {
-            if ([] === array_diff($required, $header)) {
-                return $format;
-            }
         }
 
         return self::detectDegiro(new DegiroHeader($header));

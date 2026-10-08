@@ -12,12 +12,6 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 /** The IBKR Activity Statement from upload to the workbench. */
 final class IbkrActivityStatementFlowTest extends WebTestCase
 {
-    private const string FLEX_AAA = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","AAA","20250203","10","100","-1001","1001","USD"
-        "STK","AAA","20250915","-4","130","519","1002","USD"
-        CSV;
-
     /** @var list<string> */
     private array $tempFiles = [];
 
@@ -67,23 +61,6 @@ final class IbkrActivityStatementFlowTest extends WebTestCase
         self::assertStringContainsString('opcja · długa', $fifo);
 
         self::assertStringContainsString('cenie wykonania', $crawler->filter('#panel-attention')->text());
-    }
-
-    public function testAStatementCannotJoinAWorkbenchThatAlreadySettlesTheSameTickerFromFlex(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client, ['flex.csv' => self::FLEX_AAA]);
-        self::assertCount(2, $crawler->filter('form[data-workbench]')->form()->getPhpValues()['trades']);
-
-        $crawler = $client->request(
-            'POST',
-            '/kalkulator/import',
-            $crawler->filter('form[data-workbench]')->form()->getPhpValues(),
-            ['files' => $this->uploads(['statement.csv' => self::sample()])],
-        );
-
-        self::assertCount(2, $crawler->filter('form[data-workbench]')->form()->getPhpValues()['trades']);
-        self::assertStringContainsString('cały upload odrzucono', mb_strtolower($crawler->filter('body')->text()));
     }
 
     public function testASaleWithoutItsPurchaseStillOpensTheWorkbenchWithOneWarningAndAResult(): void

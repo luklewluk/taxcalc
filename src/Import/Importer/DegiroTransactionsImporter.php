@@ -72,7 +72,7 @@ final class DegiroTransactionsImporter implements TradeSourceImporterInterface
 {
     public function __construct(
         private readonly FifoMatcher $fifoMatcher,
-        private readonly int $maxRowsPerFile = AbstractCsvImporter::DEFAULT_MAX_ROWS_PER_FILE,
+        private readonly int $maxRowsPerFile = ImporterInterface::DEFAULT_MAX_ROWS_PER_FILE,
     ) {
     }
 

@@ -106,10 +106,6 @@ final class OptionsFlowTest extends WebTestCase
 
         self::assertSame(['OPT', 'OPT'], array_column($options, 'asset'));
         self::assertSame(['open', 'close'], array_column($options, 'effect'));
-
-        // The hidden compatibility echo has no kind or direction, so an option
-        // must not appear in it.
-        self::assertSame(0, $crawler->filter('input[name^="positions"][value="'.self::PUT.'"]')->count());
     }
 
     public function testAnOptionRowThatDoesNotSayWhatItDoesBlocksTheResult(): void

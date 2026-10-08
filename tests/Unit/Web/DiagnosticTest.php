@@ -18,6 +18,6 @@ final class DiagnosticTest extends TestCase
         self::assertTrue(Diagnostic::review(UnmatchedSell::CODE, 'm', 'transactions', 'id')->opensDetails());
         self::assertTrue(Diagnostic::review('fifo.'.FifoViolationKind::UnmatchedClose->value, 'm', 'transactions', 'id')->opensDetails());
         self::assertFalse(Diagnostic::blocking('trade.invalid', 'm', 'transactions', 'id')->opensDetails());
-        self::assertFalse(Diagnostic::blocking('position.country_invalid', 'm', 'transactions', 'id')->opensDetails());
+        self::assertFalse(Diagnostic::blocking('country.missing_instrument', 'm', 'transactions', 'id')->opensDetails());
     }
 }

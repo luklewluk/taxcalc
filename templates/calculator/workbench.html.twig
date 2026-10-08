@@ -18,25 +18,8 @@
         <input type="hidden" name="expected_trades" value="{{ expected_trades }}">
         <input type="hidden" name="expected_dividends" value="{{ expected_dividends }}">
         <input type="hidden" name="expected_fees" value="{{ expected_fees }}">
-        <input type="hidden" name="expected_positions" value="{{ expected_positions }}">
         <input type="hidden" name="revision" value="0" data-revision>
         {% for id in tombstones %}<input type="hidden" name="tombstones[]" value="{{ id }}">{% endfor %}
-
-        {# Compatibility echo for old clients; current calculations always use logical trades. #}
-        <div hidden aria-hidden="true">
-            {% for index, row in compat_position_rows %}
-                {% for key, value in row %}{% if key != 'country' %}<input type="hidden" name="positions[{{ index }}][{{ key }}]" value="{{ value }}">{% endif %}{% endfor %}
-                <select name="positions[{{ index }}][country]" required aria-required="true">
-                    <option value="" {{ row.country == '' ? 'selected' : '' }}></option>
-                    {% for code, name in country_options %}<option value="{{ code }}" {{ row.country == code ? 'selected' : '' }}>{{ code }}</option>{% endfor %}
-                </select>
-                <input type="hidden" name="positions[{{ index }}][legacy]" value="0">
-            {% endfor %}
-            {% for index, row in legacy_rows %}
-                {% for key, value in row %}<input type="hidden" name="positions[legacy_{{ index }}][{{ key }}]" value="{{ value }}">{% endfor %}
-                <input type="hidden" name="positions[legacy_{{ index }}][legacy]" value="1">
-            {% endfor %}
-        </div>
 
         <div class="workbench-bar">
             <div class="field--inline">
@@ -88,12 +71,6 @@
                     <button type="button" class="button" data-add-row="trades" hidden>Dodaj transakcję</button>
                 </div>
                 {% include '_partials/trade_ledger.html.twig' %}
-                {% if legacy_rows is not empty %}
-                    <details class="disclosure disclosure--card">
-                        <summary>Legacy: gotowe pary z własnego CSV ({{ legacy_rows|length }})</summary>
-                        <div class="disclosure__body"><p>Format jest przestarzały. Pary pozostają w obliczeniu, lecz nie są ponownie dopasowywane przez FIFO.</p></div>
-                    </details>
-                {% endif %}
             </section>
 
             <section id="panel-fifo" role="tabpanel" aria-labelledby="tab-fifo" data-panel="fifo" class="workbench-panel">

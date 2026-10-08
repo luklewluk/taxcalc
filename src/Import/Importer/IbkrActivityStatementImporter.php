@@ -38,7 +38,7 @@ use DateTimeImmutable;
 /**
  * Reads the Interactive Brokers Activity Statement (Reports → Statements →
  * Activity, CSV) - the statement every account can download without setting up
- * a Flex Query.
+ * any query.
  *
  * Trades come from the `Trades` section, one row per order:
  *
@@ -52,8 +52,7 @@ use DateTimeImmutable;
  * The ISIN and the listing exchange are not in the trade rows but in Financial
  * Instrument Information at the end of the file. The FIFO queue is keyed on
  * `ISIN@CURRENCY`: the ISIN survives a ticker change between yearly statements,
- * and the currency keeps a dual-listed paper's two lines apart as the Flex
- * export does. The exchange becomes a MIC so the country setting can re-derive
+ * and the currency keeps a dual-listed paper's two lines apart. The exchange becomes a MIC so the country setting can re-derive
  * the proposal later.
  *
  * Dividends, payments in lieu and withholding come from their own sections and
@@ -98,7 +97,7 @@ final class IbkrActivityStatementImporter implements TradeSourceImporterInterfac
 
     public function __construct(
         private readonly FifoMatcher $fifoMatcher,
-        private readonly int $maxRowsPerFile = AbstractCsvImporter::DEFAULT_MAX_ROWS_PER_FILE,
+        private readonly int $maxRowsPerFile = ImporterInterface::DEFAULT_MAX_ROWS_PER_FILE,
     ) {
     }
 

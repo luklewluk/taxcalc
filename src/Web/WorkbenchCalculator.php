@@ -19,13 +19,12 @@ final readonly class WorkbenchCalculator
     }
 
     /**
-     * @param list<Trade>          $trades
-     * @param list<ClosedPosition> $legacyPositions
+     * @param list<Trade> $trades
      */
-    public function settle(array $trades, array $legacyPositions = []): SettlementResult
+    public function settle(array $trades): SettlementResult
     {
         $fifo = $this->fifoMatcher->match($trades);
-        $positions = $legacyPositions;
+        $positions = [];
         $matchPositions = [];
         $errors = [];
         $diagnostics = [];

@@ -8,8 +8,8 @@ use App\Exception\InvalidDateException;
 use DateTimeImmutable;
 
 /**
- * Parses the date notations used by Interactive Brokers exports and by the
- * normalized CSV format.
+ * Parses the date notations of the broker exports and of dates typed into the
+ * workbench form.
  *
  * The time component is always discarded: NBP rates are per day, so keeping a
  * time would only make dates compare unequal for no benefit.
@@ -28,9 +28,7 @@ final class DateParser
     private const array FORMATS = [
         '!Y-m-d H:i:s' => null,
         '!Y-m-d\TH:i:s' => null,
-        '!Y-m-d;His' => null,
         '!Y-m-d' => null,
-        '!Ymd;His' => null,
         '!Ymd' => null,
         '!d.m.Y' => null,
         '!d/m/Y' => null,

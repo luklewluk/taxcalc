@@ -12,6 +12,14 @@ use Symfony\Component\DependencyInjection\Attribute\AutoconfigureTag;
 #[AutoconfigureTag]
 interface ImporterInterface
 {
+    /**
+     * Hard ceiling on data rows read from a single file.
+     *
+     * Applied while iterating so that an oversized upload is bounded before it
+     * becomes an array of domain objects, rather than after.
+     */
+    public const int DEFAULT_MAX_ROWS_PER_FILE = 50000;
+
     public function supports(CsvFormat $format): bool;
 
     /**

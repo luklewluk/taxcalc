@@ -95,25 +95,6 @@
                     wygaśnięcie, przydział), nigdy w dniu otwarcia — zgodnie z interpretacją KIS
                     0113-KDIPT2-3.4011.645.2025.3.KKA. Akcje z przydziału wchodzą do FIFO po cenie wykonania.
                 </p>
-                <p>
-                    Alternatywnie zapytania Flex — nie łącz ich z Activity Statement w jednym rozliczeniu, bo każdy
-                    format ma własną kolejkę FIFO:
-                </p>
-                <ul class="list-plain">
-                    <li>
-                        <strong>Transakcje giełdowe:</strong> <em>Performance &amp; Reports → Flex Queries</em>,
-                        zapytanie typu <em>Trades</em> z kolumnami
-                        <code>AssetClass, Symbol, TradeDate, Quantity, TradePrice, NetCash, TransactionID, CurrencyPrimary</code>.
-                    </li>
-                    <li>
-                        <strong>Dywidendy (zalecane):</strong> <em>Performance &amp; Reports → Tax Documents</em> →
-                        zestawienie <em>Dividend Detail</em> w CSV. Zawiera kraj źródła, więc nie trzeba go uzupełniać.
-                    </li>
-                    <li>
-                        <strong>Dywidendy z aktywności:</strong> zapytanie Flex z sekcji <em>Cash Transactions</em>
-                        z typami <em>Dividends</em> oraz <em>Withholding Tax</em>, żeby podatek u źródła wczytał się sam.
-                    </li>
-                </ul>
             </div>
         </details>
 
@@ -131,13 +112,14 @@
                     </li>
                     <li>
                         <strong>Zestawienie konta</strong> — dywidendy i pobrany podatek u źródła. O roku
-                        podatkowym decyduje <em>data waluty</em>; w polskim eksporcie z dwiema kolumnami
-                        „Data” jest to druga z nich.
+                        podatkowym i kursie decyduje dzień zaksięgowania na rachunku; w polskim eksporcie
+                        z dwiema kolumnami „Data” jest to pierwsza z nich.
                     </li>
                 </ul>
                 <p>
-                    Eksport nie zawiera kraju dochodu — kalkulator proponuje go z prefiksu ISIN. To kraj
-                    rejestracji papieru, nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj” w zakładce Transakcje.
+                    Eksport nie zawiera kraju dochodu — kalkulator proponuje go dla transakcji z giełdy notowania,
+                    a dla dywidend z prefiksu ISIN. To nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj”
+                    w zakładkach Transakcje i Dywidendy.
                 </p>
                 <p>
                     Instrukcję prowadzi też sam broker:

@@ -8,11 +8,9 @@ use App\Fifo\FifoMatcher;
 use App\Import\CsvImportService;
 use App\Import\CsvSource;
 use App\Import\FormatDetector;
-use App\Import\Importer\IbkrActivityDividendsImporter;
-use App\Import\Importer\IbkrDividendDetailImporter;
-use App\Import\Importer\IbkrTradesImporter;
-use App\Import\Importer\NormalizedDividendsImporter;
-use App\Import\Importer\NormalizedPositionsImporter;
+use App\Import\Importer\DegiroAccountImporter;
+use App\Import\Importer\DegiroTransactionsImporter;
+use App\Import\Importer\IbkrActivityStatementImporter;
 use App\Import\ImportResult;
 use App\Tax\TaxRates;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -24,24 +22,35 @@ use PHPUnit\Framework\TestCase;
  * therefore run once over every uploaded trade file, not once per file.
  */
 #[CoversClass(CsvImportService::class)]
-#[CoversClass(IbkrTradesImporter::class)]
+#[CoversClass(IbkrActivityStatementImporter::class)]
 final class CrossSourceImportTest extends TestCase
 {
-    private const string TRADE_HEADER =
-        '"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"';
+    private const string TRADES_HEADER =
+        'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,'
+        .'Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code';
+
+    private const string INSTRUMENTS =
+        "Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,"
+        ."Listing Exch,Multiplier,Type,Code\n"
+        ."Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,\n"
+        ."Financial Instrument Information,Data,Stocks,BBB,BETA ETF,1002,IE000BETA002,BBB,LSEETF,1,ETF,\n";
+
+    private const string BUY_2024 = 'Trades,Data,Order,Stocks,USD,AAA,"2024-01-02, 10:00:00",10,100,100,-1000,0,1000,0,0,O';
+
+    private const string SELL_2025 = 'Trades,Data,Order,Stocks,USD,AAA,"2025-06-02, 10:00:00",-10,150,150,1500,0,-1000,500,0,C';
 
     public function testBuyInOneFileIsMatchedAgainstASellInAnother(): void
     {
         $result = $this->import([
-            'trades-2024.csv' => self::trades(['"STK","AAA","20240101","10","100","-1000.00","1001","USD"']),
-            'trades-2025.csv' => self::trades(['"STK","AAA","20250601","-10","150","1500.00","1002","USD"']),
+            'as-2024.csv' => self::statement([self::BUY_2024]),
+            'as-2025.csv' => self::statement([self::SELL_2025]),
         ]);
 
         self::assertCount(1, $result->positions, implode(' | ', $result->warnings()));
 
         $position = $result->positions[0];
-        self::assertSame('2024-01-01', $position->buyDate->format('Y-m-d'));
-        self::assertSame('2025-06-01', $position->sellDate->format('Y-m-d'));
+        self::assertSame('2024-01-02', $position->buyDate->format('Y-m-d'));
+        self::assertSame('2025-06-02', $position->sellDate->format('Y-m-d'));
         self::assertSame('1000.00', (string) $position->buyAmount->value());
         self::assertSame('1500.00', (string) $position->sellAmount->value());
         self::assertSame(2025, $position->taxYear());
@@ -53,70 +62,33 @@ final class CrossSourceImportTest extends TestCase
     public function testFileOrderDoesNotMatter(): void
     {
         $result = $this->import([
-            'trades-2025.csv' => self::trades(['"STK","AAA","20250601","-10","150","1500.00","1002","USD"']),
-            'trades-2024.csv' => self::trades(['"STK","AAA","20240101","10","100","-1000.00","1001","USD"']),
+            'as-2025.csv' => self::statement([self::SELL_2025]),
+            'as-2024.csv' => self::statement([self::BUY_2024]),
         ]);
 
         self::assertCount(1, $result->positions);
-        self::assertSame('2024-01-01', $result->positions[0]->buyDate->format('Y-m-d'));
+        self::assertSame('2024-01-02', $result->positions[0]->buyDate->format('Y-m-d'));
     }
 
-    public function testOverlappingStatementsAreDeduplicatedByTransactionIdBeforeMatching(): void
+    public function testOverlappingStatementsAreDeduplicatedBeforeMatching(): void
     {
-        // Annual statements overlap: the 2025 file repeats the 2024 opening trade.
+        // Statements overlap: the 2025 file repeats the 2024 opening trade.
         $result = $this->import([
-            'trades-2024.csv' => self::trades([
-                '"STK","AAA","20240101","10","100","-1000.00","1001","USD"',
-            ]),
-            'trades-2025.csv' => self::trades([
-                '"STK","AAA","20240101","10","100","-1000.00","1001","USD"',
-                '"STK","AAA","20250601","-10","150","1500.00","1002","USD"',
-            ]),
+            'as-2024.csv' => self::statement([self::BUY_2024]),
+            'as-2025.csv' => self::statement([self::BUY_2024, self::SELL_2025]),
         ]);
 
         // The repeated buy must not create a second lot and must not leave an
         // open position behind.
         self::assertCount(1, $result->positions);
+        self::assertCount(2, $result->trades);
         self::assertSame('1000.00', (string) $result->positions[0]->buyAmount->value());
         self::assertSame('10', (string) $result->positions[0]->quantity);
     }
 
-    public function testConflictingContentForTheSameTransactionIdAbortsImport(): void
-    {
-        $result = $this->import([
-            'a.csv' => self::trades([
-                '"STK","AAA","20240101","1","10","-10.00","SAME","USD"',
-            ]),
-            'b.csv' => self::trades([
-                '"STK","AAA","20240101","1","20","-20.00","SAME","USD"',
-                '"STK","AAA","20240601","-1","30","30.00","SELL","USD"',
-            ]),
-        ]);
-
-        self::assertSame([], $result->positions);
-        self::assertNotEmpty($result->errors());
-        self::assertStringContainsString('SAME', implode(' ', $result->errors()));
-    }
-
-    public function testSameTransactionIdOnDifferentSymbolsIsAlsoAConflict(): void
-    {
-        $result = $this->import([
-            'a.csv' => self::trades([
-                '"STK","AAA","20240101","1","10","-10.00","SAME","USD"',
-                '"STK","BBB","20240101","1","20","-20.00","SAME","USD"',
-            ]),
-        ]);
-
-        self::assertSame([], $result->positions);
-        self::assertNotEmpty($result->errors());
-    }
-
     public function testUploadingTheExactSameTradeFileTwiceChangesNothing(): void
     {
-        $file = self::trades([
-            '"STK","AAA","20240101","10","100","-1000.00","1001","USD"',
-            '"STK","AAA","20250601","-10","150","1500.00","1002","USD"',
-        ]);
+        $file = self::statement([self::BUY_2024, self::SELL_2025]);
 
         $once = $this->import(['a.csv' => $file]);
         $twice = $this->import(['a.csv' => $file, 'b.csv' => $file]);
@@ -129,19 +101,15 @@ final class CrossSourceImportTest extends TestCase
         );
     }
 
-    public function testIdenticalFillsWithDistinctTransactionIdsAreBothKept(): void
+    public function testIdenticalFillsWithoutABrokerIdAreBothKept(): void
     {
-        // Two economically identical fills on the same day, and two identical
-        // sells. These are four real trades, not duplicates.
+        // Two economically identical fills at the same instant, and two
+        // identical sells. These are four real trades, not duplicates.
         $result = $this->import([
-            'trades.csv' => self::trades([
-                '"STK","AAA","20240101","1","10","-10.00","2001","USD"',
-                '"STK","AAA","20240101","1","10","-10.00","2002","USD"',
-                '"STK","AAA","20240601","-1","15","15.00","2003","USD"',
-                '"STK","AAA","20240601","-1","15","15.00","2004","USD"',
-            ]),
+            'as.csv' => self::statement(self::identicalFills()),
         ]);
 
+        self::assertSame([], $result->errors());
         self::assertCount(2, $result->positions);
         self::assertSame('10.00', (string) $result->positions[0]->buyAmount->value());
         self::assertSame('10.00', (string) $result->positions[1]->buyAmount->value());
@@ -149,60 +117,44 @@ final class CrossSourceImportTest extends TestCase
 
     public function testDistinctFillsSurviveEvenWhenTheSameFileIsUploadedTwice(): void
     {
-        $file = self::trades([
-            '"STK","AAA","20240101","1","10","-10.00","2001","USD"',
-            '"STK","AAA","20240101","1","10","-10.00","2002","USD"',
-            '"STK","AAA","20240601","-1","15","15.00","2003","USD"',
-            '"STK","AAA","20240601","-1","15","15.00","2004","USD"',
-        ]);
+        $file = self::statement(self::identicalFills());
 
         $result = $this->import(['a.csv' => $file, 'b.csv' => $file]);
 
+        self::assertSame([], $result->errors());
         self::assertCount(2, $result->positions);
     }
 
     public function testTradesInDifferentCurrenciesStayIndependent(): void
     {
         $result = $this->import([
-            'usd.csv' => self::trades([
-                '"STK","AAA","20240101","1","10","-10.00","3001","USD"',
-                '"STK","AAA","20240601","-1","15","15.00","3002","USD"',
+            'usd.csv' => self::statement([
+                'Trades,Data,Order,Stocks,USD,AAA,"2024-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O',
+                'Trades,Data,Order,Stocks,USD,AAA,"2024-06-03, 10:00:00",-1,15,15,15,0,-10,5,0,C',
             ]),
-            'eur.csv' => self::trades([
-                '"STK","AAA","20240102","1","10","-20.00","3003","EUR"',
-                '"STK","AAA","20240602","-1","15","25.00","3004","EUR"',
+            'eur.csv' => self::statement([
+                'Trades,Data,Order,Stocks,EUR,AAA,"2024-01-03, 10:00:00",1,20,20,-20,0,20,0,0,O',
+                'Trades,Data,Order,Stocks,EUR,AAA,"2024-06-04, 10:00:00",-1,25,25,25,0,-20,5,0,C',
             ]),
         ]);
 
+        self::assertSame([], $result->errors());
         self::assertCount(2, $result->positions);
         $currencies = array_map(static fn ($p): string => $p->currency, $result->positions);
         sort($currencies);
         self::assertSame(['EUR', 'USD'], $currencies);
     }
 
-    public function testTradesWithoutTransactionIdsStillImportButAreNotIdDeduplicated(): void
-    {
-        $header = '"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","CurrencyPrimary"';
-        $file = $header."\n"
-            .'"STK","AAA","20240101","1","10","-10.00","USD"'."\n"
-            .'"STK","AAA","20240601","-1","15","15.00","USD"'."\n";
-
-        $result = $this->import(['a.csv' => $file]);
-
-        self::assertCount(1, $result->positions);
-    }
-
     /**
      * A sale whose purchase is in none of the uploaded files has no cost basis,
-     * so it is reported once - and fatally, because settling everything else and
-     * leaving that one out yields a return that looks complete and understates
-     * nothing visible.
+     * so it is left out and reported once, as a review item - the rest of the
+     * batch still imports.
      */
     public function testUnmatchedSellAcrossAllFilesIsReportedOnceAndTheRestImports(): void
     {
         $result = $this->import([
-            'a.csv' => self::trades(['"STK","AAA","20250601","-5","15","75.00","4001","USD"']),
-            'b.csv' => self::trades(['"STK","BBB","20240101","1","10","-10.00","4002","USD"']),
+            'a.csv' => self::statement(['Trades,Data,Order,Stocks,USD,AAA,"2025-06-02, 10:00:00",-5,15,15,75,0,-50,25,0,C']),
+            'b.csv' => self::statement(['Trades,Data,Order,Stocks,USD,BBB,"2024-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O']),
         ]);
 
         self::assertSame([], $result->errors());
@@ -216,15 +168,17 @@ final class CrossSourceImportTest extends TestCase
         self::assertStringContainsString('AAA', implode(' ', $unmatched));
     }
 
-    public function testNormalizedPositionsKeepContentOnlyDeduplication(): void
+    /**
+     * @return list<string>
+     */
+    private static function identicalFills(): array
     {
-        $csv = "name,country,currency,buy_date,buy_total_amount,sell_date,sell_total_amount\n"
-            ."AAA,US,USD,2024-01-01,10.00,2024-06-01,15.00\n";
-
-        $result = $this->import(['a.csv' => $csv, 'b.csv' => $csv]);
-
-        self::assertCount(1, $result->positions);
-        self::assertStringContainsString('duplikat', mb_strtolower(implode(' ', $result->warnings())));
+        return [
+            'Trades,Data,Order,Stocks,USD,AAA,"2024-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O',
+            'Trades,Data,Order,Stocks,USD,AAA,"2024-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O',
+            'Trades,Data,Order,Stocks,USD,AAA,"2024-06-03, 10:00:00",-1,15,15,15,0,-10,5,0,C',
+            'Trades,Data,Order,Stocks,USD,AAA,"2024-06-03, 10:00:00",-1,15,15,15,0,-10,5,0,C',
+        ];
     }
 
     /**
@@ -241,11 +195,17 @@ final class CrossSourceImportTest extends TestCase
     }
 
     /**
-     * @param list<string> $rows
+     * An IBKR Activity Statement with the given Trades rows.
+     *
+     * @param list<string> $trades
      */
-    private static function trades(array $rows): string
+    private static function statement(array $trades): string
     {
-        return self::TRADE_HEADER."\n".implode("\n", $rows)."\n";
+        return "Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,Title,Activity Statement\n"
+            .self::TRADES_HEADER."\n"
+            .implode("\n", $trades)."\n"
+            .self::INSTRUMENTS;
     }
 
     private static function service(): CsvImportService
@@ -253,11 +213,9 @@ final class CrossSourceImportTest extends TestCase
         return new CsvImportService(
             new FormatDetector(),
             [
-                new IbkrTradesImporter(new FifoMatcher()),
-                new IbkrActivityDividendsImporter(),
-                new IbkrDividendDetailImporter(),
-                new NormalizedPositionsImporter(),
-                new NormalizedDividendsImporter(),
+                new IbkrActivityStatementImporter(new FifoMatcher()),
+                new DegiroTransactionsImporter(new FifoMatcher()),
+                new DegiroAccountImporter(),
             ],
             new TaxRates(),
         );

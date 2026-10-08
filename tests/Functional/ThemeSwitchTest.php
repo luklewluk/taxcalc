@@ -17,9 +17,11 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class ThemeSwitchTest extends WebTestCase
 {
+    /** DEGIRO Account statement: one dividend, its country proposed from the ISIN. */
     private const string DIVIDENDS = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,30.00
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-30.00,USD,70.00,
         CSV;
 
     /** @var list<string> */

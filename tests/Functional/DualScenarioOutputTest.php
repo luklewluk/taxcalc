@@ -4,10 +4,8 @@ declare(strict_types=1);
 
 namespace App\Tests\Functional;
 
-use Symfony\Bundle\FrameworkBundle\Console\Application;
 use Symfony\Bundle\FrameworkBundle\KernelBrowser;
 use Symfony\Bundle\FrameworkBundle\Test\WebTestCase;
-use Symfony\Component\Console\Tester\CommandTester;
 use Symfony\Component\DomCrawler\Crawler;
 use Symfony\Component\HttpFoundation\File\UploadedFile;
 
@@ -23,9 +21,14 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class DualScenarioOutputTest extends WebTestCase
 {
-    private const string DIVIDENDS = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,30.00
+    /**
+     * The same payment as a DEGIRO account statement: the US country comes from
+     * the ISIN prefix, the withholding is the separate "Dividend Tax" row.
+     */
+    private const string DEGIRO_ACCOUNT = <<<'CSV'
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-30.00,USD,70.00,
         CSV;
 
     /**
@@ -129,8 +132,9 @@ final class DualScenarioOutputTest extends WebTestCase
     public function testCsvReportStaysFormulaSafeWithTheNewColumns(): void
     {
         $client = static::createClient();
-        $csv = "name,country,currency,date,amount,tax_paid\n"
-            ."\"=cmd|' /C calc'!A0\",US,USD,2025-04-02,100.00,30.00\n";
+        $csv = "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
+            ."02-04-2025,06:32,02-04-2025,\"=cmd|' /C calc'!A0\",US000AAAA001,Dividend,,USD,100.00,USD,100.00,\n"
+            ."02-04-2025,06:32,02-04-2025,\"=cmd|' /C calc'!A0\",US000AAAA001,Dividend Tax,,USD,-30.00,USD,70.00,\n";
 
         $crawler = $this->import($client, $csv);
         $client->request('POST', '/kalkulator/raport.csv', $this->payload($crawler));
@@ -139,26 +143,6 @@ final class DualScenarioOutputTest extends WebTestCase
         self::assertStringContainsString("'=cmd", $body);
         self::assertStringNotContainsString(",=cmd", $body);
         self::assertStringNotContainsString("\n=cmd", $body);
-    }
-
-    public function testCliShowsBothTotals(): void
-    {
-        $path = tempnam(sys_get_temp_dir(), 'pitdual').'.csv';
-        file_put_contents($path, self::DIVIDENDS);
-        $this->tempFiles[] = $path;
-
-        self::bootKernel();
-        $application = new Application(self::$kernel);
-        $tester = new CommandTester($application->find('app:calculate-from-file'));
-        $tester->execute(['filepath' => $path, '--rok' => '2025']);
-
-        $output = (string) preg_replace('/\s+/u', ' ', $tester->getDisplay());
-
-        self::assertStringContainsString('16.00', $output);
-        self::assertStringContainsString('0.00', $output);
-        self::assertMatchesRegularExpression('/zachowawcz/iu', $output);
-        self::assertStringContainsString('NSA', $output);
-        self::assertMatchesRegularExpression('/Warianty różnią się|różnią/iu', $output);
     }
 
     private function calculate(KernelBrowser $client): Crawler
@@ -183,7 +167,7 @@ final class DualScenarioOutputTest extends WebTestCase
 
         $path = tempnam(sys_get_temp_dir(), 'pitdual');
         self::assertIsString($path);
-        file_put_contents($path, $csv ?? self::DIVIDENDS);
+        file_put_contents($path, $csv ?? self::DEGIRO_ACCOUNT);
         $this->tempFiles[] = $path;
 
         return $client->request(

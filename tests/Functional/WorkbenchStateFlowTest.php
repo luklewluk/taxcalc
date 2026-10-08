@@ -11,43 +11,70 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 final class WorkbenchStateFlowTest extends WebTestCase
 {
+    /**
+     * DEGIRO account statement: the ISIN prefix proposes the payer's country
+     * (US), the tax row is the withholding.
+     */
     private const string DIVIDEND_A = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,15.00
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-15.00,USD,85.00,
         CSV;
 
+    /** No tax row: zero withholding. */
     private const string DIVIDEND_B = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        BBB,IE,USD,2025-07-02,50.00,0
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-07-2025,06:32,02-07-2025,BBB,IE000BBBB002,Dividend,,USD,50.00,USD,50.00,
         CSV;
 
+    /**
+     * DEGIRO transactions with an `XS` ISIN and no exchange: nothing proposes a
+     * country, so the trades arrive without one. The fee cell stays blank.
+     */
     private const string CSPX = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240403","1","500","-500","1001","USD"
-        "STK","CSPX","20250227","-1","560","560","1002","USD"
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        03-04-2024,09:15,CSPX,XS000CSPX001,,,1,500.0000,USD,-500.00,USD,-500.00,USD,,,,-500.00,USD,t-1001
+        27-02-2025,15:41,CSPX,XS000CSPX001,,,-1,560.0000,USD,560.00,USD,560.00,USD,,,,560.00,USD,t-1002
         CSV;
 
+    /** Other orders on the same ISIN - the same DEGIRO FIFO queue as CSPX. */
     private const string CSPX_OVERLAP = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240303","1","450","-450","2001","USD"
-        "STK","CSPX","20250327","-1","570","570","2002","USD"
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        03-03-2024,10:05,CSPX,XS000CSPX001,,,1,450.0000,USD,-450.00,USD,-450.00,USD,,,,-450.00,USD,t-2001
+        27-03-2025,11:20,CSPX,XS000CSPX001,,,-1,570.0000,USD,570.00,USD,570.00,USD,,,,570.00,USD,t-2002
         CSV;
 
-    private const string CSPX_EUR = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240404","1","480","-480","4001","EUR"
-        "STK","CSPX","20250228","-1","520","520","4002","EUR"
+    /**
+     * One IBKR Activity Statement holding the same ticker in two currencies:
+     * two FIFO queues (`ISIN@USD`, `ISIN@EUR`) of one paper. The listing
+     * exchange is unknown, so no country is proposed.
+     */
+    private const string CSPX_TWO_CURRENCIES = <<<'CSV'
+        Statement,Header,Field Name,Field Value
+        Statement,Data,Title,Activity Statement
+        Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code
+        Trades,Data,Order,Stocks,USD,CSPX,"2024-04-03, 10:00:00",1,500,500,-500,0,500,0,0,O
+        Trades,Data,Order,Stocks,USD,CSPX,"2025-02-27, 10:00:00",-1,560,560,560,0,-500,60,0,C
+        Trades,Data,Order,Stocks,EUR,CSPX,"2024-04-04, 10:00:00",1,480,480,-480,0,480,0,0,O
+        Trades,Data,Order,Stocks,EUR,CSPX,"2025-02-28, 10:00:00",-1,520,520,520,0,-480,40,0,C
+        Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code
+        Financial Instrument Information,Data,Stocks,CSPX,CSPX ETF,1001,XS000CSPX001,CSPX,NOWHERE,1,ETF,
         CSV;
 
+    /** The CSPX paper's dividend; the `XS` prefix proposes no country. */
     private const string DIVIDEND_CSPX = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        CSPX,,USD,2025-04-02,100.00,15.00
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,CSPX,XS000CSPX001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,CSPX,XS000CSPX001,Dividend Tax,,USD,-15.00,USD,85.00,
         CSV;
 
+    private const string SPY_ISIN = 'XS0000SPY003';
+
+    /** Another ISIN: a FIFO queue of its own. */
     private const string SPY_INDEPENDENT = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","SPY","20240303","1","450","-450","3001","USD"
-        "STK","SPY","20250327","-1","570","570","3002","USD"
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        03-03-2024,10:05,SPY,XS0000SPY003,,,1,450.0000,USD,-450.00,USD,-450.00,USD,,,,-450.00,USD,t-3001
+        27-03-2025,11:20,SPY,XS0000SPY003,,,-1,570.0000,USD,570.00,USD,570.00,USD,,,,570.00,USD,t-3002
         CSV;
 
     /** @var list<string> */
@@ -118,6 +145,7 @@ final class WorkbenchStateFlowTest extends WebTestCase
         self::assertSame(2, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
         self::assertStringContainsString('cały upload odrzucono', mb_strtolower($crawler->filter('body')->text()));
         self::assertSame(0, $crawler->filter('input[value="SPY"]')->count());
+        self::assertSame(0, $crawler->filter('input[value="'.self::SPY_ISIN.'"]')->count());
     }
 
     public function testIndependentFifoQueueCanBeAdded(): void
@@ -128,7 +156,7 @@ final class WorkbenchStateFlowTest extends WebTestCase
         $crawler = $this->uploadMore($client, $crawler, ['spy.csv' => self::SPY_INDEPENDENT]);
 
         self::assertSame(4, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
-        self::assertSame(2, $crawler->filter('[data-trade-ledger] input[name$="[symbol]"][value="SPY"]')->count());
+        self::assertSame(2, $crawler->filter('[data-trade-ledger] input[name$="[symbol]"][value="'.self::SPY_ISIN.'"]')->count());
     }
 
     public function testInvalidEditFailsClosedAndPreservesTheSubmittedValue(): void
@@ -168,7 +196,10 @@ final class WorkbenchStateFlowTest extends WebTestCase
     public function testTwoCurrencyPoolsOfOneTickerShareOneAttentionItem(): void
     {
         $client = static::createClient();
-        $crawler = $this->firstImport($client, ['cspx.csv' => self::CSPX, 'cspx-eur.csv' => self::CSPX_EUR]);
+        $crawler = $this->firstImport($client, ['statement.csv' => self::CSPX_TWO_CURRENCIES]);
+        $pools = array_unique(array_column($this->payload($crawler)['trades'], 'pool'));
+        sort($pools);
+        self::assertSame(['XS000CSPX001@EUR', 'XS000CSPX001@USD'], $pools, 'Two FIFO queues of one paper.');
 
         $item = $crawler->filter('[data-diagnostic-code="country.missing_instrument"]');
 

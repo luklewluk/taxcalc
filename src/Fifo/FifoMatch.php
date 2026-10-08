@@ -42,7 +42,7 @@ final readonly class FifoMatch
         public string $broker = '',
         public string $buyTradeId = '',
         public string $sellTradeId = '',
-        /** Audit-only broker execution prices; FIFO amounts still come from Total/NetCash. */
+        /** Audit-only broker execution prices; FIFO amounts still come from the settled cash (Total). */
         public ?Amount $buyUnitPrice = null,
         public ?Amount $sellUnitPrice = null,
         public InstrumentKind $kind = InstrumentKind::Stock,

@@ -14,17 +14,24 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class CalculatorFlowTest extends WebTestCase
 {
-    private const string IBKR_TRADES = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240403","3","507.5782","-1523.98","1001","USD"
-        "STK","CSPX","20240613","5","470.00","-2350.00","1002","USD"
-        "STK","CSPX","20250227","-8","560.00","4480.00","1003","USD"
+    /**
+     * DEGIRO Transactions: two buys in 2024 closed by one sale in 2025. An
+     * `XS` ISIN and no exchange columns, so nothing proposes a country, and no
+     * transaction fee, so przychód is the settled cash.
+     */
+    private const string DEGIRO_TRADES = <<<'CSV'
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        03-04-2024,09:15,CSPX,XS000CSPX001,,,3,507.5782,USD,-1523.98,USD,-1523.98,USD,,,,-1523.98,USD,t-1001
+        13-06-2024,10:20,CSPX,XS000CSPX001,,,5,470.0000,USD,-2350.00,USD,-2350.00,USD,,,,-2350.00,USD,t-1002
+        27-02-2025,15:41,CSPX,XS000CSPX001,,,-8,560.0000,USD,4480.00,USD,4480.00,USD,,,,4480.00,USD,t-1003
         CSV;
 
-    private const string NORMALIZED_DIVIDENDS = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,15.00
-        BBB,IE,USD,2025-07-02,50.00,0
+    /** DEGIRO Account statement: the ISIN prefix proposes US for AAA and IE for BBB. */
+    private const string DEGIRO_DIVIDENDS = <<<'CSV'
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-15.00,USD,85.00,
+        02-07-2025,06:32,02-07-2025,BBB,IE000BBBB002,Dividend,,USD,50.00,USD,135.00,
         CSV;
 
     /**
@@ -79,19 +86,23 @@ final class CalculatorFlowTest extends WebTestCase
     public function testImportShowsAnEditableReviewScreen(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
 
         self::assertResponseIsSuccessful();
 
-        // One closed position per matched buy lot (two buys, one sell).
-        self::assertSame(2, $crawler->filter('input[name^="positions"][name$="[name]"]')->count());
-        self::assertGreaterThan(0, $crawler->filter('input[name="positions[0][buy_amount]"]')->count());
+        // Every trade is an editable row.
+        self::assertSame(3, $crawler->filter('[data-trade-ledger] [data-trade] input[name^="trades"][name$="[name]"]')->count());
+        self::assertGreaterThan(0, $crawler->filter('input[name="trades[0][total]"]')->count());
+        self::assertSame('CSPX', $crawler->filter('input[name="trades[0][name]"]')->attr('value'));
 
-        self::assertSame('CSPX', $crawler->filter('input[name="positions[0][name]"]')->attr('value'));
+        // One closed position per matched buy lot (two buys, one sell).
+        $sale = $this->tradeRow($crawler, '2025-02-27');
+        self::assertSame(2, $sale->filter('[data-trade-panel="details"] .trade-details__matches tbody tr')->count());
+
         // Source and detected format are shown.
         self::assertStringContainsString('trades.csv', $crawler->filter('body')->text());
         self::assertStringContainsString(
-            'IBKR - transakcje giełdowe',
+            'DEGIRO - transakcje giełdowe',
             $crawler->filter('body')->text(),
         );
     }
@@ -99,7 +110,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testImportSaysTheTradesFormatCarriesNoCountryInTheAttentionPanel(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
 
         self::assertStringContainsString('Kraj', $crawler->filter('body')->text());
         self::assertSame(1, $crawler->filter('[data-diagnostic-code="country.missing_instrument"]')->count());
@@ -115,7 +126,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testTheMessageStripHoldsOnlyTheAttentionSummary(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
         $strip = $crawler->filter('[data-fragment="messages"]');
 
         self::assertSame(1, $strip->filter('p.message')->count());
@@ -127,13 +138,16 @@ final class CalculatorFlowTest extends WebTestCase
     public function testBuysFromAPreviousYearStillBackASaleInTheSelectedYear(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES], '2025');
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES], '2025');
+        $crawler = $this->submitReview($client, $crawler);
 
         // Buy legs are from 2024 while the sale is in 2025.
-        self::assertSame('2024-04-03', $crawler->filter('input[name="positions[0][buy_date]"]')->attr('value'));
-        self::assertSame('2025-02-27', $crawler->filter('input[name="positions[0][sell_date]"]')->attr('value'));
-        self::assertSame('2024-06-13', $crawler->filter('input[name="positions[1][buy_date]"]')->attr('value'));
-        self::assertSame('2025-02-27', $crawler->filter('input[name="positions[1][sell_date]"]')->attr('value'));
+        $positions = $crawler->filter('#panel-fifo tbody tr');
+        self::assertSame(2, $positions->count());
+        self::assertSame('2024-04-03', trim($positions->eq(0)->filter('td')->eq(1)->text()));
+        self::assertSame('2025-02-27', trim($positions->eq(0)->filter('td')->eq(7)->text()));
+        self::assertSame('2024-06-13', trim($positions->eq(1)->filter('td')->eq(1)->text()));
+        self::assertSame('2025-02-27', trim($positions->eq(1)->filter('td')->eq(7)->text()));
     }
 
     public function testUnsupportedFileIsReportedWithoutAServerError(): void
@@ -159,7 +173,7 @@ final class CalculatorFlowTest extends WebTestCase
     {
         $client = static::createClient();
         $crawler = $this->import($client, [
-            'valid.csv' => self::NORMALIZED_DIVIDENDS,
+            'valid.csv' => self::DEGIRO_DIVIDENDS,
             'evil.php' => "name,country\nAAA,US\n",
         ]);
 
@@ -182,8 +196,8 @@ final class CalculatorFlowTest extends WebTestCase
     {
         $client = static::createClient();
         $crawler = $this->import($client, [
-            'trades.csv' => self::IBKR_TRADES,
-            'dividends.csv' => self::NORMALIZED_DIVIDENDS,
+            'trades.csv' => self::DEGIRO_TRADES,
+            'dividends.csv' => self::DEGIRO_DIVIDENDS,
         ], '2025');
 
         $crawler = $this->submitReview($client, $crawler);
@@ -205,7 +219,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testResultsRespectTheSelectedTaxYear(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['dividends.csv' => self::NORMALIZED_DIVIDENDS], '2024');
+        $crawler = $this->import($client, ['dividends.csv' => self::DEGIRO_DIVIDENDS], '2024');
         $crawler = $this->submitReview($client, $crawler);
 
         self::assertResponseIsSuccessful();
@@ -219,7 +233,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testCsvReportIsDownloadableAndNotPersisted(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['dividends.csv' => self::NORMALIZED_DIVIDENDS], '2025');
+        $crawler = $this->import($client, ['dividends.csv' => self::DEGIRO_DIVIDENDS], '2025');
 
         $client->request('POST', '/kalkulator/raport.csv', self::withCountries($this->reviewPayload($crawler)));
 
@@ -241,7 +255,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testPrintableHtmlReportIsAvailable(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['dividends.csv' => self::NORMALIZED_DIVIDENDS], '2025');
+        $crawler = $this->import($client, ['dividends.csv' => self::DEGIRO_DIVIDENDS], '2025');
 
         $crawler = $client->request('POST', '/kalkulator/raport', self::withCountries($this->reviewPayload($crawler)));
 
@@ -262,7 +276,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testInvalidRowIsReportedOnTheReviewScreenInsteadOfCrashing(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['dividends.csv' => self::NORMALIZED_DIVIDENDS], '2025');
+        $crawler = $this->import($client, ['dividends.csv' => self::DEGIRO_DIVIDENDS], '2025');
 
         $payload = self::withCountries($this->reviewPayload($crawler));
         $payload['dividends'][0]['date'] = 'zupelnie-zla-data';
@@ -276,11 +290,13 @@ final class CalculatorFlowTest extends WebTestCase
     public function testUnavailableNbpRateReturnsToReviewAndNeverShowsAPartialResult(): void
     {
         $client = static::createClient();
-        $csv = "name,country,currency,buy_date,buy_total_amount,sell_date,sell_total_amount\n"
-            ."AAA,JP,JPY,2024-01-01,1000.00,2025-06-01,1500.00\n";
-        $crawler = $this->import($client, ['positions.csv' => $csv], '2025');
+        // The test rate provider knows no JPY.
+        $csv = "Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID\n"
+            ."02-01-2024,10:00,AAA,XS000AAAA001,,,1,1000.0000,JPY,-1000.00,JPY,-1000.00,JPY,,,,-1000.00,JPY,t-1\n"
+            ."02-06-2025,10:00,AAA,XS000AAAA001,,,-1,1500.0000,JPY,1500.00,JPY,1500.00,JPY,,,,1500.00,JPY,t-2\n";
+        $crawler = $this->import($client, ['trades.csv' => $csv], '2025');
 
-        $crawler = $client->request('POST', '/kalkulator/wynik', $this->reviewPayload($crawler));
+        $crawler = $client->request('POST', '/kalkulator/wynik', self::withCountries($this->reviewPayload($crawler), 'JP'));
 
         self::assertResponseIsSuccessful();
         self::assertGreaterThan(0, $crawler->filter('.message--error')->count());
@@ -291,7 +307,7 @@ final class CalculatorFlowTest extends WebTestCase
     public function testUploadedDataIsNeverStoredInTheSession(): void
     {
         $client = static::createClient();
-        $this->import($client, ['dividends.csv' => self::NORMALIZED_DIVIDENDS], '2025');
+        $this->import($client, ['dividends.csv' => self::DEGIRO_DIVIDENDS], '2025');
 
         $session = $client->getRequest()->getSession();
         $serialized = json_encode($session->all());
@@ -304,8 +320,9 @@ final class CalculatorFlowTest extends WebTestCase
     public function testEveryRenderedValueIsHtmlEscaped(): void
     {
         $client = static::createClient();
-        $csv = "name,country,currency,date,amount,tax_paid\n"
-            ."\"<script>alert(1)</script>\",US,USD,2025-04-02,10.00,1.50\n";
+        $csv = "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
+            ."02-04-2025,06:32,02-04-2025,\"<script>alert(1)</script>\",US000AAAA001,Dividend,,USD,10.00,USD,10.00,\n"
+            ."02-04-2025,06:32,02-04-2025,\"<script>alert(1)</script>\",US000AAAA001,Dividend Tax,,USD,-1.50,USD,8.50,\n";
 
         $crawler = $this->import($client, ['x.csv' => $csv], '2025');
         $html = (string) $client->getResponse()->getContent();
@@ -352,8 +369,8 @@ final class CalculatorFlowTest extends WebTestCase
     }
 
     /**
-     * The flat IBKR trade export carries no country, so the review screen leaves
-     * it blank on purpose and the user has to pick one before calculating.
+     * The trades fixture carries no usable country source, so the workbench
+     * leaves it blank on purpose and the user has to pick one before calculating.
      *
      * @param array<string, mixed> $payload
      *
@@ -361,7 +378,7 @@ final class CalculatorFlowTest extends WebTestCase
      */
     private static function withCountries(array $payload, string $country = 'US'): array
     {
-        foreach (['positions', 'dividends'] as $group) {
+        foreach (['trades', 'dividends'] as $group) {
             if (!isset($payload[$group]) || !is_array($payload[$group])) {
                 continue;
             }
@@ -381,9 +398,23 @@ final class CalculatorFlowTest extends WebTestCase
      */
     private function reviewPayload(Crawler $crawler): array
     {
-        $form = $crawler->filter('form[data-role="review"]')->form();
+        return $crawler->filter('form[data-role="review"]')->form()->getPhpValues();
+    }
 
-        return $form->getPhpValues();
+    private function tradeRow(Crawler $crawler, string $date): Crawler
+    {
+        $trades = $this->reviewPayload($crawler)['trades'] ?? [];
+        self::assertIsArray($trades);
+        foreach ($trades as $trade) {
+            if (is_array($trade) && ($trade['date'] ?? null) === $date) {
+                $row = $crawler->filter('#row-'.$trade['id']);
+                self::assertSame(1, $row->count());
+
+                return $row;
+            }
+        }
+
+        self::fail('Brak transakcji z dnia '.$date);
     }
 
     private static function projectDir(): string

@@ -48,7 +48,7 @@ final readonly class Trade
         public int $fillOrdinal = 1,
         /** Whether externalId was reported by the broker, rather than synthesized. */
         public bool $externalIdReported = false,
-        /** Broker-reported execution price, audit-only and independent from Total/NetCash. */
+        /** Broker-reported execution price, audit-only and independent from the settled cash (Total). */
         public ?Amount $unitPrice = null,
         /** Execution venue, likewise retained only for safe correction recognition. */
         public string $executionVenue = '',
@@ -57,7 +57,7 @@ final readonly class Trade
         /**
          * Explicit broker fees, when the source reports them separately.
          *
-         * Never added to `$grossAmount` - Total/NetCash already includes them.
+         * Never added to `$grossAmount` - the settled cash already includes them.
          * They are not merely audit data either: on the *sell* leg the settled
          * cash has these taken out of it, and Polish rules declare the gross
          * amount due with the fee counted as a cost of disposal instead. See

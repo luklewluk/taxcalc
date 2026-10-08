@@ -24,11 +24,6 @@ final class ExampleFileController extends AbstractController
      * @var array<string, array{string, string}>
      */
     public const array FILES = [
-        'pozycje-zamkniete.csv' => ['pozycje-zamkniete.csv', 'Format własny - pozycje zamknięte'],
-        'dywidendy.csv' => ['dywidendy.csv', 'Format własny - dywidendy'],
-        'ibkr-transakcje.csv' => ['ibkr-transakcje.csv', 'IBKR - transakcje giełdowe (Flex)'],
-        'ibkr-dywidendy-aktywnosc.csv' => ['ibkr-dywidendy-aktywnosc.csv', 'IBKR - dywidendy (aktywność)'],
-        'ibkr-dywidendy-detail.csv' => ['ibkr-dywidendy-detail.csv', 'IBKR - dywidendy (Dividend Detail)'],
         'ibkr-activity-statement.csv' => ['ibkr-activity-statement.csv', 'IBKR - wyciąg z aktywności (Activity Statement)'],
         'degiro-transakcje.csv' => ['degiro-transakcje.csv', 'DEGIRO - transakcje (Transactions)'],
         'degiro-rachunek.csv' => ['degiro-rachunek.csv', 'DEGIRO - zestawienie konta (Account statement)'],

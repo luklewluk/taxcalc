@@ -14,9 +14,9 @@ use App\Exception\InvalidRecordException;
  * valid code is one we hold a treaty rate for is a separate question, answered
  * by {@see \App\Tax\TaxRates} with a warning rather than a rejection.
  *
- * Blank is deliberately allowed here: the flat Interactive Brokers exports do
- * not carry a country, and those rows have to reach the review screen so the
- * user can fill them in. The web form mapper is what refuses blank before a
+ * Blank is deliberately allowed here: a broker export does not always let a
+ * country be proposed (an unknown exchange, a non-country ISIN prefix), and
+ * those rows have to reach the workbench so the user can fill them in. The web form mapper is what refuses blank before a
  * result is produced.
  */
 final class CountryCode

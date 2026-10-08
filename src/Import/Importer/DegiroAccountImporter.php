@@ -126,7 +126,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
     ];
 
     public function __construct(
-        private readonly int $maxRowsPerFile = AbstractCsvImporter::DEFAULT_MAX_ROWS_PER_FILE,
+        private readonly int $maxRowsPerFile = ImporterInterface::DEFAULT_MAX_ROWS_PER_FILE,
     ) {
     }
 

@@ -11,7 +11,7 @@ use InvalidArgumentException;
  * A normalized record broke a domain invariant.
  *
  * Messages are Polish because they are shown verbatim next to the offending
- * row in the review screen and in CLI output.
+ * row in the workbench.
  */
 final class InvalidRecordException extends InvalidArgumentException
 {

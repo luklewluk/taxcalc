@@ -92,7 +92,7 @@ final class DegiroFlowTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertSame(0, $crawler->filter('.message--error')->count(), $crawler->filter('body')->text());
-        self::assertGreaterThan(0, $crawler->filter('input[name^="positions"][name$="[name]"]')->count());
+        self::assertGreaterThan(0, $crawler->filter('[data-trade-ledger] [data-trade] input[name^="trades"][name$="[name]"]')->count());
         self::assertGreaterThan(0, $crawler->filter('input[name^="dividends"][name$="[name]"]')->count());
     }
 
@@ -101,22 +101,21 @@ final class DegiroFlowTest extends WebTestCase
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro-transakcje.csv' => self::TRANSACTIONS]);
 
-        // Two buy lots closed by one sell.
-        self::assertSame(2, $crawler->filter('input[name^="positions"][name$="[name]"]')->count());
-        self::assertSame('ALFA CORP', $crawler->filter('input[name="positions[0][name]"]')->attr('value'));
+        // Two buys and one sell.
+        self::assertSame(3, $crawler->filter('[data-trade-ledger] [data-trade] input[name^="trades"][name$="[name]"]')->count());
+        self::assertSame('ALFA CORP', $crawler->filter('input[name="trades[0][name]"]')->attr('value'));
 
-        // The country comes from the ISIN prefix but stays an editable field.
-        $country = $crawler->filter('[name="positions[0][country]"]');
+        // The country comes from the listing exchange but stays an editable field.
+        $country = $crawler->filter('[name="trades[0][country]"]');
         self::assertGreaterThan(0, $country->count());
-        self::assertStringContainsString('US', self::selectedCountry($crawler, 'positions[0][country]'));
+        self::assertStringContainsString('US', self::selectedCountry($crawler, 'trades[0][country]'));
 
         self::assertStringContainsString('degiro-transakcje.csv', $crawler->filter('body')->text());
         self::assertStringContainsString('DEGIRO - transakcje giełdowe', $crawler->filter('body')->text());
     }
 
     /**
-     * The proposal note itself is not shown in the web UI - only in the CLI,
-     * which has no attention panel to point at. What the workbench guarantees
+     * The proposal note itself is not shown in the web UI. What the workbench guarantees
      * instead is that a proposal is never presented as settled: the country is
      * editable, and any disagreement with the ISIN is a review item.
      */
@@ -138,9 +137,12 @@ final class DegiroFlowTest extends WebTestCase
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro-transakcje.csv' => self::TRANSACTIONS], '2025');
 
-        self::assertSame('2024-04-03', $crawler->filter('input[name="positions[0][buy_date]"]')->attr('value'));
-        self::assertSame('2025-02-27', $crawler->filter('input[name="positions[0][sell_date]"]')->attr('value'));
-        self::assertSame('2024-06-13', $crawler->filter('input[name="positions[1][buy_date]"]')->attr('value'));
+        // Two buy lots from 2024 closed by one sale in 2025.
+        $positions = $crawler->filter('#panel-fifo tbody tr');
+        self::assertSame(2, $positions->count());
+        self::assertSame('2024-04-03', trim($positions->eq(0)->filter('td')->eq(1)->text()));
+        self::assertSame('2025-02-27', trim($positions->eq(0)->filter('td')->eq(7)->text()));
+        self::assertSame('2024-06-13', trim($positions->eq(1)->filter('td')->eq(1)->text()));
     }
 
     public function testTheSettledTotalIncludingFeesIsWhatReachesTheReviewScreen(): void
@@ -148,8 +150,8 @@ final class DegiroFlowTest extends WebTestCase
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro-transakcje.csv' => self::TRANSACTIONS], '2025');
 
-        self::assertSame('1523.98', $crawler->filter('input[name="positions[0][buy_amount]"]')->attr('value'));
-        self::assertSame('2350.99', $crawler->filter('input[name="positions[1][buy_amount]"]')->attr('value'));
+        self::assertSame('1523.98', $crawler->filter('input[name="trades[0][total]"]')->attr('value'));
+        self::assertSame('2350.99', $crawler->filter('input[name="trades[1][total]"]')->attr('value'));
     }
 
     public function testFullDegiroFlowProducesBothCreditScenarios(): void
@@ -198,7 +200,7 @@ final class DegiroFlowTest extends WebTestCase
 
         self::assertResponseIsSuccessful();
         self::assertGreaterThan(0, $crawler->filter('.message--error')->count());
-        self::assertSame(0, $crawler->filter('input[name^="positions["]')->count());
+        self::assertSame(0, $crawler->filter('[data-trade-ledger] [data-trade]')->count());
     }
 
     public function testNothingFromADegiroUploadIsKeptInTheSession(): void

@@ -8,7 +8,6 @@ use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
 use App\Fifo\PositionDirection;
 use App\Fifo\Trade;
-use App\Model\ClosedPosition;
 use App\Money\Amount;
 use App\Money\Decimal;
 use App\Web\WorkbenchCalculator;
@@ -24,32 +23,26 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(WorkbenchCalculator::class)]
 final class WorkbenchCalculatorTest extends TestCase
 {
-    public function testEveryMatchIsLinkedToThePositionItBecameEvenAfterLegacyPositions(): void
+    /**
+     * The link is keyed by the *match* index, not by the position's place in
+     * the list: a match that cannot become a position (bought in USD, sold in
+     * EUR) comes first here, so the two indexes differ.
+     */
+    public function testEveryMatchIsLinkedToThePositionItBecameEvenAfterAMatchThatBecameNone(): void
     {
-        $legacy = new ClosedPosition(
-            'LEGACY',
-            'US',
-            'USD',
-            new DateTimeImmutable('2023-01-01'),
-            Amount::of('10.00', 'USD'),
-            new DateTimeImmutable('2023-02-01'),
-            Amount::of('12.00', 'USD'),
-            Decimal::of('1'),
-            'legacy.csv',
-        );
-
         $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle([
+            self::trade('BBB', '2024-01-02', '1', '100.00', 'USD'),
+            self::trade('BBB', '2024-02-02', '-1', '120.00', 'EUR'),
             self::trade('AAA', '2024-01-02', '10', '1000.00', 'USD'),
             self::trade('AAA', '2024-03-02', '-4', '600.00', 'USD'),
-            self::trade('BBB', '2024-01-02', '1', '100.00', 'USD'),
-            self::trade('BBB', '2024-03-02', '-1', '120.00', 'EUR'),
-        ], [$legacy]);
+        ]);
 
         self::assertCount(2, $settlement->matches);
-        self::assertSame($legacy, $settlement->positions[0]);
-        self::assertSame([0], array_keys($settlement->matchPositions), 'A match that could not become a position has no entry.');
-        self::assertSame($settlement->positions[1], $settlement->matchPositions[0]);
-        self::assertSame('AAA', $settlement->matches[0]->symbol);
+        self::assertSame('BBB', $settlement->matches[0]->symbol);
+        self::assertSame('AAA', $settlement->matches[1]->symbol);
+        self::assertCount(1, $settlement->positions);
+        self::assertSame([1], array_keys($settlement->matchPositions), 'A match that could not become a position has no entry.');
+        self::assertSame($settlement->positions[0], $settlement->matchPositions[1]);
     }
 
     public function testWhatFifoLeftOpenOrUnmatchedIsPassedThrough(): void

@@ -10,11 +10,7 @@ use App\Import\CsvSource;
 use App\Import\FormatDetector;
 use App\Import\Importer\DegiroAccountImporter;
 use App\Import\Importer\DegiroTransactionsImporter;
-use App\Import\Importer\IbkrActivityDividendsImporter;
-use App\Import\Importer\IbkrDividendDetailImporter;
-use App\Import\Importer\IbkrTradesImporter;
-use App\Import\Importer\NormalizedDividendsImporter;
-use App\Import\Importer\NormalizedPositionsImporter;
+use App\Import\Importer\IbkrActivityStatementImporter;
 use App\Import\ImportResult;
 use App\Tax\TaxRates;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -22,8 +18,8 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Raw trades are pooled before FIFO runs, but only per broker: DEGIRO order IDs
- * and IBKR transaction IDs live in different namespaces, and an ISIN-keyed queue
- * must not be mixed with a ticker-keyed one.
+ * and IBKR trade IDs live in different namespaces, and an ISIN-keyed queue must
+ * not be mixed with an ISIN@currency-keyed one.
  */
 #[CoversClass(CsvImportService::class)]
 #[CoversClass(DegiroTransactionsImporter::class)]
@@ -33,8 +29,8 @@ final class DegiroBatchImportTest extends TestCase
         'Date,Time,Product,ISIN,Reference Exchange,Execution Venue,Quantity,Price,,Value,,'
         .'Transaction and/or third,,Total,,Order ID';
 
-    private const string IBKR_HEADER =
-        '"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"';
+    private const string BBB_INSTRUMENT =
+        'Financial Instrument Information,Data,Stocks,BBB,BETA ETF,1002,IE000BETA002,BBB,LSEETF,1,ETF,';
 
     public function testADegiroBuyFromOneYearMatchesASellFromAnother(): void
     {
@@ -66,9 +62,9 @@ final class DegiroBatchImportTest extends TestCase
                 '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,sell-1',
             ]),
             'ibkr.csv' => self::ibkr([
-                '"STK","BBB","20240101","5","10","-50.00","9001","USD"',
-                '"STK","BBB","20250601","-5","20","100.00","9002","USD"',
-            ]),
+                'Trades,Data,Order,Stocks,USD,BBB,"2024-01-02, 10:00:00",5,10,10,-50,0,50,0,0,O',
+                'Trades,Data,Order,Stocks,USD,BBB,"2025-06-02, 10:00:00",-5,20,20,100,0,-50,50,0,C',
+            ], [self::BBB_INSTRUMENT]),
         ]);
 
         self::assertSame([], $result->errors());
@@ -76,7 +72,7 @@ final class DegiroBatchImportTest extends TestCase
 
         $names = array_map(static fn ($p): string => $p->name, $result->positions);
         sort($names);
-        self::assertSame(['ALFA CORP', 'BBB'], $names);
+        self::assertSame(['ALFA CORP', 'BETA ETF'], $names);
 
         // Each importer's own warning about the missing/inferred country shows up.
         $sources = implode(' ', array_map(static fn ($p): string => $p->source, $result->positions));
@@ -86,19 +82,29 @@ final class DegiroBatchImportTest extends TestCase
 
     public function testAnIdenticalIdInTwoBrokersFilesIsNotACollision(): void
     {
+        // The Activity Statement's IDs are synthetic, so read them first and
+        // hand the very same strings to DEGIRO as its Order IDs.
+        $ibkr = self::ibkr([
+            'Trades,Data,Order,Stocks,USD,BBB,"2024-01-02, 10:00:00",5,10,10,-50,0,50,0,0,O',
+            'Trades,Data,Order,Stocks,USD,BBB,"2025-06-02, 10:00:00",-5,20,20,100,0,-50,50,0,C',
+        ], [self::BBB_INSTRUMENT]);
+        $ids = array_map(
+            static fn ($trade): string => (string) $trade->externalId,
+            $this->import(['ibkr.csv' => $ibkr])->trades,
+        );
+        self::assertCount(2, $ids);
+
         $result = $this->import([
             'degiro.csv' => self::degiro([
-                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,100.00,USD,-1000.00,USD,-1.00,USD,-1001.00,USD,SAME',
-                '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,SAME-2',
+                '03-04-2024,09:15,ALFA CORP,US000ALFA001,NDQ,XNAS,10,100.00,USD,-1000.00,USD,-1.00,USD,-1001.00,USD,'.$ids[0],
+                '27-02-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-10,150.00,USD,1500.00,USD,-1.00,USD,1499.00,USD,'.$ids[1],
             ]),
-            'ibkr.csv' => self::ibkr([
-                '"STK","BBB","20240101","5","10","-50.00","SAME","USD"',
-                '"STK","BBB","20250601","-5","20","100.00","SAME-2","USD"',
-            ]),
+            'ibkr.csv' => $ibkr,
         ]);
 
         self::assertSame([], $result->errors());
         self::assertCount(2, $result->positions);
+        self::assertCount(4, $result->trades);
     }
 
     public function testTheSameDegiroFileUploadedTwiceChangesNothing(): void
@@ -555,28 +561,18 @@ final class DegiroBatchImportTest extends TestCase
     {
         $result = $this->import([
             'ibkr.csv' => self::ibkr([
-                '"STK","AAA","20240101","1","10","-10.00","1","USD"',
-                '"STK","AAA","20240601","-1","15","15.00","2","USD"',
-                '"STK","BBB","20240601","-5","15","75.00","3","USD"',
+                'Trades,Data,Order,Stocks,USD,AAA,"2024-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O',
+                'Trades,Data,Order,Stocks,USD,AAA,"2024-06-03, 10:00:00",-1,15,15,15,0,-10,5,0,C',
+                'Trades,Data,Order,Stocks,USD,BBB,"2024-06-03, 11:00:00",-5,15,15,75,0,-50,25,0,C',
+            ], [
+                'Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,',
+                self::BBB_INSTRUMENT,
             ]),
         ]);
 
         self::assertCount(1, $result->positions);
         self::assertSame([], $result->errors());
         self::assertStringContainsString('nie ma pokrycia', implode(' ', $result->warnings()));
-    }
-
-    public function testAnIbkrConflictIsStillFatalWithTheIbkrColumnNamed(): void
-    {
-        $result = $this->import([
-            'ibkr.csv' => self::ibkr([
-                '"STK","AAA","20240101","1","10","-10.00","SAME","USD"',
-                '"STK","AAA","20240101","1","20","-20.00","SAME","USD"',
-            ]),
-        ]);
-
-        self::assertSame([], $result->positions);
-        self::assertStringContainsString('TransactionID', implode(' ', $result->errors()));
     }
 
     public function testDegiroTradesAndDegiroDividendsCanBeUploadedTogether(): void
@@ -665,11 +661,22 @@ final class DegiroBatchImportTest extends TestCase
     }
 
     /**
-     * @param list<string> $rows
+     * An IBKR Activity Statement with the given Trades rows and Financial
+     * Instrument Information rows.
+     *
+     * @param list<string> $trades
+     * @param list<string> $instruments
      */
-    private static function ibkr(array $rows): string
+    private static function ibkr(array $trades, array $instruments): string
     {
-        return self::IBKR_HEADER."\n".implode("\n", $rows)."\n";
+        return "Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,Title,Activity Statement\n"
+            .'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,'
+            ."Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code\n"
+            .implode("\n", $trades)."\n"
+            .'Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,'
+            ."Listing Exch,Multiplier,Type,Code\n"
+            .implode("\n", $instruments)."\n";
     }
 
     private static function service(): CsvImportService
@@ -677,13 +684,9 @@ final class DegiroBatchImportTest extends TestCase
         return new CsvImportService(
             new FormatDetector(),
             [
-                new IbkrTradesImporter(new FifoMatcher()),
-                new IbkrActivityDividendsImporter(),
-                new IbkrDividendDetailImporter(),
+                new IbkrActivityStatementImporter(new FifoMatcher()),
                 new DegiroTransactionsImporter(new FifoMatcher()),
                 new DegiroAccountImporter(),
-                new NormalizedPositionsImporter(),
-                new NormalizedDividendsImporter(),
             ],
             new TaxRates(),
         );

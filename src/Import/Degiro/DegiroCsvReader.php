@@ -14,9 +14,8 @@ use League\Csv\UnavailableStream;
 /**
  * Reads a DEGIRO CSV into positional rows.
  *
- * Separate from {@see \App\Import\Importer\AbstractCsvImporter} on purpose: that
- * reader keys rows by header name, which cannot represent the duplicated blank
- * headers DEGIRO uses to carry the currency of each amount.
+ * Positional on purpose: a reader keyed by header name cannot represent the
+ * duplicated blank headers DEGIRO uses to carry the currency of each amount.
  *
  * Row width is enforced strictly except for missing or surplus empty fields at
  * the very end that correspond to unnamed trailing headers. Any real shift is

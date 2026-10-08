@@ -72,8 +72,8 @@
     {% endif %}
     {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}
         <p class="note">
-            Część pozycji nie zgłasza prowizji sprzedaży (płaski eksport IBKR, format własny, pusta
-            kolumna opłaty, sklejone zlecenie o niespójnych transzach). Dla nich przychód pozostaje
+            Część pozycji nie zgłasza prowizji sprzedaży (pusta kolumna opłaty, zwrot prowizji
+            zamiast opłaty, sklejone zlecenie o niespójnych transzach). Dla nich przychód pozostaje
             kwotą rozliczoną, bo prowizji nie da się z niej wydzielić — pola PIT-38 22 i 23 są o tę
             opłatę zaniżone, ale podatek jest ten sam.
         </p>

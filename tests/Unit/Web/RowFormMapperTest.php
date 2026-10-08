@@ -6,7 +6,6 @@ namespace App\Tests\Unit\Web;
 
 use App\Fifo\InstrumentDetails;
 use App\Fifo\Trade;
-use App\Model\ClosedPosition;
 use App\Model\Dividend;
 use App\Money\Amount;
 use App\Money\Decimal;
@@ -18,32 +17,6 @@ use PHPUnit\Framework\TestCase;
 #[CoversClass(RowFormMapper::class)]
 final class RowFormMapperTest extends TestCase
 {
-    public function testRoundTripsAPositionThroughTheFormRepresentation(): void
-    {
-        $mapper = new RowFormMapper();
-
-        $original = new ClosedPosition(
-            'AAPL',
-            'US',
-            'USD',
-            new DateTimeImmutable('2024-05-04'),
-            Amount::of('71.8275', 'USD'),
-            new DateTimeImmutable('2024-12-16'),
-            Amount::of('127.4', 'USD'),
-            null,
-            'plik.csv',
-        );
-
-        $result = $mapper->mapPositions([$mapper->positionToForm($original)]);
-
-        self::assertSame([], $result->errors);
-        self::assertCount(1, $result->positions);
-        self::assertSame('AAPL', $result->positions[0]->name);
-        self::assertSame('71.8275', (string) $result->positions[0]->buyAmount->value());
-        self::assertSame('127.4', (string) $result->positions[0]->sellAmount->value());
-        self::assertSame('2024-12-16', $result->positions[0]->sellDate->format('Y-m-d'));
-    }
-
     public function testRoundTripsADividend(): void
     {
         $mapper = new RowFormMapper();
@@ -67,36 +40,32 @@ final class RowFormMapperTest extends TestCase
 
     public function testUserEditsAreHonoured(): void
     {
-        $result = (new RowFormMapper())->mapPositions([[
-            'name' => 'CSPX',
-            'country' => 'ie',
-            'currency' => 'usd',
-            'buy_date' => '2024-06-13',
-            'buy_amount' => '2 293,23',
-            'sell_date' => '2025-02-27',
-            'sell_amount' => '2542.81',
-            'quantity' => '3',
-            'source' => 'reczne',
-        ]]);
+        $mapper = new RowFormMapper();
+        $row = $mapper->tradeToForm(self::trade());
+        $row['name'] = 'ALFA (poprawione)';
+        $row['country'] = 'ie';
+        $row['total'] = '12,50';
+
+        $result = $mapper->mapTrades([$row]);
 
         self::assertSame([], $result->errors);
-        self::assertSame('IE', $result->positions[0]->countryCode);
-        self::assertSame('USD', $result->positions[0]->currency);
-        self::assertSame('2293.23', (string) $result->positions[0]->buyAmount->value());
+        self::assertSame('ALFA (poprawione)', $result->trades[0]->instrument?->displayName);
+        self::assertSame('IE', $result->trades[0]->instrument->countryCode ?? null);
+        self::assertSame('12.50', (string) $result->trades[0]->grossAmount->value());
     }
 
     public function testRowsMarkedForRemovalAreDropped(): void
     {
         $mapper = new RowFormMapper();
         $rows = [
-            $mapper->positionToForm(self::position('AAA')),
-            ['remove' => '1'] + $mapper->positionToForm(self::position('BBB')),
+            $mapper->tradeToForm(self::trade()),
+            ['remove' => '1'] + $mapper->tradeToForm(self::trade()),
         ];
 
-        $result = $mapper->mapPositions($rows);
+        $result = $mapper->mapTrades($rows);
 
-        self::assertCount(1, $result->positions);
-        self::assertSame('AAA', $result->positions[0]->name);
+        self::assertCount(1, $result->trades);
+        self::assertCount(1, $result->rows);
     }
 
     public function testRoundTripsATradeWithAnIndependentExecutionPriceCurrency(): void
@@ -180,36 +149,31 @@ final class RowFormMapperTest extends TestCase
 
     public function testInvalidRowBecomesAnErrorInsteadOfAnException(): void
     {
-        $result = (new RowFormMapper())->mapPositions([[
-            'name' => 'AAA',
-            'country' => 'US',
-            'currency' => 'USD',
-            'buy_date' => 'nonsense',
-            'buy_amount' => '10',
-            'sell_date' => '2024-06-01',
-            'sell_amount' => '20',
-        ]]);
+        $row = (new RowFormMapper())->tradeToForm(self::trade());
+        $row['date'] = 'nonsense';
 
-        self::assertSame([], $result->positions);
+        $result = (new RowFormMapper())->mapTrades([$row]);
+
+        self::assertSame([], $result->trades);
         self::assertCount(1, $result->errors);
         self::assertStringContainsString('1', $result->errors[0]);
     }
 
-    public function testMissingCountryIsRefusedBecauseItDrivesTheCreditAndPitZg(): void
+    public function testMissingDividendCountryIsRefusedBecauseItDrivesTheCredit(): void
     {
-        // Flat IBKR exports carry no country, so blank reaches the review screen -
-        // but it must never reach a calculated result.
-        $result = (new RowFormMapper())->mapPositions([[
+        // A dividend needs its country for the treaty cap of the conservative
+        // credit; blank may reach the workbench, never a calculated result.
+        $result = (new RowFormMapper())->mapDividends([[
             'name' => 'AAA',
             'country' => '',
             'currency' => 'USD',
-            'buy_date' => '2024-01-01',
-            'buy_amount' => '10',
-            'sell_date' => '2024-06-01',
-            'sell_amount' => '20',
+            'date' => '2025-04-02',
+            'gross' => '100.00',
+            'tax_paid' => '15.00',
+            'source' => 'test',
         ]]);
 
-        self::assertSame([], $result->positions);
+        self::assertSame([], $result->dividends);
         self::assertNotEmpty($result->errors);
         self::assertMatchesRegularExpression('/kraj/iu', $result->errors[0]);
     }
@@ -217,37 +181,22 @@ final class RowFormMapperTest extends TestCase
     public function testTooManyRowsAreRefusedSoAPostCannotExhaustMemory(): void
     {
         $mapper = new RowFormMapper(maxRows: 3);
-        $rows = array_fill(0, 5, $mapper->positionToForm(self::position('AAA')));
+        $rows = array_fill(0, 5, $mapper->tradeToForm(self::trade()));
 
-        $result = $mapper->mapPositions($rows);
+        $result = $mapper->mapTrades($rows);
 
-        self::assertCount(3, $result->positions);
+        self::assertCount(3, $result->trades);
         self::assertNotEmpty($result->errors);
-        self::assertSame('position.row_limit', $result->diagnostics[0]->code);
+        self::assertSame('trade.row_limit', $result->diagnostics[0]->code);
     }
 
     public function testNonArrayInputIsIgnoredRatherThanFatal(): void
     {
         /** @phpstan-ignore-next-line deliberately malformed input */
-        $result = (new RowFormMapper())->mapPositions(['not-an-array', 42, null]);
+        $result = (new RowFormMapper())->mapTrades(['not-an-array', 42, null]);
 
-        self::assertSame([], $result->positions);
+        self::assertSame([], $result->trades);
         self::assertNotEmpty($result->errors);
-    }
-
-    private static function position(string $name): ClosedPosition
-    {
-        return new ClosedPosition(
-            $name,
-            'US',
-            'USD',
-            new DateTimeImmutable('2024-01-01'),
-            Amount::of('10.00', 'USD'),
-            new DateTimeImmutable('2024-06-01'),
-            Amount::of('20.00', 'USD'),
-            null,
-            'test',
-        );
     }
 
     private static function trade(): Trade

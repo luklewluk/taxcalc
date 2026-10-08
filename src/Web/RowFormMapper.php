@@ -10,7 +10,6 @@ use App\Exception\InvalidNumberException;
 use App\Exception\InvalidRecordException;
 use App\Import\Parser\DateParser;
 use App\Import\Parser\NumberParser;
-use App\Model\ClosedPosition;
 use App\Model\CountryCode;
 use App\Model\Dividend;
 use App\Model\AccountFee;
@@ -38,88 +37,6 @@ final readonly class RowFormMapper
 
     public function __construct(private int $maxRows = self::DEFAULT_MAX_ROWS)
     {
-    }
-
-    /**
-     * @param array<mixed> $rows
-     */
-    public function mapPositions(array $rows): MappedRows
-    {
-        $positions = [];
-        $errors = [];
-        $diagnostics = [];
-        $keptRows = [];
-
-        [$rows, $errors] = $this->capRows($rows, $errors);
-        foreach ($errors as $message) {
-            $diagnostics[] = Diagnostic::blocking('position.row_limit', $message, 'transactions');
-        }
-
-        foreach ($rows as $index => $row) {
-            $number = $index + 1;
-
-            if (!is_array($row)) {
-                $message = sprintf('Pozycja %d: nieprawidłowe dane wiersza.', $number);
-                $errors[] = $message;
-                $diagnostics[] = Diagnostic::blocking('position.invalid_row', $message, 'transactions');
-
-                continue;
-            }
-
-            /** @var array<string, mixed> $row */
-            if ($this->isRemoved($row)) {
-                continue;
-            }
-
-            $keptRows[] = $this->positionRowToForm($row);
-
-            try {
-                $currency = strtoupper($this->str($row, 'currency'));
-                $name = $this->str($row, 'name');
-                if ('' === $name) {
-                    $message = sprintf('Pozycja %d: nazwa instrumentu jest wymagana.', $number);
-                    $errors[] = $message;
-                    $diagnostics[] = Diagnostic::blocking('position.name_missing', $message, 'transactions');
-
-                    continue;
-                }
-
-                $buyDate = DateParser::parse($this->str($row, 'buy_date'));
-                $sellDate = DateParser::parse($this->str($row, 'sell_date'));
-
-                if ($sellDate < $buyDate) {
-                    $message = sprintf(
-                        'Pozycja %d (%s): data sprzedaży jest wcześniejsza niż data zakupu.',
-                        $number,
-                        $name,
-                    );
-                    $errors[] = $message;
-                    $diagnostics[] = Diagnostic::blocking('position.date_order', $message, 'transactions');
-
-                    continue;
-                }
-
-                $quantity = $this->str($row, 'quantity');
-
-                $positions[] = new ClosedPosition(
-                    $name,
-                    CountryCode::normalizeRequired($this->str($row, 'country'), $name, forPitZg: false),
-                    $currency,
-                    $buyDate,
-                    Amount::fromDecimal(NumberParser::parse($this->str($row, 'buy_amount'), decimalComma: true), $currency),
-                    $sellDate,
-                    Amount::fromDecimal(NumberParser::parse($this->str($row, 'sell_amount'), decimalComma: true), $currency),
-                    '' === $quantity ? null : NumberParser::parse($quantity, decimalComma: true),
-                    $this->str($row, 'source'),
-                );
-            } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
-                $message = sprintf('Pozycja %d: %s', $number, $e->getMessage());
-                $errors[] = $message;
-                $diagnostics[] = Diagnostic::blocking('position.invalid', $message, 'transactions');
-            }
-        }
-
-        return new MappedRows($positions, [], $errors, $keptRows, diagnostics: $diagnostics);
     }
 
     /**
@@ -186,7 +103,7 @@ final readonly class RowFormMapper
             }
         }
 
-        return new MappedRows([], $dividends, $errors, $keptRows, diagnostics: $diagnostics);
+        return new MappedRows($dividends, $errors, $keptRows, diagnostics: $diagnostics);
     }
 
     /** @param array<mixed> $rows */
@@ -256,7 +173,7 @@ final readonly class RowFormMapper
                     // An option expires or is assigned at nothing - the only
                     // trade that may move no cash, and then it costs no fee.
                     if (InstrumentKind::Option !== $kind) {
-                        throw InvalidRecordException::amountMustBePositive('Total/NetCash', $total);
+                        throw InvalidRecordException::amountMustBePositive('Total', $total);
                     }
 
                     if (PositionEffect::Close !== $effect) {
@@ -309,7 +226,7 @@ final readonly class RowFormMapper
             }
         }
 
-        return new MappedRows([], [], $errors, $keptRows, $trades, diagnostics: $diagnostics);
+        return new MappedRows([], $errors, $keptRows, $trades, diagnostics: $diagnostics);
     }
 
     /** @param array<mixed> $rows */
@@ -368,24 +285,7 @@ final readonly class RowFormMapper
             }
         }
 
-        return new MappedRows([], [], $errors, $keptRows, [], $fees, $diagnostics);
-    }
-
-    /**
-     * Echo of a submitted position row, normalized to the form's field names.
-     *
-     * @param array<string, mixed> $row
-     *
-     * @return array<string, string>
-     */
-    private function positionRowToForm(array $row): array
-    {
-        $form = [];
-        foreach (['name', 'country', 'currency', 'buy_date', 'buy_amount', 'sell_date', 'sell_amount', 'quantity', 'source'] as $key) {
-            $form[$key] = $this->str($row, $key);
-        }
-
-        return $form;
+        return new MappedRows([], $errors, $keptRows, [], $fees, $diagnostics);
     }
 
     /**
@@ -431,24 +331,6 @@ final readonly class RowFormMapper
         }
 
         return $form;
-    }
-
-    /**
-     * @return array<string, string>
-     */
-    public function positionToForm(ClosedPosition $position): array
-    {
-        return [
-            'name' => $position->name,
-            'country' => $position->countryCode,
-            'currency' => $position->currency,
-            'buy_date' => $position->buyDate->format('Y-m-d'),
-            'buy_amount' => (string) $position->buyAmount->value(),
-            'sell_date' => $position->sellDate->format('Y-m-d'),
-            'sell_amount' => (string) $position->sellAmount->value(),
-            'quantity' => null === $position->quantity ? '' : (string) $position->quantity,
-            'source' => $position->source,
-        ];
     }
 
     /**

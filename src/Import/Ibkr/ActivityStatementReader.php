@@ -62,11 +62,28 @@ final class ActivityStatementReader
                     array_values($record),
                 );
 
-                if (count($fields) < 2 || !isset($wanted[$fields[0]])) {
+                if (count($fields) < 2) {
                     continue;
                 }
 
                 [$section, $kind] = $fields;
+
+                // The cap is per file, counted over every section: the importer
+                // reads trades and dividends in separate passes, and a cap that
+                // only one of them hit would let the other half of the
+                // statement drop out without a word.
+                if ('Data' === $kind && ++$count > $maxRows) {
+                    // Fail closed: a prefix of the statement could settle a
+                    // convincing but incomplete tax year.
+                    throw new ActivityStatementReadException(sprintf(
+                        'Plik zawiera więcej niż %d wierszy. Nie wczytano żadnych danych; podziel go na mniejsze części.',
+                        $maxRows,
+                    ));
+                }
+
+                if (!isset($wanted[$section])) {
+                    continue;
+                }
 
                 if ('Header' === $kind) {
                     $headers[$section] = array_map(mb_strtolower(...), array_slice($fields, 2));
@@ -76,15 +93,6 @@ final class ActivityStatementReader
 
                 if ('Data' !== $kind || !isset($headers[$section])) {
                     continue;
-                }
-
-                if (++$count > $maxRows) {
-                    // Fail closed: a prefix of the statement could settle a
-                    // convincing but incomplete tax year.
-                    throw new ActivityStatementReadException(sprintf(
-                        'Plik zawiera więcej niż %d wierszy. Nie wczytano żadnych danych; podziel go na mniejsze części.',
-                        $maxRows,
-                    ));
                 }
 
                 $rows[$section][] = new ActivityStatementRow(

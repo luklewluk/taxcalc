@@ -8,13 +8,9 @@ use App\Fifo\FifoMatcher;
 use App\Import\CsvImportService;
 use App\Import\CsvSource;
 use App\Import\FormatDetector;
-use App\Import\MessageLevel;
-use App\Import\Importer\IbkrActivityDividendsImporter;
+use App\Import\Importer\DegiroAccountImporter;
+use App\Import\Importer\DegiroTransactionsImporter;
 use App\Import\Importer\IbkrActivityStatementImporter;
-use App\Import\Importer\IbkrDividendDetailImporter;
-use App\Import\Importer\IbkrTradesImporter;
-use App\Import\Importer\NormalizedDividendsImporter;
-use App\Import\Importer\NormalizedPositionsImporter;
 use App\Tax\TaxRates;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -29,12 +25,9 @@ final class CsvImportServiceTest extends TestCase
         $this->service = new CsvImportService(
             new FormatDetector(),
             [
-                new IbkrTradesImporter(new FifoMatcher()),
-                new IbkrActivityDividendsImporter(),
-                new IbkrDividendDetailImporter(),
                 new IbkrActivityStatementImporter(new FifoMatcher()),
-                new NormalizedPositionsImporter(),
-                new NormalizedDividendsImporter(),
+                new DegiroTransactionsImporter(new FifoMatcher()),
+                new DegiroAccountImporter(),
             ],
             new TaxRates(),
         );
@@ -43,8 +36,8 @@ final class CsvImportServiceTest extends TestCase
     public function testRoutesEachFileToTheImporterThatMatchesItsFormat(): void
     {
         $result = $this->service->import([
-            new CsvSource('trades.csv', self::ibkrTrades()),
-            new CsvSource('dividends.csv', self::normalizedDividends()),
+            new CsvSource('trades.csv', self::degiroTrades()),
+            new CsvSource('dividends.csv', self::degiroAccount()),
         ]);
 
         self::assertCount(1, $result->positions);
@@ -55,7 +48,7 @@ final class CsvImportServiceTest extends TestCase
     {
         $result = $this->service->import([
             new CsvSource('junk.csv', "foo,bar\n1,2\n"),
-            new CsvSource('dividends.csv', self::normalizedDividends()),
+            new CsvSource('dividends.csv', self::degiroAccount()),
         ]);
 
         self::assertSame([], $result->positions);
@@ -67,30 +60,37 @@ final class CsvImportServiceTest extends TestCase
     public function testTheSameFileUploadedTwiceDoesNotDoubleTheNumbers(): void
     {
         $result = $this->service->import([
-            new CsvSource('a.csv', self::normalizedDividends()),
-            new CsvSource('b.csv', self::normalizedDividends()),
+            new CsvSource('a.csv', self::degiroAccount()),
+            new CsvSource('b.csv', self::degiroAccount()),
         ]);
 
+        self::assertSame([], $result->errors());
         self::assertCount(1, $result->dividends);
-        self::assertNotEmpty($result->warnings());
-        self::assertStringContainsString('duplikat', mb_strtolower(implode(' ', $result->warnings())));
+        self::assertSame('10.00', (string) $result->dividends[0]->grossAmount->value());
+        self::assertSame('1.50', (string) $result->dividends[0]->withheldTax->value());
+        // The account statement drops the repeated rows itself, before it
+        // assembles payments, and says so.
+        self::assertStringContainsString('powtórzon', mb_strtolower(implode(' ', $result->infos())));
     }
 
     public function testGenuinelyDifferentRowsAreBothKept(): void
     {
-        $second = "name,country,currency,date,amount,tax_paid\nAAA,US,USD,2024-06-11,10.00,1.50\n";
+        $second = "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
+            ."11-06-2024,06:32,11-06-2024,AAA,US000AAAA001,Dividend,,USD,10.00,USD,10.00,\n"
+            ."11-06-2024,06:32,11-06-2024,AAA,US000AAAA001,Dividend Tax,,USD,-1.50,USD,8.50,\n";
 
         $result = $this->service->import([
-            new CsvSource('a.csv', self::normalizedDividends()),
+            new CsvSource('a.csv', self::degiroAccount()),
             new CsvSource('b.csv', $second),
         ]);
 
+        self::assertSame([], $result->errors());
         self::assertCount(2, $result->dividends);
     }
 
     public function testEachRowRemembersWhichFileAndFormatItCameFrom(): void
     {
-        $result = $this->service->import([new CsvSource('trades.csv', self::ibkrTrades())]);
+        $result = $this->service->import([new CsvSource('trades.csv', self::degiroTrades())]);
 
         self::assertStringContainsString('trades.csv', $result->positions[0]->source);
     }
@@ -107,7 +107,7 @@ final class CsvImportServiceTest extends TestCase
     public function testFilesAreProcessedInMemoryWithoutTouchingTheFilesystem(): void
     {
         $before = self::projectFileCount();
-        $this->service->import([new CsvSource('trades.csv', self::ibkrTrades())]);
+        $this->service->import([new CsvSource('trades.csv', self::degiroTrades())]);
 
         self::assertSame($before, self::projectFileCount());
     }
@@ -143,29 +143,6 @@ final class CsvImportServiceTest extends TestCase
         self::assertSame([], $result->errors());
         self::assertCount(1, $result->positions);
         self::assertCount(2, $result->trades);
-    }
-
-    public function testFlexTradesAndActivityStatementTradesCannotBeMixed(): void
-    {
-        $result = $this->service->import([
-            new CsvSource('flex.csv', self::ibkrTrades()),
-            new CsvSource('as.csv', self::activityStatement()),
-        ]);
-
-        self::assertSame([], $result->positions);
-        self::assertStringContainsString('jeden format', implode("\n", $result->errors()));
-    }
-
-    public function testActivityStatementDividendsNextToAnotherIbkrDividendExportAreFlagged(): void
-    {
-        $result = $this->service->import([
-            new CsvSource('as.csv', self::activityStatement()),
-            new CsvSource('detail.csv', self::dividendDetail()),
-        ]);
-
-        $review = array_filter($result->messages, static fn ($m): bool => MessageLevel::Review === $m->level);
-        self::assertNotSame([], $review);
-        self::assertStringContainsString('Dividend Detail', implode("\n", array_map(static fn ($m): string => $m->message, $review)));
     }
 
     public function testTheSameIdOnAnOptionWithAnotherEffectIsAConflict(): void
@@ -243,22 +220,23 @@ final class CsvImportServiceTest extends TestCase
             ."Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,\n";
     }
 
-    private static function dividendDetail(): string
+    /**
+     * A blank fee keeps przychód equal to the settled cash; an XS ISIN with no
+     * exchange columns proposes no country.
+     */
+    private static function degiroTrades(): string
     {
-        return "DividendDetail,Header,DataDiscriminator,Currency,Symbol,Conid,Country,ReportDate,ExDate,Shares,RevenueComponent,QualifiedIndicator,Gross,GrossInBase,GrossInUSD,Withhold,WithholdInBase,WithholdInUSD\n"
-            ."DividendDetail,Data,Summary,USD,BBB,1,US,20240610,20240601,1,,,2,2,2,-0.3,-0.3,-0.3,\n";
+        return "Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,"
+            ."Transaction and/or third party costs,,Total,,Order ID\n"
+            ."01-01-2024,10:00,AAA,XS000AAAA001,,,1,10.00,USD,-10.00,USD,-10.00,USD,,,,-10.00,USD,t-1\n"
+            ."01-06-2024,10:00,AAA,XS000AAAA001,,,-1,15.00,USD,15.00,USD,15.00,USD,,,,15.00,USD,t-2\n";
     }
 
-    private static function ibkrTrades(): string
+    private static function degiroAccount(): string
     {
-        return '"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"'."\n"
-            .'"STK","AAA","20240101","1","10","-10.00","1","USD"'."\n"
-            .'"STK","AAA","20240601","-1","15","15.00","2","USD"'."\n";
-    }
-
-    private static function normalizedDividends(): string
-    {
-        return "name,country,currency,date,amount,tax_paid\nAAA,US,USD,2024-06-10,10.00,1.50\n";
+        return "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
+            ."10-06-2024,06:32,10-06-2024,AAA,US000AAAA001,Dividend,,USD,10.00,USD,10.00,\n"
+            ."10-06-2024,06:32,10-06-2024,AAA,US000AAAA001,Dividend Tax,,USD,-1.50,USD,8.50,\n";
     }
 
     private static function projectFileCount(): int

@@ -25,10 +25,8 @@ final class DateParserTest extends TestCase
     public static function supportedFormats(): iterable
     {
         yield 'iso' => ['2024-03-22', '2024-03-22'];
-        yield 'ibkr compact' => ['20240322', '2024-03-22'];
-        yield 'ibkr compact with time' => ['20250402;202000', '2025-04-02'];
+        yield 'compact' => ['20240322', '2024-03-22'];
         yield 'iso with time' => ['2024-03-22 14:05:00', '2024-03-22'];
-        yield 'iso with semicolon time' => ['2024-03-22;140500', '2024-03-22'];
         yield 'iso with T' => ['2024-03-22T14:05:00', '2024-03-22'];
         yield 'polish dotted' => ['22.03.2024', '2024-03-22'];
         yield 'padded' => ['  2024-03-22  ', '2024-03-22'];
@@ -36,7 +34,7 @@ final class DateParserTest extends TestCase
 
     public function testTimeComponentIsDiscardedSoDatesCompareCleanly(): void
     {
-        self::assertSame('00:00:00', DateParser::parse('20250402;202000')->format('H:i:s'));
+        self::assertSame('00:00:00', DateParser::parse('2024-03-22T14:05:00')->format('H:i:s'));
         self::assertSame('00:00:00', DateParser::parse('2024-03-22 14:05:00')->format('H:i:s'));
     }
 

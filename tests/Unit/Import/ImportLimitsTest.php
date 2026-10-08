@@ -10,11 +10,7 @@ use App\Import\CsvSource;
 use App\Import\FormatDetector;
 use App\Import\Importer\DegiroAccountImporter;
 use App\Import\Importer\DegiroTransactionsImporter;
-use App\Import\Importer\IbkrActivityDividendsImporter;
-use App\Import\Importer\IbkrDividendDetailImporter;
-use App\Import\Importer\IbkrTradesImporter;
-use App\Import\Importer\NormalizedDividendsImporter;
-use App\Import\Importer\NormalizedPositionsImporter;
+use App\Import\Importer\IbkrActivityStatementImporter;
 use App\Tax\TaxRates;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -42,14 +38,17 @@ final class ImportLimitsTest extends TestCase
 
     public function testCapAppliesAcrossPositionsAndDividendsTogether(): void
     {
+        // Two raw trades (one closed position) and three dividends: each file
+        // alone is under the cap, together they are not.
         $result = $this->service(maxRecords: 4)->import([
-            new CsvSource('p.csv', self::positions(3)),
+            new CsvSource('p.csv', self::positions(1)),
             new CsvSource('d.csv', self::dividends(3)),
         ]);
 
         self::assertSame([], $result->positions);
         self::assertSame([], $result->dividends);
         self::assertNotEmpty($result->errors());
+        self::assertStringContainsString('limit 4 rekordów', implode(' ', $result->errors()));
     }
 
     public function testDataUnderTheCapIsUntouched(): void
@@ -62,51 +61,73 @@ final class ImportLimitsTest extends TestCase
         self::assertSame([], $result->errors());
     }
 
-    public function testRowsPerFileAreCappedWhileReadingSoAHugeFileCannotBeFullyMaterialised(): void
-    {
-        $importer = new NormalizedDividendsImporter(new TaxRates(), maxRowsPerFile: 10);
-
-        $result = $importer->import(new CsvSource('d.csv', self::dividends(50)));
-
-        self::assertSame([], $result->dividends);
-        self::assertNotEmpty($result->errors());
-        self::assertStringContainsString('10', implode(' ', $result->errors()));
-    }
-
-    public function testTradeFileRowsAreCappedTooBeforeFifoRuns(): void
-    {
-        $rows = ['"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"'];
-        for ($i = 0; $i < 40; ++$i) {
-            $rows[] = sprintf('"STK","AAA","20240101","1","10","-10.00","%d","USD"', 5000 + $i);
-        }
-
-        $importer = new IbkrTradesImporter(new FifoMatcher(), maxRowsPerFile: 10);
-        $extraction = $importer->extractTrades(new CsvSource('t.csv', implode("\n", $rows)."\n"));
-
-        self::assertSame([], $extraction->trades);
-        self::assertNotEmpty($extraction->messages);
-    }
-
-    public function testSectionedDividendDetailFileIsCappedToo(): void
+    public function testSectionedActivityStatementIsCappedToo(): void
     {
         $lines = [
-            'DividendDetail,Header,DataDiscriminator,Currency,Symbol,Conid,Country,ReportDate,ExDate,Shares,'
-            .'RevenueComponent,QualifiedIndicator,Gross,GrossInBase,GrossInUSD,Withhold,WithholdInBase,WithholdInUSD',
+            'Statement,Header,Field Name,Field Value',
+            'Statement,Data,Title,Activity Statement',
+            'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,'
+            .'Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
         ];
         for ($i = 0; $i < 40; ++$i) {
             $lines[] = sprintf(
-                'DividendDetail,Data,Summary,USD,S%d,%d,US,20250213,20250207,10,,,%d.00,1,1,0,0,0,',
+                'Trades,Data,Order,Stocks,USD,AAA,"2025-01-02, 10:%02d:00",1,10,10,-10,0,10,0,0,O',
                 $i,
+            );
+        }
+        $lines[] = 'Dividends,Header,Currency,Date,Description,Amount';
+        for ($i = 0; $i < 40; ++$i) {
+            $lines[] = sprintf(
+                'Dividends,Data,USD,2025-02-13,S%1$d(US%1$09d1) Cash Dividend USD 0.10 per Share (Ordinary Dividend),%2$d.00',
                 $i,
                 $i + 1,
             );
         }
 
-        $result = (new IbkrDividendDetailImporter(maxRowsPerFile: 10))
-            ->import(new CsvSource('detail.csv', implode("\n", $lines)."\n"));
+        $result = (new CsvImportService(
+            new FormatDetector(),
+            [new IbkrActivityStatementImporter(new FifoMatcher(), maxRowsPerFile: 10)],
+            new TaxRates(),
+        ))->import([new CsvSource('as.csv', implode("\n", $lines)."\n")]);
 
+        self::assertSame([], $result->trades);
         self::assertSame([], $result->dividends);
         self::assertNotEmpty($result->errors());
+        self::assertStringContainsString('10', implode(' ', $result->errors()));
+    }
+
+    /**
+     * The cap is per file, not per section: a statement with a handful of
+     * trades and more dividend rows than the cap must not lose its dividends
+     * in silence while the trades import.
+     */
+    public function testAStatementOverTheCapOnlyInItsDividendsIsRejectedToo(): void
+    {
+        $lines = [
+            'Statement,Header,Field Name,Field Value',
+            'Statement,Data,Title,Activity Statement',
+            'Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,'
+            .'Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code',
+            'Trades,Data,Order,Stocks,USD,AAA,"2025-01-02, 10:00:00",1,10,10,-10,0,10,0,0,O',
+            'Dividends,Header,Currency,Date,Description,Amount',
+        ];
+        for ($i = 0; $i < 40; ++$i) {
+            $lines[] = sprintf(
+                'Dividends,Data,USD,2025-02-13,S%1$d(US%1$09d1) Cash Dividend USD 0.10 per Share (Ordinary Dividend),%2$d.00',
+                $i,
+                $i + 1,
+            );
+        }
+
+        $result = (new CsvImportService(
+            new FormatDetector(),
+            [new IbkrActivityStatementImporter(new FifoMatcher(), maxRowsPerFile: 10)],
+            new TaxRates(),
+        ))->import([new CsvSource('as.csv', implode("\n", $lines)."\n")]);
+
+        self::assertSame([], $result->trades);
+        self::assertSame([], $result->dividends);
+        self::assertStringContainsString('10', implode(' ', $result->errors()));
     }
 
     public function testDegiroTransactionFileRowsAreCappedBeforeFifoRuns(): void
@@ -161,10 +182,17 @@ final class ImportLimitsTest extends TestCase
             );
         }
 
-        $ibkr = '"AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"'."\n";
+        $ibkr = "Statement,Header,Field Name,Field Value\n"
+            ."Statement,Data,Title,Activity Statement\n"
+            ."Trades,Header,DataDiscriminator,Asset Category,Currency,Symbol,Date/Time,Quantity,T. Price,C. Price,Proceeds,Comm/Fee,Basis,Realized P/L,MTM P/L,Code\n";
         for ($i = 0; $i < 4; ++$i) {
-            $ibkr .= sprintf('"STK","AAA","20240101","1","10","-10.00","%d","USD"'."\n", 7000 + $i);
+            $ibkr .= sprintf(
+                "Trades,Data,Order,Stocks,USD,AAA,\"2024-01-02, 10:0%d:00\",1,10,10,-10,0,10,0,0,O\n",
+                $i,
+            );
         }
+        $ibkr .= "Financial Instrument Information,Header,Asset Category,Symbol,Description,Conid,Security ID,Underlying,Listing Exch,Multiplier,Type,Code\n"
+            ."Financial Instrument Information,Data,Stocks,AAA,ALFA CORP,1001,US000ALFA001,AAA,NASDAQ,1,COMMON,\n";
 
         $result = $this->service(maxRecords: 5)->import([
             new CsvSource('degiro.csv', $degiro),
@@ -173,6 +201,7 @@ final class ImportLimitsTest extends TestCase
 
         self::assertSame([], $result->positions);
         self::assertNotEmpty($result->errors());
+        self::assertStringContainsString('limit 5 surowych transakcji', implode(' ', $result->errors()));
     }
 
     private function service(int $maxRecords): CsvImportService
@@ -180,34 +209,43 @@ final class ImportLimitsTest extends TestCase
         return new CsvImportService(
             new FormatDetector(),
             [
-                new IbkrTradesImporter(new FifoMatcher()),
-                new IbkrActivityDividendsImporter(),
-                new IbkrDividendDetailImporter(),
+                new IbkrActivityStatementImporter(new FifoMatcher()),
                 new DegiroTransactionsImporter(new FifoMatcher()),
                 new DegiroAccountImporter(),
-                new NormalizedPositionsImporter(),
-                new NormalizedDividendsImporter(),
             ],
             new TaxRates(),
             $maxRecords,
         );
     }
 
+    /**
+     * One DEGIRO payment per ISIN, so every row is its own dividend.
+     */
     private static function dividends(int $count): string
     {
-        $csv = "name,country,currency,date,amount,tax_paid\n";
+        $csv = "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n";
         for ($i = 0; $i < $count; ++$i) {
-            $csv .= sprintf("S%d,US,USD,2025-04-02,%d.00,0\n", $i, $i + 1);
+            $csv .= sprintf('02-04-2025,06:32,02-04-2025,S%1$d,US%1$09d1,Dividend,,USD,%2$d.00,USD,100.00,'."\n", $i, $i + 1);
         }
 
         return $csv;
     }
 
+    /**
+     * One buy and one sell per instrument, each pair its own closed position.
+     */
     private static function positions(int $count): string
     {
-        $csv = "name,country,currency,buy_date,buy_total_amount,sell_date,sell_total_amount\n";
+        $csv = "Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,"
+            ."Transaction and/or third party costs,,Total,,Order ID\n";
         for ($i = 0; $i < $count; ++$i) {
-            $csv .= sprintf("S%d,US,USD,2024-01-01,%d.00,2025-06-01,%d.00\n", $i, $i + 1, $i + 2);
+            $csv .= sprintf(
+                '01-01-2024,10:00,S%1$d,XS%1$09d1,,,1,%2$d.00,USD,-%2$d.00,USD,-%2$d.00,USD,,,,-%2$d.00,USD,b-%1$d'."\n"
+                .'01-06-2025,10:00,S%1$d,XS%1$09d1,,,-1,%3$d.00,USD,%3$d.00,USD,%3$d.00,USD,,,,%3$d.00,USD,s-%1$d'."\n",
+                $i,
+                $i + 1,
+                $i + 2,
+            );
         }
 
         return $csv;

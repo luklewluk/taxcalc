@@ -16,8 +16,9 @@ namespace App\Import;
 enum TradeIdScope
 {
     /**
-     * One identifier, one execution - Interactive Brokers' `TransactionID`.
-     * The same ID with different content is a contradiction in the data.
+     * One identifier, one execution - the synthetic per-row ID of the IBKR
+     * Activity Statement. The same ID with different content is a
+     * contradiction in the data.
      */
     case Fill;
 

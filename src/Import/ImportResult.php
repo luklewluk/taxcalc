@@ -17,7 +17,6 @@ final readonly class ImportResult
      * @param list<ImportMessage>  $messages
      * @param list<Trade>          $trades logical transactions entering FIFO
      * @param list<AccountFee>     $fees standalone account charges
-     * @param list<ClosedPosition> $legacyPositions deprecated ready-made pairs
      */
     public function __construct(
         public array $positions = [],
@@ -25,7 +24,6 @@ final readonly class ImportResult
         public array $messages = [],
         public array $trades = [],
         public array $fees = [],
-        public array $legacyPositions = [],
     ) {
     }
 
@@ -37,7 +35,6 @@ final readonly class ImportResult
             [...$this->messages, ...$other->messages],
             [...$this->trades, ...$other->trades],
             [...$this->fees, ...$other->fees],
-            [...$this->legacyPositions, ...$other->legacyPositions],
         );
     }
 
@@ -52,7 +49,6 @@ final readonly class ImportResult
             [...$this->messages, ...$messages],
             $this->trades,
             $this->fees,
-            $this->legacyPositions,
         );
     }
 
@@ -71,7 +67,7 @@ final readonly class ImportResult
     {
         // Review-level findings are warnings too as far as every text surface
         // is concerned - the level only decides whether the web panel gets an
-        // item as well, and the CLI has no panel to point at.
+        // item as well.
         return $this->describe(MessageLevel::Warning, MessageLevel::Review);
     }
 

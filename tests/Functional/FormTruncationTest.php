@@ -16,11 +16,14 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class FormTruncationTest extends WebTestCase
 {
+    /** Three payments from a DEGIRO account statement; BBB had nothing withheld. */
     private const string DIVIDENDS = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,15.00
-        BBB,IE,USD,2025-07-02,50.00,0
-        CCC,US,USD,2025-09-02,25.00,3.75
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-15.00,USD,85.00,
+        02-07-2025,06:32,02-07-2025,BBB,IE000BBBB002,Dividend,,USD,50.00,USD,135.00,
+        02-09-2025,06:32,02-09-2025,CCC,US000CCCC003,Dividend,,USD,25.00,USD,160.00,
+        02-09-2025,06:32,02-09-2025,CCC,US000CCCC003,Dividend Tax,,USD,-3.75,USD,156.25,
         CSV;
 
     /**
@@ -46,7 +49,7 @@ final class FormTruncationTest extends WebTestCase
         $crawler = $this->import($client);
 
         self::assertSame('3', $crawler->filter('form[data-role="review"] input[name="expected_dividends"]')->attr('value'));
-        self::assertSame('0', $crawler->filter('form[data-role="review"] input[name="expected_positions"]')->attr('value'));
+        self::assertSame('0', $crawler->filter('form[data-role="review"] input[name="expected_trades"]')->attr('value'));
     }
 
     public function testTruncatedSubmissionIsRefusedInsteadOfSilentlyTaxingFewerRows(): void
@@ -69,19 +72,6 @@ final class FormTruncationTest extends WebTestCase
         self::assertMatchesRegularExpression('/obci[eę]t|max_input_vars|niekompletn/iu', $text);
         // The wrong number must never be presented as a result.
         self::assertStringNotContainsString('Szacowany podatek', $text);
-    }
-
-    public function testTruncatedPositionsAreDetectedToo(): void
-    {
-        $client = static::createClient();
-        $crawler = $this->import($client);
-
-        $payload = $crawler->filter('form[data-role="review"]')->form()->getPhpValues();
-        $payload['expected_positions'] = '4';
-
-        $client->request('POST', '/kalkulator/wynik', $payload);
-
-        self::assertGreaterThan(0, $client->getCrawler()->filter('.message--error')->count());
     }
 
     public function testCompleteSubmissionStillCalculates(): void

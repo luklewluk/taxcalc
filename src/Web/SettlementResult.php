@@ -13,7 +13,7 @@ use App\Model\ClosedPosition;
 final readonly class SettlementResult
 {
     /**
-     * @param list<ClosedPosition>       $positions      legacy positions first, then one per usable match
+     * @param list<ClosedPosition>       $positions      one per usable match
      * @param list<FifoMatch>            $matches
      * @param list<string>               $errors
      * @param list<Diagnostic>           $diagnostics

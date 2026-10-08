@@ -33,7 +33,8 @@ final readonly class CalculatedPosition
      * Everything PIT-38 counts as a cost for this position.
      *
      * Every display goes through this rather than adding the two itself: a null
-     * disposal cost reaching Twig is a 500, and every flat-IBKR row is null.
+     * disposal cost reaching Twig is a 500, and a row whose source reported no
+     * sell fee is null.
      */
     public function totalCost(): Amount
     {

@@ -4,7 +4,7 @@ parameters:
     app.upload.max_bytes: 5242880
     app.tax_year.first: 2021
 
-    # Maximum editable records (trades + legacy positions + dividends + fees)
+    # Maximum editable records (trades + dividends + fees)
     # one import may produce. The workbench form has to fit inside PHP's
     # max_input_vars - see docker/php.ini.
     app.rows.max: 5000

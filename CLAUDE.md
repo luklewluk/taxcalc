@@ -5,12 +5,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Project Overview
 
 **TaxCalc.pl** (https://taxcalc.pl) — a privacy-first, open-source (MIT) Polish stock, option
-and dividend tax calculator. Symfony **8.1** on PHP **8.4+** (developed on 8.5), available both as a web
-application and as CLI commands.
+and dividend tax calculator. Symfony **8.1** on PHP **8.4+** (developed on 8.5), a web application only - there are no
+CLI commands of its own (`bin/console` serves Doctrine and the linters).
 
-Reads Interactive Brokers (Activity Statement, Flex, Dividend Detail) and DEGIRO exports
-(legacy normalized CSVs remain deprecated),
-converts amounts using NBP D-1 rates, matches sells to buys with FIFO, and produces
+Reads exactly three exports - the Interactive Brokers **Activity Statement**, DEGIRO
+**Transactions** and the DEGIRO **Account statement** - converts amounts using NBP D-1 rates, matches sells to buys with FIFO, and produces
 PIT-38 / PIT-ZG figures.
 
 **No persistence of user data at all.** Uploaded files are read once from
@@ -29,7 +28,7 @@ would break the product's core promise.
 # Tests
 vendor/bin/phpunit                              # full suite
 vendor/bin/phpunit --testsuite unit             # domain logic only
-vendor/bin/phpunit --testsuite functional       # HTTP + console via test kernel
+vendor/bin/phpunit --testsuite functional       # HTTP + rate store via test kernel
 vendor/bin/phpunit --filter testMethodName
 
 # Static analysis (level 9, src only)
@@ -56,18 +55,9 @@ php -d max_input_vars=120000 -d upload_max_filesize=6M -d post_max_size=64M \
     -S 127.0.0.1:8000 -t public
 ```
 
-### CLI commands (backwards compatible)
-
-```bash
-php bin/console app:calculate-from-file <csv>... [--rok=YEAR]
-php bin/console app:calculate-dividends-from-file <csv>... [--rok=YEAR]
-php bin/console app:convert-interactivebrokers <in.csv> <out.csv>
-php bin/console app:convert-dividends-interactivebrokers <in.csv> <out.csv>
-```
-
-All four accept any supported input format (auto-detected) - including both DEGIRO
-exports, despite the historical `-interactivebrokers` command names. Without `--rok`, the
-most recent year present in the data is settled.
+User-facing docs: `README.md` (outside readers), `docs/formaty.md` (how each export is read),
+`docs/metodyka.md` (tax methodology), `CONTRIBUTING.md` (dev setup). Keep them in step with a
+behaviour change.
 
 ## Architecture
 
@@ -104,7 +94,7 @@ Nine modules under `src/`, ordered from the inside out:
   source; its single-day lookup walks back over weekends and holidays, bounded at 10 days.
 - **Import** — `FormatDetector` identifies a file from its structure (never from its name);
   `CsvImportService` routes it to the matching importer and de-duplicates by fingerprint.
-  Eight importers implement `ImporterInterface` (auto-collected via `#[AutoconfigureTag]`).
+  Three importers implement `ImporterInterface` (auto-collected via `#[AutoconfigureTag]`).
   `NumberParser` and `DateParser` handle the notations brokers and spreadsheets produce.
   **Importers never leak exceptions on bad data** — they return `ImportMessage`s. The
   batch then fails closed: one broken row/file blocks the whole calculation rather than
@@ -130,7 +120,7 @@ Nine modules under `src/`, ordered from the inside out:
   `matchTrades()` walks only closed positions, so an open lot would get no explanation.
   Dividends keep the ISIN-prefix proposal: the DEGIRO account statement has no venue column.
   Raw trades are batched **per trade-source importer**, not globally: `TradeIdScope` says
-  whether the broker's ID names one execution (IBKR `TransactionID`) or one order that may
+  whether the broker's ID names one execution (the Activity Statement's synthetic row ID) or one order that may
   be filled in several rows *and on several days* (DEGIRO `Order ID`, incl. GTC orders),
   which is what decides duplicate vs. conflict. For an order-scoped ID a conflict means the
   same ID on another instrument, another currency or the opposite side - never merely
@@ -166,8 +156,8 @@ Nine modules under `src/`, ordered from the inside out:
   `Conservative` (treaty-capped, KIS position) and `Nsa` (actual foreign tax up to the
   Polish 19%, per II FSK 1171/22 and II FSK 1302/22). Every output surface must show both.
 - **Report** — `TaxReportBuilder` (filters to the year and pre-flights every exchange
-  rate; one unavailable rate blocks the whole report rather than skipping a row), `CsvReportWriter`,
-  `NormalizedCsvWriter`, and `CsvCell` (formula-injection guard).
+  rate; one unavailable rate blocks the whole report rather than skipping a row), `CsvReportWriter`
+  and `CsvCell` (formula-injection guard).
 - **Web** — `UploadedCsvReader` (validation + immediate temp-file deletion),
   `RowFormMapper` (domain ↔ form array; a valid trade row posted without an id gets its
   `Trade::id()` echoed back, so it keeps one identity from then on), `WorkbenchCalculator`
@@ -177,8 +167,8 @@ Nine modules under `src/`, ordered from the inside out:
   Dywidendy tabs, and reports what is wrong with its country), `Ledger\TradeLedgerBuilder`
   (the Transakcje tab, see the Interface section), `TaxFormMap` (year-specific
   PIT field numbers), `TaxYearProvider`.
-- **Controller / Command / EventListener / Exception** — thin HTTP and console entry
-  points, security headers, domain exceptions.
+- **Controller / EventListener / Exception** — thin HTTP entry points, security headers,
+  domain exceptions.
 
 ### Key invariants
 
@@ -187,10 +177,11 @@ Nine modules under `src/`, ordered from the inside out:
   non-positive amounts/quantities, negative withholding and mismatched currencies in their
   constructors, so no importer or form post can produce a wrong-signed taxable figure.
   Sign normalisation (IBKR reports withholding as negative) belongs in the importer.
-- **Country is optional on import, required before a result.** Flat IBKR exports carry
-  none; `RowFormMapper` demands `/^[A-Z]{2}$/` before anything is calculated. DEGIRO trades
-  get a *proposal* from the listing exchange and dividends from the ISIN prefix, both with a
-  warning — never present a proposed country as settled, and leave it blank when the source
+- **Country is optional on import, required before a result.** No export states it;
+  `RowFormMapper` demands `/^[A-Z]{2}$/` for a dividend, and `CountryReview` blocks a trade
+  with a blank country before anything is calculated. Trades get a *proposal* from the
+  listing exchange (Activity Statement `Listing Exch`, DEGIRO `Giełda referencyjna`) and
+  DEGIRO dividends from the ISIN prefix, both with a warning — never present a proposed country as settled, and leave it blank when the source
   names nothing usable (non-country ISIN prefixes `XS…`, `EU`, `QZ`; unknown or multi-venue
   exchange codes).
 - **A dividend's country and a trade's country answer different questions, and may differ.**
@@ -250,8 +241,8 @@ Nine modules under `src/`, ordered from the inside out:
   JPY, HUF, KRW, CLP and ISK with six decimals and IDR with eight, so the JSON float is
   formatted with `%.8F` and trimmed - `%.4F` turned the yen's `0.026287` into `0.0263`.
 - **FIFO keeps old buys.** Year filtering happens on the *sale* date, after matching.
-- **FIFO identity is not a display name.** `Trade::$symbol` is the matching key (ticker +
-  currency for IBKR, the **ISIN alone** for DEGIRO); `InstrumentDetails` carries the product
+- **FIFO identity is not a display name.** The queue key (`Trade::$fifoPool`, else `$symbol`) is
+  `ISIN@CURRENCY` for the Activity Statement and the **ISIN alone** for DEGIRO; `InstrumentDetails` carries the product
   name and country alongside so a rename cannot split a position. `FifoMatch::$sequence`
   exists because two identical lots closed by one sell agree on every other field - without
   the ordinal their lineage keys would collide and one position would be dropped as a
@@ -287,7 +278,7 @@ Nine modules under `src/`, ordered from the inside out:
   notices are rendered nowhere in the web UI; `importDiagnostics()` promotes exactly the
   Review-level messages to `Diagnostic::review('import.review', …)`. Do not gate that on
   `targetTab` — `CsvImportService` stamps one onto every message of a file. `ImportResult::warnings()`
-  includes Review so the CLI, which has no panel, still prints it.
+  includes Review, so a test asserting on warnings sees it too.
 - **Time orders the queue, the day settles the record.** DEGIRO's `Time` column is parsed
   strictly (`HH:mm[:ss]`, blank allowed, malformed is a row error) so same-day trades order
   chronologically regardless of upload order; `ClosedPosition` dates are then set back to
@@ -319,8 +310,7 @@ Nine modules under `src/`, ordered from the inside out:
 - **The premium never enters the stock's cost basis.** Shares from an assignment enter FIFO
   at the strike; the option settles separately on the assignment day. An `A`/`Ex` option row
   at zero without a Stocks row of its underlying that day was cash-settled with the amount
-  missing (index options) - fatal. Option positions have no representation in the own CSV
-  format: the convert command and the hidden compatibility echo leave them out.
+  missing (index options) - fatal.
 - **Option identity stays out of stock hashes.** `Trade::id()`, `ClosedPosition::fingerprint()`
   and the Activity Statement synthetic IDs append kind/effect/direction *only* for options, so
   every stock ID a workbench posted before options existed keeps matching.
@@ -331,14 +321,8 @@ Nine modules under `src/`, ordered from the inside out:
   would be a guess.
 - **Trades from different brokers never share a pool.** One broker's IDs say nothing about
   another's, and the matching keys mean different things.
-- **One IBKR trade format per settlement.** Flex and the Activity Statement key their queues
-  differently (`ticker@CCY` vs `ISIN@CCY`) and are batched per importer, so the same sale
-  in both would settle twice. A batch with trades from both is fatal, and the incremental
-  upload guard compares `broker|symbol` as well as `broker|pool`. Activity Statement dividends
-  next to Dividend Detail / Flex dividends are a Review item: both state a country, so
-  `mergeOverlappingDividends` will not collapse them.
-- **The declared przychód is the gross amount due, not the settled cash.** `Total`/`NetCash` is
-  the cash that moved and stays the record (and the position's identity), but the three cases
+- **The declared przychód is the gross amount due, not the settled cash.** The settled cash
+  (DEGIRO `Total`, Activity Statement `Proceeds + Comm/Fee`) is the cash that moved and stays the record (and the position's identity), but the three cases
   are not symmetric and every surface must show the same split. The *buy* fee is already inside
   the acquisition cost — nothing to do. The *sell* commission and AutoFX have been taken out of
   the proceeds by the broker, so `StockTaxCalculator` adds them back into przychód (art. 17
@@ -348,8 +332,8 @@ Nine modules under `src/`, ordered from the inside out:
   For stocks and bought options income and tax are unchanged; only the split between fields 22
   and 23 moves. For a *written* option it is not quite: the writing fee keeps the writing day's
   rate while the przychód takes the closing day's (see the options invariant). A position whose
-  source reported no sell fee (flat IBKR, own format, blank fee cell, an aggregated order whose
-  fills disagree) keeps a przychód equal to the settled cash, and the FIFO footnote says so
+  source reported no sell fee (a blank DEGIRO fee cell, an IBKR commission rebate, an
+  aggregated order whose fills disagree) keeps a przychód equal to the settled cash, and the FIFO footnote says so
   rather than pretending the split was made. Never derive the fee from `Total − quantity × price`.
 - **A prorated fee slice is never negative.** `OpenLot::takeOptional()` rounds each non-final
   slice half-up from the whole and lets the last one take the remainder, so the slices can
@@ -435,7 +419,7 @@ The public flow is `upload → work with the result`. After the first import,
 - **The credit variant picks the headline, never the only figure.** `WorkbenchSettings::$creditMethod`
   decides which reading fills the PIT fields (`DividendTaxResult::scenarioFor()`,
   `TaxReport::totalTaxRoundedFor()`); the other stays visible on every surface — summary,
-  Dywidendy, print, CSV, CLI — because the dispute is live. `dividend.treaty_rate_missing` is
+  Dywidendy, print, CSV — because the dispute is live. `dividend.treaty_rate_missing` is
   shown only under the conservative reading, where a missing treaty rate really means a zero
   credit; under NSA the cap plays no part and the item would be noise.
 - **The message strip is one sentence, the tab is the list.** `workbench_messages` renders
@@ -444,7 +428,7 @@ The public flow is `upload → work with the result`. After the first import,
   skipped row buries the only sentence that matters. Anything a user must act on has to be a
   `Diagnostic`, not an `ImportMessage` warning; `upload.nothing_added` is the pattern to
   follow, because an upload that changed nothing would otherwise return an identical page
-  with no explanation. The CLI still prints warnings and infos — it has no panel to point at.
+  with no explanation.
 - **Seven tabs.** `PIT-38 / PIT-ZG`, `Wymaga uwagi`, `Transakcje`, `FIFO`, `Dywidendy`, `Opłaty`,
   `Ustawienia`. The Dywidendy tab carries its own summary of everything that feeds the PIT-38
   part G fields, inside the existing `dividendResults` fragment — the AJAX fragment list is a
@@ -465,8 +449,7 @@ The public flow is `upload → work with the result`. After the first import,
   (`bulk_country`) filled rows client-side and is gone; a ledger group with blank countries
   links to its panel item instead.
 - **`formnovalidate` is required on every workbench submit.** The form holds `required`
-  country selects with blank values, including inside the hidden compatibility block, and
-  interactive validation runs *before* the `submit` event — without it every bar button is
+  country selects with blank values, and interactive validation runs *before* the `submit` event — without it every bar button is
   dead in exactly the state these actions exist for.
 - **A staged choice survives a fragment rewrite.** The country select in the panel carries
   `data-no-recalc`: it skips the 450 ms debounce *and* disarms a run armed by an earlier edit,
@@ -578,7 +561,7 @@ Follow TDD: write a failing test, run it and confirm the expected failure, then 
 - `symfony/http-client` — NBP API (replaced the unmaintained `maciej-sz/nbp-php`)
 - `doctrine/orm`, `doctrine/doctrine-bundle`, `doctrine/doctrine-migrations-bundle` — the
   NBP rate store; `symfony/clock` — "yesterday" for the coverage rule, `MockClock` in tests.
-  No Flex: bundles and `config/packages/doctrine*.yaml` are maintained by hand.
+  No Symfony Flex: bundles and `config/packages/doctrine*.yaml` are maintained by hand.
 - No frontend dependencies, no Node.js.
 
 ## Data hygiene

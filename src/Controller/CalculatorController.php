@@ -12,7 +12,6 @@ use App\Import\ImportResult;
 use App\Import\MessageLevel;
 use App\Exception\InvalidRecordException;
 use App\Model\AccountFee;
-use App\Model\ClosedPosition;
 use App\Model\CountryCode;
 use App\Model\Dividend;
 use App\Report\CsvReportWriter;
@@ -53,12 +52,9 @@ use Symfony\Component\Routing\Attribute\Route;
  *     trades: list<Trade>,
  *     dividends: list<Dividend>,
  *     fees: list<AccountFee>,
- *     legacyPositions: list<ClosedPosition>,
  *     tradeRows: list<FormRow>,
  *     dividendRows: list<FormRow>,
  *     feeRows: list<FormRow>,
- *     legacyRows: list<FormRow>,
- *     compatRows: list<FormRow>,
  *     tombstones: list<string>,
  *     errors: list<string>,
  *     diagnostics: list<Diagnostic>,
@@ -76,8 +72,6 @@ use Symfony\Component\Routing\Attribute\Route;
  *     trade_rows: list<FormRow>,
  *     dividend_rows: list<FormRow>,
  *     fee_rows: list<FormRow>,
- *     legacy_rows: list<FormRow>,
- *     compat_position_rows: list<FormRow>,
  *     tombstones: list<string>,
  *     errors: list<string>,
  *     diagnostics: list<Diagnostic>,
@@ -96,7 +90,6 @@ use Symfony\Component\Routing\Attribute\Route;
  *     expected_trades: int,
  *     expected_dividends: int,
  *     expected_fees: int,
- *     expected_positions: int,
  *     disclaimer: string
  * }
  * @phpstan-type PreparedWorkbench array{state: WorkbenchState, context: WorkbenchContext, settlement: SettlementResult|null}
@@ -140,9 +133,7 @@ final class CalculatorController extends AbstractController
             'csrf_token_id' => self::CSRF_TOKEN_ID,
             'example_files' => array_filter(
                 ExampleFileController::FILES,
-                fn (array $meta, string $name): bool => !in_array($name, ['pozycje-zamkniete.csv', 'dywidendy.csv'], true)
-                    && is_file($this->examplesDir.'/'.$meta[0]),
-                ARRAY_FILTER_USE_BOTH,
+                fn (array $meta): bool => is_file($this->examplesDir.'/'.$meta[0]),
             ),
             'max_files' => $this->maxFiles,
             'max_megabytes' => round($this->maxBytes / 1024 / 1024, 1),
@@ -161,7 +152,6 @@ final class CalculatorController extends AbstractController
         $hasCurrentState = [] !== $request->request->all('trades')
             || [] !== $request->request->all('dividends')
             || [] !== $request->request->all('fees')
-            || [] !== $request->request->all('positions')
             || [] !== $request->request->all('tombstones')
             || $request->request->has('expected_trades');
 
@@ -206,7 +196,7 @@ final class CalculatorController extends AbstractController
             ? $this->mergeIndependentBatch($state, $imported)
             : $this->stateFromImport($imported, $year, $settings);
 
-        if ([] === $state['trades'] && [] === $state['legacyPositions'] && [] === $state['dividends'] && [] === $state['fees']) {
+        if ([] === $state['trades'] && [] === $state['dividends'] && [] === $state['fees']) {
             $message = 'W przesłanych plikach nie znaleziono żadnych transakcji, dywidend ani opłat do rozliczenia.';
             $state['errors'][] = $message;
             $state['diagnostics'][] = Diagnostic::blocking('import.empty', $message, 'transactions');
@@ -290,8 +280,8 @@ final class CalculatorController extends AbstractController
     {
         return [
             'year' => $year,
-            'trades' => [], 'dividends' => [], 'fees' => [], 'legacyPositions' => [],
-            'tradeRows' => [], 'dividendRows' => [], 'feeRows' => [], 'legacyRows' => [], 'compatRows' => [],
+            'trades' => [], 'dividends' => [], 'fees' => [],
+            'tradeRows' => [], 'dividendRows' => [], 'feeRows' => [],
             'tombstones' => [], 'errors' => [], 'settings' => new WorkbenchSettings(),
             'diagnostics' => [], 'tradesComplete' => true,
         ];
@@ -305,12 +295,9 @@ final class CalculatorController extends AbstractController
             'trades' => $result->trades,
             'dividends' => $result->dividends,
             'fees' => $result->fees,
-            'legacyPositions' => $result->legacyPositions,
             'tradeRows' => array_map($this->rowFormMapper->tradeToForm(...), $result->trades),
             'dividendRows' => array_map($this->rowFormMapper->dividendToForm(...), $result->dividends),
             'feeRows' => array_map($this->rowFormMapper->feeToForm(...), $result->fees),
-            'legacyRows' => array_map($this->rowFormMapper->positionToForm(...), $result->legacyPositions),
-            'compatRows' => array_map($this->rowFormMapper->positionToForm(...), self::stockPositions($result->positions)),
             'tombstones' => [],
             'errors' => $result->errors(),
             'diagnostics' => $this->importDiagnostics($result),
@@ -366,7 +353,6 @@ final class CalculatorController extends AbstractController
         $rawTrades = $request->request->all('trades');
         $rawDividends = $request->request->all('dividends');
         $rawFees = $request->request->all('fees');
-        $rawPositions = $request->request->all('positions');
 
         $settings = $this->settingsProvider->normalize(
             $request->request->get('country_source'),
@@ -378,39 +364,30 @@ final class CalculatorController extends AbstractController
         $this->countrySourceApplier->apply($rawTrades, $settings->countrySource);
 
         [$groupErrors, $groupDiagnostics] = $this->applyCountryGroup($request, $rawTrades, $rawDividends);
-        $this->applyCompatibilityCountries($rawTrades, $rawPositions);
-        $legacyInput = [] === $rawTrades
-            ? $rawPositions
-            : array_values(array_filter($rawPositions, fn (mixed $row): bool => is_array($row) && '1' === $this->scalarString($row['legacy'] ?? null)));
 
         $trades = $this->rowFormMapper->mapTrades($rawTrades);
         $dividends = $this->rowFormMapper->mapDividends($rawDividends);
         $fees = $this->rowFormMapper->mapFees($rawFees);
-        $legacy = $this->rowFormMapper->mapPositions($legacyInput);
 
         $tradeTruncation = $this->truncationErrors('transakcji', $request, 'expected_trades', count($rawTrades));
         $dividendTruncation = $this->truncationErrors('dywidend', $request, 'expected_dividends', count($rawDividends));
         $feeTruncation = $this->truncationErrors('opłat', $request, 'expected_fees', count($rawFees));
-        $positionTruncation = $this->truncationErrors('pozycji legacy', $request, 'expected_positions', count($rawPositions));
 
         $errors = [
             ...$groupErrors,
             ...$tradeTruncation,
             ...$dividendTruncation,
             ...$feeTruncation,
-            ...$positionTruncation,
-            ...$trades->errors, ...$dividends->errors, ...$fees->errors, ...$legacy->errors,
+            ...$trades->errors, ...$dividends->errors, ...$fees->errors,
         ];
         $diagnostics = [
             ...$groupDiagnostics,
             ...$this->diagnosticsFor($tradeTruncation, 'form.truncated_trades', 'transactions'),
             ...$this->diagnosticsFor($dividendTruncation, 'form.truncated_dividends', 'dividends'),
             ...$this->diagnosticsFor($feeTruncation, 'form.truncated_fees', 'fees'),
-            ...$this->diagnosticsFor($positionTruncation, 'form.truncated_positions', 'transactions'),
             ...$trades->diagnostics,
             ...$dividends->diagnostics,
             ...$fees->diagnostics,
-            ...$legacy->diagnostics,
         ];
 
         return [
@@ -418,13 +395,10 @@ final class CalculatorController extends AbstractController
             'trades' => $trades->trades,
             'dividends' => $dividends->dividends,
             'fees' => $fees->fees,
-            'legacyPositions' => $legacy->positions,
             'tradeRows' => $trades->rows,
             'dividendRows' => $dividends->rows,
             'feeRows' => $fees->rows,
-            'legacyRows' => $legacy->rows,
-            'compatRows' => $this->compatibilityRows($rawPositions),
-            'tombstones' => $this->submittedTombstones($request, [$rawTrades, $rawDividends, $rawFees, $legacyInput]),
+            'tombstones' => $this->submittedTombstones($request, [$rawTrades, $rawDividends, $rawFees]),
             'errors' => $errors,
             'diagnostics' => $diagnostics,
             'settings' => $settings,
@@ -451,7 +425,7 @@ final class CalculatorController extends AbstractController
         $report = null;
         $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
         if (!$hasBlocking) {
-            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['legacyPositions']);
+            $settlement = $this->workbenchCalculator->settle($state['trades']);
             $state['errors'] = [...$state['errors'], ...$settlement->errors];
             $diagnostics = $this->uniqueDiagnostics([...$diagnostics, ...$settlement->diagnostics]);
             $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
@@ -481,7 +455,6 @@ final class CalculatorController extends AbstractController
 
         $state['diagnostics'] = $diagnostics;
 
-        $positions = null === $settlement ? [] : $settlement->positions;
         $context = [
             'report' => $report,
             'matches' => null === $settlement ? [] : $settlement->matches,
@@ -493,10 +466,6 @@ final class CalculatorController extends AbstractController
             'trade_rows' => $state['tradeRows'],
             'dividend_rows' => $state['dividendRows'],
             'fee_rows' => $state['feeRows'],
-            'legacy_rows' => $state['legacyRows'],
-            'compat_position_rows' => [] !== $positions
-                ? array_map($this->rowFormMapper->positionToForm(...), self::stockPositions($positions))
-                : $state['compatRows'],
             'tombstones' => $state['tombstones'],
             'errors' => $state['errors'],
             'diagnostics' => $diagnostics,
@@ -506,7 +475,7 @@ final class CalculatorController extends AbstractController
             'trade_country_groups' => $countries->tradeGroups,
             'dividend_country_groups' => $countries->dividendGroups,
             'country_group_actions' => $countries->actions,
-            'country_options' => $this->countryOptions($state['tradeRows'], $state['dividendRows'], $state['legacyRows']),
+            'country_options' => $this->countryOptions($state['tradeRows'], $state['dividendRows']),
             'settings' => $state['settings'],
             'country_sources' => $this->settingsProvider->countrySources(),
             'credit_methods' => $this->settingsProvider->creditMethods(),
@@ -515,7 +484,6 @@ final class CalculatorController extends AbstractController
             'expected_trades' => count($state['tradeRows']),
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),
-            'expected_positions' => count([] !== $positions ? self::stockPositions($positions) : $state['compatRows']),
             'disclaimer' => CsvReportWriter::DISCLAIMER,
         ];
 
@@ -547,7 +515,7 @@ final class CalculatorController extends AbstractController
         // are not merged: the panel lists what blocks the result, and FIFO's
         // own items join it once the result is computed again.
         if (null === $settlement && $state['tradesComplete'] && [] !== $state['trades']) {
-            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['legacyPositions']);
+            $settlement = $this->workbenchCalculator->settle($state['trades']);
         }
 
         $context['trade_ledger'] = $this->tradeLedgerBuilder->build(
@@ -574,10 +542,6 @@ final class CalculatorController extends AbstractController
         foreach ($state['trades'] as $trade) {
             $tradeIds[$trade->id()] = true;
             $queues[$this->queueKey($trade)] = true;
-            // The same paper from another export of the same broker keys its
-            // queue differently (IBKR Flex: ticker@CCY, Activity Statement:
-            // ISIN@CCY), so the queues alone would let one sale settle twice.
-            $queues[$this->instrumentKey($trade)] = true;
         }
 
         $newTrades = [];
@@ -588,7 +552,7 @@ final class CalculatorController extends AbstractController
             $newTrades[] = $trade;
         }
         foreach ($newTrades as $trade) {
-            if (isset($queues[$this->queueKey($trade)]) || isset($queues[$this->instrumentKey($trade)])) {
+            if (isset($queues[$this->queueKey($trade)])) {
                 $message = sprintf(
                     'Nowy batch dotyka istniejącej kolejki FIFO %s / %s. Cały upload odrzucono; dotychczasowa praca pozostała bez zmian.',
                     $trade->broker ?: 'broker',
@@ -628,15 +592,6 @@ final class CalculatorController extends AbstractController
         );
         $addedRecords += count($state['fees']) - $before;
         $state['feeRows'] = array_map($this->rowFormMapper->feeToForm(...), $state['fees']);
-        $before = count($state['legacyPositions']);
-        $state['legacyPositions'] = $this->mergeById(
-            $state['legacyPositions'],
-            $batch->legacyPositions,
-            static fn (ClosedPosition $item): string => $item->fingerprint(),
-            $tombstones,
-        );
-        $addedRecords += count($state['legacyPositions']) - $before;
-        $state['legacyRows'] = array_map($this->rowFormMapper->positionToForm(...), $state['legacyPositions']);
         if (0 === $addedRecords) {
             // An upload that changed nothing is the one import notice that has
             // to survive: without it the user re-uploads a file and gets a page
@@ -678,80 +633,9 @@ final class CalculatorController extends AbstractController
         return $existing;
     }
 
-    /**
-     * The hidden compatibility echo is the old position format, which has no
-     * kind or direction: an option position would come back as a stock - with
-     * a zero leg it would not come back at all. Options live only as trades.
-     *
-     * @param list<ClosedPosition> $positions
-     *
-     * @return list<ClosedPosition>
-     */
-    private static function stockPositions(array $positions): array
-    {
-        return array_values(array_filter($positions, static fn (ClosedPosition $position): bool => !$position->isOption()));
-    }
-
     private function queueKey(Trade $trade): string
     {
         return $trade->broker.'|'.($trade->fifoPool ?: $trade->symbol);
-    }
-
-    private function instrumentKey(Trade $trade): string
-    {
-        return 'instrument:'.$trade->broker.'|'.mb_strtoupper($trade->symbol);
-    }
-
-    /**
-     * @param array<mixed> $trades
-     * @param array<mixed> $positions
-     */
-    private function applyCompatibilityCountries(array &$trades, array $positions): void
-    {
-        $countries = [];
-        foreach ($positions as $position) {
-            if (!is_array($position)) {
-                continue;
-            }
-            $name = mb_strtoupper($this->scalarString($position['name'] ?? null));
-            $country = strtoupper($this->scalarString($position['country'] ?? null));
-            if ('' !== $name && '' !== $country) {
-                $countries[$name] = $country;
-            }
-        }
-        foreach ($trades as &$trade) {
-            if (!is_array($trade) || '' !== $this->scalarString($trade['country'] ?? null)) {
-                continue;
-            }
-            $name = mb_strtoupper($this->scalarString($trade['name'] ?? $trade['symbol'] ?? null));
-            if (isset($countries[$name])) {
-                $trade['country'] = $countries[$name];
-            }
-        }
-        unset($trade);
-    }
-
-    /**
-     * @param array<mixed> $positions
-     *
-     * @return list<array<string, string>>
-     */
-    private function compatibilityRows(array $positions): array
-    {
-        $result = [];
-        foreach ($positions as $row) {
-            if (!is_array($row) || '1' === $this->scalarString($row['legacy'] ?? null)) {
-                continue;
-            }
-            $clean = [];
-            foreach (['name', 'country', 'currency', 'buy_date', 'buy_amount', 'sell_date', 'sell_amount', 'quantity', 'source'] as $key) {
-                $value = $row[$key] ?? '';
-                $clean[$key] = is_scalar($value) ? trim((string) $value) : '';
-            }
-            $result[] = $clean;
-        }
-
-        return $result;
     }
 
     /**

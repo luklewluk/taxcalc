@@ -12,16 +12,35 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 /** Guards the single-screen workbench and its progressive enhancement hooks. */
 final class UiSurfacesTest extends WebTestCase
 {
+    /**
+     * DEGIRO account statement: a US payment with 30 withheld and an Irish one
+     * with nothing withheld. The countries come from the ISIN prefixes.
+     */
     private const string DIVIDENDS = <<<'CSV'
-        name,country,currency,date,amount,tax_paid
-        AAA,US,USD,2025-04-02,100.00,30.00
-        BBB,IE,USD,2025-07-02,50.00,0
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,US000AAAA001,Dividend Tax,,USD,-30.00,USD,70.00,
+        02-07-2025,06:32,02-07-2025,BBB,IE000BBBB002,Dividend,,USD,50.00,USD,120.00,
         CSV;
 
-    private const string IBKR_TRADES = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240403","3","507.5782","-1523.98","1001","USD"
-        "STK","CSPX","20250227","-3","560.00","1680.00","1002","USD"
+    /**
+     * One DEGIRO position without a country (an `XS` ISIN and no exchange
+     * columns) and without a reported fee, so the przychód is the settled cash.
+     */
+    private const string DEGIRO_TRADES = <<<'CSV'
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        03-04-2024,09:15,CSPX,XS000CSPX001,,,3,507.5782,USD,-1523.98,USD,-1523.98,USD,,,,-1523.98,USD,t-1001
+        27-02-2025,15:41,CSPX,XS000CSPX001,,,-3,560.00,USD,1680.00,USD,1680.00,USD,,,,1680.00,USD,t-1002
+        CSV;
+
+    /**
+     * A dividend whose ISIN prefix names a country with no treaty rate
+     * configured: `ZZ` is a well-formed code that no treaty table carries.
+     */
+    private const string DIVIDEND_WITHOUT_TREATY = <<<'CSV'
+        Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id
+        02-04-2025,06:32,02-04-2025,AAA,ZZ000AAAA001,Dividend,,USD,100.00,USD,100.00,
+        02-04-2025,06:32,02-04-2025,AAA,ZZ000AAAA001,Dividend Tax,,USD,-5.00,USD,95.00,
         CSV;
 
     /**
@@ -171,7 +190,7 @@ final class UiSurfacesTest extends WebTestCase
     public function testTransactionsEditorCarriesTheCompleteLogicalTradeState(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
         $form = $crawler->filter('form[data-workbench]')->form()->getPhpValues();
 
         self::assertCount(2, $form['trades']);
@@ -225,7 +244,7 @@ final class UiSurfacesTest extends WebTestCase
     public function testFifoCsvAndPrintCarryAuditPricesWithoutMovingTheTradeEditor(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
         $payload = $this->payload($crawler);
         foreach ($payload['trades'] as &$trade) {
             $trade['country'] = 'US';
@@ -296,13 +315,14 @@ final class UiSurfacesTest extends WebTestCase
     }
 
     /**
-     * Every flat-IBKR row has a null disposal cost, so this exercises the branch
-     * that would be a 500 if a template added the two costs itself.
+     * A DEGIRO trade with a blank fee cell has a null disposal cost, so this
+     * exercises the branch that would be a 500 if a template added the two
+     * costs itself.
      */
     public function testAPositionWithoutAReportedSellFeeStillRenders(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['trades.csv' => self::IBKR_TRADES]);
+        $crawler = $this->import($client, ['trades.csv' => self::DEGIRO_TRADES]);
         $payload = $this->payload($crawler);
         foreach ($payload['trades'] as &$trade) {
             $trade['country'] = 'US';
@@ -355,10 +375,7 @@ final class UiSurfacesTest extends WebTestCase
     public function testTheTreatyRateWarningDisappearsUnderNsa(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['unknown.csv' => <<<'CSV'
-            name,country,currency,date,amount,tax_paid
-            AAA,ZZ,USD,2025-04-02,100.00,5.00
-            CSV]);
+        $crawler = $this->import($client, ['unknown.csv' => self::DIVIDEND_WITHOUT_TREATY]);
 
         self::assertSame(1, $crawler->filter('[data-diagnostic-code="dividend.treaty_rate_missing"]')->count());
 
@@ -431,10 +448,7 @@ final class UiSurfacesTest extends WebTestCase
     public function testUnknownTreatyRateIsReviewOnlyAndKeepsThePitResultVisible(): void
     {
         $client = static::createClient();
-        $crawler = $this->import($client, ['unknown.csv' => <<<'CSV'
-            name,country,currency,date,amount,tax_paid
-            AAA,ZZ,USD,2025-04-02,100.00,5.00
-            CSV]);
+        $crawler = $this->import($client, ['unknown.csv' => self::DIVIDEND_WITHOUT_TREATY]);
 
         self::assertSame(1, $crawler->filter('[data-diagnostic-code="dividend.treaty_rate_missing"].attention-item--review')->count());
         self::assertSame(0, $crawler->filter('.result-unavailable')->count());
@@ -442,12 +456,22 @@ final class UiSurfacesTest extends WebTestCase
         self::assertStringContainsString('Brak skonfigurowanej stawki umownej', $crawler->filter('#panel-attention')->text());
     }
 
+    /**
+     * An Activity Statement holds trades, dividends and withholding, so the file
+     * itself names no tab: the broken dividend row has to carry its destination.
+     */
     public function testImportDiagnosticsUseAnExplicitDestinationInsteadOfMessageText(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['broken-dividend.csv' => <<<'CSV'
-            name,country,currency,date,amount,tax_paid
-            AAA,US,USD,nie-data,100.00,15.00
+            Statement,Header,Field Name,Field Value
+            Statement,Data,Title,Activity Statement
+            Dividends,Header,Currency,Date,Description,Amount
+            Dividends,Data,USD,nie-data,AAA(US000AAAA001) Cash Dividend USD 1.00 per Share (Ordinary Dividend),100
+            Dividends,Data,Total,,,100
+            Withholding Tax,Header,Currency,Date,Description,Amount,Code
+            Withholding Tax,Data,USD,2025-04-02,AAA(US000AAAA001) Cash Dividend USD 1.00 per Share - US Tax,-15,
+            Withholding Tax,Data,Total,,,-15,
             CSV]);
 
         $issue = $crawler->filter('[data-diagnostic-code="import.invalid"]');

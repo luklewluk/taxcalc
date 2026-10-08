@@ -248,7 +248,7 @@ final class CsvReportWriter
         $this->section($writer, 'AKTUALNY STAN - LOGICZNE TRANSAKCJE FIFO');
         $this->row($writer, [
             'Stabilne ID', 'Broker', 'Pula FIFO', 'Symbol/ISIN', 'Nazwa', 'Kraj', 'Data', 'Czas',
-            'Kierunek', 'Liczba', 'Cena/szt.', 'Waluta ceny', 'Waluta', 'Total/NetCash', 'Prowizja', 'AutoFX', 'Zrodlo',
+            'Kierunek', 'Liczba', 'Cena/szt.', 'Waluta ceny', 'Waluta', 'Total', 'Prowizja', 'AutoFX', 'Zrodlo',
             'Typ', 'Otwarcie/zamkniecie',
         ]);
         foreach ($trades as $trade) {

@@ -16,18 +16,22 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
  */
 final class TradeLedgerTest extends WebTestCase
 {
-    /** One purchase, sold half in 2024 and half in 2025. No commission column, no country. */
+    /**
+     * DEGIRO: one purchase, sold half in 2024 and half in 2025. No transaction
+     * fee, and no country - an `XS` ISIN and no exchange columns propose none.
+     */
     private const string TWO_YEARS = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20240102","2","100","-200","5001","USD"
-        "STK","CSPX","20240603","-1","150","150","5002","USD"
-        "STK","CSPX","20250303","-1","170","170","5003","USD"
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        02-01-2024,10:00,CSPX,XS000CSPX001,,,2,100.0000,USD,-200.00,USD,-200.00,USD,,,,-200.00,USD,t-5001
+        03-06-2024,11:00,CSPX,XS000CSPX001,,,-1,150.0000,USD,150.00,USD,150.00,USD,,,,150.00,USD,t-5002
+        03-03-2025,12:00,CSPX,XS000CSPX001,,,-1,170.0000,USD,170.00,USD,170.00,USD,,,,170.00,USD,t-5003
         CSV;
 
+    /** DEGIRO: a CSPX sale with no purchase, next to an unrelated SPY purchase. */
     private const string ORPHAN = <<<'CSV'
-        "AssetClass","Symbol","TradeDate","Quantity","TradePrice","NetCash","TransactionID","CurrencyPrimary"
-        "STK","CSPX","20250227","-1","560","560","1002","USD"
-        "STK","SPY","20250103","1","450","-450","3001","USD"
+        Date,Time,Product,ISIN,Reference,Venue,Quantity,Price,,Local value,,Value,,Exchange rate,Transaction and/or third party costs,,Total,,Order ID
+        27-02-2025,15:41,CSPX,XS000CSPX001,,,-1,560.0000,USD,560.00,USD,560.00,USD,,,,560.00,USD,t-1002
+        03-01-2025,10:00,SPY,XS000SPYY002,,,1,450.0000,USD,-450.00,USD,-450.00,USD,,,,-450.00,USD,t-3001
         CSV;
 
     /** Every name a trade row posted before the ledger existed - and none other. */
