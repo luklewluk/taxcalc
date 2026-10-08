@@ -98,7 +98,7 @@ final class ThemeSwitchTest extends WebTestCase
 
     private static function assertThemeScriptPrecedesStylesheet(Crawler $crawler): void
     {
-        $script = $crawler->filter('head script[src$="/js/theme.js"]');
+        $script = $crawler->filter('head script[src*="/js/theme.js"]');
         self::assertCount(1, $script);
         self::assertNull($script->attr('defer'), 'A deferred theme script would run after first paint.');
         self::assertNull($script->attr('async'));

@@ -455,6 +455,11 @@ The public flow is `upload → work with the result`. After the first import,
   trade's *Edytuj*, which only repeats its summary row as form controls.
 - **Workbench and report panels are wide.** `.container--workbench` removes the old 48rem
   constraint, while `.table-wrapper` retains horizontal scrolling for audit tables.
+- **Static files are versioned by content.** `ContentHashVersionStrategy` (`framework.assets`)
+  appends `?v=<12 hex of xxh128>` to every `asset()` URL. The web server caches CSS, JS and
+  images for a year as `immutable`; without the version a returning visitor would get new
+  markup with yesterday's stylesheet and script. An unchanged file keeps its URL across deploys.
+  Every static file a page loads goes through `asset()` - never a hard-coded path.
 - **No inline styles, ever.** `style-src 'self'` has no `unsafe-inline`, so a `style=`
   attribute is silently dropped — add a class instead. There is no `url()` anywhere in the
   CSS: the chevrons and the step connector are drawn with borders.

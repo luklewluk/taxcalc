@@ -21,6 +21,12 @@ framework:
     php_errors:
         log: true
 
+    # Static files are cached for a year and marked immutable by the web server;
+    # every asset() URL carries a hash of the file's content, so a changed file
+    # gets a new URL and an unchanged one keeps its cache across deploys.
+    assets:
+        version_strategy: App\Web\Asset\ContentHashVersionStrategy
+
 when@test:
     framework:
         test: true

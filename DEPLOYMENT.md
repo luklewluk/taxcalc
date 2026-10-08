@@ -72,6 +72,9 @@ Na co zwrócić uwagę:
   bez konfiguracji puli — PHP-FPM czyta go sam, w ciągu 5 minut, bez przeładowania. Wartość
   ustawiona w puli przez `php_admin_value` ma pierwszeństwo, a reguła `location ~ /\.` w
   vhoście nie pozwala pobrać tego pliku.
+- **`expires 1y` + `immutable` dla CSS, JS i obrazów jest bezpieczne:** aplikacja dokleja do
+  każdego adresu hash treści pliku (`app.css?v=…`), więc zmieniony plik ma nowy adres, a
+  przeglądarka nigdy nie łączy nowego HTML ze starym arkuszem stylów.
 - **Logi nie zawierają query stringów ani ciał żądań** (`log_format taxcalc_minimal`),
   bo mogłyby nieść dane finansowe.
 - `fastcgi_param SCRIPT_FILENAME $realpath_root…` sprawia, że PHP widzi ścieżkę nowego

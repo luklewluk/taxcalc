@@ -34,7 +34,7 @@ final class IbkrTutorialTest extends WebTestCase
         $images->each(static function (Crawler $image): void {
             $src = (string) $image->attr('src');
             self::assertStringStartsWith('/img/ibkr/', $src);
-            self::assertFileExists(dirname(__DIR__, 2).'/public'.$src);
+            self::assertFileExists(dirname(__DIR__, 2).'/public'.parse_url($src, PHP_URL_PATH));
             self::assertNotSame('', trim((string) $image->attr('alt')));
             self::assertMatchesRegularExpression('/^\d+$/', (string) $image->attr('width'));
             self::assertMatchesRegularExpression('/^\d+$/', (string) $image->attr('height'));
