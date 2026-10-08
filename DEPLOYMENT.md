@@ -144,7 +144,7 @@ Sprawdź ręcznie:
 curl -I https://example.com        # Content-Security-Policy, Strict-Transport-Security
 ```
 
-Potem wgraj na stronie przykładowy plik `examples/ibkr-activity-statement.csv`.
+Potem wgraj na stronie plik z repozytorium, np. `examples/ibkr-activity-statement.csv`.
 
 ## Wdrożenie z własnego komputera i rollback
 

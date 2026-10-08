@@ -88,7 +88,7 @@ src/
 ├─ Tax/            stawki, kalkulator akcji, kalkulator dywidend, filtr roku
 ├─ Report/         budowanie raportu, eksport CSV odporny na formuły
 ├─ Web/            workbench, mapowanie formularza, walidacja i odczyt przesłanych plików
-├─ Controller/     strona główna, kalkulator, pliki przykładowe
+├─ Controller/     strona główna, kalkulator
 ├─ EventListener/  nagłówki bezpieczeństwa
 └─ Exception/      wyjątki domenowe
 ```
@@ -101,7 +101,6 @@ src/
 | POST | `/kalkulator/wynik` | pełne lub asynchroniczne przeliczenie stanu roboczego |
 | POST | `/kalkulator/raport.csv` | pobranie raportu CSV |
 | POST | `/kalkulator/raport` | wersja do wydruku |
-| GET | `/przyklady/{plik}.csv` | przykładowe pliki |
 
 Wszystkie operacje POST wymagają poprawnego tokenu CSRF.
 
@@ -183,8 +182,7 @@ jak na produkcji. Dlatego `tests/bootstrap.php` przy każdym uruchomieniu kasuje
 3. Napisz importer implementujący `App\Import\Importer\ImporterInterface` — zostanie
    automatycznie wykryty dzięki `#[AutoconfigureTag]`.
 4. Dodaj testy: rozpoznanie formatu, poprawny import, błędny wiersz, brakująca kolumna.
-5. Dodaj sanityzowany plik przykładowy do `examples/` i wpisz go w
-   `App\Controller\ExampleFileController::FILES`.
+5. Dodaj sanityzowany plik przykładowy do `examples/` (fikcyjne dane; testy mogą go czytać).
 6. Opisz format w [`docs/formaty.md`](docs/formaty.md) i dopisz go do listy w README.
 
 ## Stawki podatkowe

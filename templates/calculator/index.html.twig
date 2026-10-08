@@ -160,20 +160,5 @@
                 </ul>
             </div>
         </details>
-
-        <details class="disclosure disclosure--card">
-            <summary>Przykładowe pliki</summary>
-            <div class="disclosure__body">
-                <p>Wyłącznie dane fikcyjne; pokazują wymagany układ kolumn.</p>
-                <ul class="list-plain">
-                    {% for filename, meta in example_files %}
-                        <li>
-                            <a href="{{ path('app_example_file', {filename: filename}) }}" download>{{ filename }}</a>
-                            <span class="quiet">{{ meta[1] }}</span>
-                        </li>
-                    {% endfor %}
-                </ul>
-            </div>
-        </details>
     </section>
 {% endblock %}

@@ -569,5 +569,7 @@ Follow TDD: write a failing test, run it and confirm the expected failure, then 
 Never commit real account numbers, holder names, balances or transaction history.
 Sanitized fixtures live in `examples/` (symbols `AAA`/`BBB`, invented DEGIRO products
 `ALFA CORP`/`BETA ETF`/`GAMMA SA` with placeholder ISINs `US000ALFA001`/`IE000BETA002`/
-`PL000GAMMA01`, account `UXXXXXXXX`, holder `Jan Przykładowy`). `input/` and `output/` are gitignored and must not be
+`PL000GAMMA01`, account `UXXXXXXXX`, holder `Jan Przykładowy`). They are test fixtures and a
+reference for contributors only - the site does not serve them, and the Docker image leaves
+them out. `input/` and `output/` are gitignored and must not be
 re-added to the repository.

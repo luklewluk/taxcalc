@@ -10,8 +10,7 @@ Obsługiwane są trzy eksporty:
 - **DEGIRO — Transakcje** (kupna i sprzedaże),
 - **DEGIRO — Zestawienie konta** (dywidendy, podatek u źródła, opłata za dostęp do giełd).
 
-Publiczne przykłady wszystkich trzech są w katalogu [`examples/`](../examples/) i do pobrania
-ze strony `/kalkulator`.
+Przykłady wszystkich trzech z fikcyjnymi danymi są w katalogu [`examples/`](../examples/).
 
 ## Zasady wspólne
 

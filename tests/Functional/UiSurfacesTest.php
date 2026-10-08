@@ -92,7 +92,7 @@ final class UiSurfacesTest extends WebTestCase
         self::assertSame(1, $crawler->filter('[data-role="dropzone"] input[type="file"][multiple]')->count());
     }
 
-    public function testBrokerHelpAndPublicSamplesStayCollapsed(): void
+    public function testBrokerHelpStaysCollapsed(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/kalkulator');
@@ -102,10 +102,8 @@ final class UiSurfacesTest extends WebTestCase
 
         self::assertContains('Jak pobrać pliki z IBKR', $summaries);
         self::assertContains('Jak pobrać pliki z DEGIRO', $summaries);
-        self::assertContains('Przykładowe pliki', $summaries);
-        self::assertSame(3, $crawler->filterXPath('//details//a[starts-with(@href, "/przyklady/")]')->count());
+        self::assertNotContains('Przykładowe pliki', $summaries);
         self::assertSame([], self::openDisclosures($crawler));
-        self::assertStringNotContainsString('pozycje-zamkniete.csv', $crawler->filter('body')->text());
     }
 
     public function testFirstImportGoesStraightToTheSevenTabWorkbench(): void

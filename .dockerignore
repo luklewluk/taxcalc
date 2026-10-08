@@ -3,7 +3,7 @@
 var
 vendor
 tests
-examples/*.local.csv
+examples
 input
 output
 node_modules

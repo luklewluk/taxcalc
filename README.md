@@ -90,8 +90,8 @@ Eksporty brokerów nie podają kraju źródła dochodu. Kalkulator **proponuje**
 notowania (dla dywidend z DEGIRO — z numeru ISIN), ale to tylko propozycja: sprawdź ją przed
 przepisaniem wyniku.
 
-Przykładowe pliki są w katalogu [`examples/`](examples/) i do pobrania na stronie
-kalkulatora. Jak dokładnie czytany jest każdy eksport: [docs/formaty.md](docs/formaty.md).
+Przykłady z fikcyjnymi danymi są w katalogu [`examples/`](examples/). Jak dokładnie czytany
+jest każdy eksport: [docs/formaty.md](docs/formaty.md).
 
 ## Jak liczymy
 

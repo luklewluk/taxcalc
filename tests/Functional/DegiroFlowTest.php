@@ -68,20 +68,6 @@ final class DegiroFlowTest extends WebTestCase
         self::assertStringContainsString('Zestawienie konta', $text);
     }
 
-    public function testCalculatorPageOffersBothDegiroSampleFiles(): void
-    {
-        $client = static::createClient();
-        $crawler = $client->request('GET', '/kalkulator');
-
-        foreach (['degiro-transakcje.csv', 'degiro-rachunek.csv'] as $filename) {
-            self::assertGreaterThan(
-                0,
-                $crawler->filter(sprintf('a[href="/przyklady/%s"]', $filename))->count(),
-                $filename.' is not linked',
-            );
-        }
-    }
-
     public function testTheDegiroSampleFilesImportWithoutErrors(): void
     {
         $client = static::createClient();

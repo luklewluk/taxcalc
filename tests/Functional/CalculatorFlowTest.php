@@ -62,17 +62,15 @@ final class CalculatorFlowTest extends WebTestCase
         self::assertGreaterThan(0, $crawler->filter('input[name="_token"]')->count());
     }
 
-    public function testCalculatorPageLinksDownloadableSampleFiles(): void
+    public function testNoSampleFilesAreServed(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/kalkulator');
 
-        $links = $crawler->filter('a[href^="/przyklady/"]');
-        self::assertGreaterThanOrEqual(2, $links->count());
+        self::assertSame(0, $crawler->filter('a[href^="/przyklady/"]')->count());
 
-        $client->request('GET', (string) $links->first()->attr('href'));
-        self::assertResponseIsSuccessful();
-        self::assertResponseHeaderSame('Content-Type', 'text/csv; charset=UTF-8');
+        $client->request('GET', '/przyklady/degiro-transakcje.csv');
+        self::assertResponseStatusCodeSame(404);
     }
 
     public function testImportWithoutACsrfTokenIsRefused(): void

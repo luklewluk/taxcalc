@@ -1,5 +1,4 @@
 parameters:
-    app.examples_dir: '%kernel.project_dir%/examples'
     app.upload.max_files: 10
     app.upload.max_bytes: 5242880
     app.tax_year.first: 2021
@@ -23,7 +22,6 @@ services:
         autowire: true
         autoconfigure: true
         bind:
-            $examplesDir: '%app.examples_dir%'
             $maxFiles: '%app.upload.max_files%'
             $maxBytes: '%app.upload.max_bytes%'
             $firstTaxYear: '%app.tax_year.first%'

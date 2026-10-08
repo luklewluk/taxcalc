@@ -72,7 +72,6 @@ COPY public public
 COPY src src
 COPY migrations migrations
 COPY templates templates
-COPY examples examples
 COPY composer.json composer.lock ./
 # Use only the public template at build time. Runtime deployment values are
 # supplied through environment variables and never become image layers.

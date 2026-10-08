@@ -120,7 +120,6 @@ final class CalculatorController extends AbstractController
         private readonly TradeLedgerBuilder $tradeLedgerBuilder,
         private readonly int $maxFiles,
         private readonly int $maxBytes,
-        private readonly string $examplesDir,
     ) {
     }
 
@@ -131,10 +130,6 @@ final class CalculatorController extends AbstractController
             'tax_years' => $this->taxYearProvider->years(),
             'selected_year' => $this->taxYearProvider->normalize($rok),
             'csrf_token_id' => self::CSRF_TOKEN_ID,
-            'example_files' => array_filter(
-                ExampleFileController::FILES,
-                fn (array $meta): bool => is_file($this->examplesDir.'/'.$meta[0]),
-            ),
             'max_files' => $this->maxFiles,
             'max_megabytes' => round($this->maxBytes / 1024 / 1024, 1),
         ]);
