@@ -43,7 +43,10 @@ composer audit
 composer check                                  # phpstan + phpunit
 
 # Local server
-php -S 127.0.0.1:8000 -t public
+# Local server - the limits matter: with PHP's default max_input_vars (1000) the
+# workbench form arrives short past ~40 trades and the calculation stops.
+php -d max_input_vars=120000 -d upload_max_filesize=6M -d post_max_size=64M \
+    -S 127.0.0.1:8000 -t public
 ```
 
 ### CLI commands (backwards compatible)
@@ -486,7 +489,11 @@ The public flow is `upload → work with the result`. After the first import,
   use placeholders. Never add `pull_request_target`, and keep third-party actions pinned to
   a commit SHA - the deploy job holds the SSH key.
 - The PHP-FPM pool in `deploy/php-fpm/` mirrors `docker/php.ini` - change both together,
-  above all `max_input_vars`, which PHP enforces silently.
+  above all `max_input_vars`, which PHP enforces silently. `public/.user.ini` carries the same
+  limits (`max_input_vars`, `post_max_size`, `upload_max_filesize`) with every deploy, so a
+  server whose pool was never configured still gets them - PHP-FPM re-reads it within
+  `user_ini.cache_ttl`, no reload needed; a `php_admin_value` in the pool wins. Nginx's dotfile
+  rule keeps it from being served. `PhpLimitsTest` keeps the three in step.
 
 ## Testing
 

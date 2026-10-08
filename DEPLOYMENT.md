@@ -65,8 +65,13 @@ sudo certbot --nginx -d example.com -d www.example.com
 Na co zwrócić uwagę:
 
 - **`max_input_vars = 120000` jest krytyczne.** Workbench przesyła cały stan w formularzu,
-  bo serwer niczego nie przechowuje, a PHP po cichu ucina nadmiarowe pola. Pula FPM
-  ustawia to sama; ustawienia odpowiadają `docker/php.ini`.
+  bo serwer niczego nie przechowuje, a PHP po cichu ucina nadmiarowe pola. Przy domyślnym
+  1000 formularz z ponad ~40 transakcjami dociera niekompletny i obliczenie się zatrzymuje.
+  Pula FPM ustawia to sama; ustawienia odpowiadają `docker/php.ini`. Ten sam limit (oraz
+  `post_max_size` i `upload_max_filesize`) wdraża też `public/.user.ini`, więc działa nawet
+  bez konfiguracji puli — PHP-FPM czyta go sam, w ciągu 5 minut, bez przeładowania. Wartość
+  ustawiona w puli przez `php_admin_value` ma pierwszeństwo, a reguła `location ~ /\.` w
+  vhoście nie pozwala pobrać tego pliku.
 - **Logi nie zawierają query stringów ani ciał żądań** (`log_format taxcalc_minimal`),
   bo mogłyby nieść dane finansowe.
 - `fastcgi_param SCRIPT_FILENAME $realpath_root…` sprawia, że PHP widzi ścieżkę nowego
