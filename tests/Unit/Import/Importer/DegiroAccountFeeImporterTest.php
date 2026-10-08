@@ -31,6 +31,38 @@ final class DegiroAccountFeeImporterTest extends TestCase
         self::assertTrue($result->fees[0]->included);
     }
 
+    /**
+     * DEGIRO charges one fee per exchange a year and names both in the
+     * description. The year and the venue are read past; what is left still
+     * has to match exactly, so a look-alike stays out.
+     */
+    public function testAFeeNamedAfterItsYearAndExchangeIsStillAConnectionFee(): void
+    {
+        $csv = self::HEADER."\n"
+            .'03-02-2025,00:00,03-02-2025,,,DEGIRO Exchange Connection Fee 2025 (Xetra - XET),,EUR,-2.50,EUR,100.00,'."\n"
+            .'03-02-2025,00:00,03-02-2025,,,DEGIRO Exchange Connection Fee 2025 (London Stock Exchange (LSE) - LSE),,EUR,-2.50,EUR,97.50,'."\n"
+            .'03-02-2025,00:00,03-02-2025,,,DEGIRO Opłata za połączenie z giełdą 2025 (Nasdaq - NDQ),,EUR,-2.50,EUR,95.00,'."\n"
+            .'04-02-2025,00:00,04-02-2025,,,Some Exchange Connection Fee 2025 (Xetra - XET),,EUR,-9.00,EUR,86.00,'."\n";
+        $result = (new DegiroAccountImporter())->import(new CsvSource('account.csv', $csv));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(3, $result->fees);
+        self::assertSame('DEGIRO Exchange Connection Fee 2025 (London Stock Exchange (LSE) - LSE)', $result->fees[1]->description);
+        self::assertSame(2025, $result->fees[0]->taxYear());
+        self::assertNotSame($result->fees[0]->id(), $result->fees[1]->id());
+    }
+
+    public function testACorrectionNamedAfterItsYearAndExchangeNetsTheFee(): void
+    {
+        $csv = self::HEADER."\n"
+            .'03-02-2025,00:00,03-02-2025,,,DEGIRO Exchange Connection Fee 2025 (Xetra - XET),,EUR,-2.50,EUR,100.00,'."\n"
+            .'05-02-2025,00:00,05-02-2025,,,DEGIRO Exchange Connection Fee Correction 2025 (Xetra - XET),,EUR,2.50,EUR,102.50,'."\n";
+        $result = (new DegiroAccountImporter())->import(new CsvSource('account.csv', $csv));
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->fees);
+    }
+
     public function testFullyReversedFeeGroupIsOmitted(): void
     {
         $csv = self::HEADER."\n"

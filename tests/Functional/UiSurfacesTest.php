@@ -178,7 +178,7 @@ final class UiSurfacesTest extends WebTestCase
 
         // No button: a changed setting submits the whole form by itself.
         self::assertSame(0, $panel->filter('button')->count());
-        self::assertSame(3, $panel->filter('select[data-full-reload]')->count());
+        self::assertSame(4, $panel->filter('select[data-full-reload]')->count());
         self::assertStringContainsString('/kalkulator/wynik', (string) $crawler->filter('form[data-workbench]')->attr('action'));
 
         $script = (string) file_get_contents(\dirname(__DIR__, 2).'/public/js/app.js');

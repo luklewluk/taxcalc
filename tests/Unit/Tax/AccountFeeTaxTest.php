@@ -26,4 +26,16 @@ final class AccountFeeTaxTest extends TestCase
         self::assertSame('32.00', (string) $result->totalCost->value());
         self::assertCount(2, $result->accountingFees);
     }
+
+    /** Leaving fees out of the costs keeps every other field - and the identity - as it was. */
+    public function testAFeeCanBeLeftOutWithoutChangingIt(): void
+    {
+        $fee = new AccountFee('fee', 'account', new DateTimeImmutable('2025-02-02'), 'USD', Amount::of('10', 'USD'), false, 'x', '1');
+        $excluded = $fee->withIncluded(false);
+
+        self::assertFalse($excluded->included);
+        self::assertSame($fee->id(), $excluded->id());
+        self::assertSame('fee', $excluded->description);
+        self::assertSame('0.00', (string) (new StockTaxCalculator(FixedExchange::create()))->calculate([], [$excluded])->accountingFeesCost->value());
+    }
 }

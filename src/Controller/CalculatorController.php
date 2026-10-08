@@ -99,6 +99,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     credit_method_help: array<string, string>,
  *     settlement_cycles: array<string, string>,
  *     settlement_cycle_help: array<string, string>,
+ *     account_fee_treatments: array<string, string>,
+ *     account_fee_treatment_help: array<string, string>,
  *     expected_trades: int,
  *     expected_dividends: int,
  *     expected_fees: int,
@@ -191,6 +193,7 @@ final class CalculatorController extends AbstractController
             $request->request->get('country_source'),
             $request->request->get('credit_method'),
             $request->request->get('settlement_cycle'),
+            $request->request->get('account_fees'),
         );
         $hasCurrentState = [] !== $request->request->all('trades')
             || [] !== $request->request->all('dividends')
@@ -293,7 +296,7 @@ final class CalculatorController extends AbstractController
         $response = new Response($this->csvReportWriter->write(
             $report,
             $state['trades'],
-            $state['fees'],
+            self::countedFees($state),
             $state['dividends'],
             $state['settings']->creditMethod,
             $state['lotAssignments'],
@@ -318,6 +321,23 @@ final class CalculatorController extends AbstractController
         }
 
         return $this->render('report/print.html.twig', $prepared['context']);
+    }
+
+    /**
+     * The fees as the report counts them. With the setting off none reaches the
+     * costs, whatever each row says; with it on, each row's own choice stands.
+     *
+     * @param WorkbenchState $state
+     *
+     * @return list<AccountFee>
+     */
+    private static function countedFees(array $state): array
+    {
+        if ($state['settings']->accountFees->isCost()) {
+            return $state['fees'];
+        }
+
+        return array_map(static fn (AccountFee $fee): AccountFee => $fee->withIncluded(false), $state['fees']);
     }
 
     /** @return WorkbenchState */
@@ -406,6 +426,7 @@ final class CalculatorController extends AbstractController
             $request->request->get('country_source'),
             $request->request->get('credit_method'),
             $request->request->get('settlement_cycle'),
+            $request->request->get('account_fees'),
         );
 
         // Before the explicit action on purpose: a click on a bulk button is a
@@ -493,7 +514,7 @@ final class CalculatorController extends AbstractController
         }
 
         if (null !== $settlement && !$hasBlocking) {
-            $candidate = $this->reportBuilder->build($settlement->positions, $state['dividends'], $state['year'], $state['fees']);
+            $candidate = $this->reportBuilder->build($settlement->positions, $state['dividends'], $state['year'], self::countedFees($state));
             $diagnostics = $this->uniqueDiagnostics([...$diagnostics, ...$candidate->diagnostics]);
             if ([] === $candidate->errors) {
                 $report = $candidate;
@@ -544,6 +565,8 @@ final class CalculatorController extends AbstractController
             'credit_method_help' => $this->settingsProvider->creditMethodHelp(),
             'settlement_cycles' => $this->settingsProvider->settlementCycles(),
             'settlement_cycle_help' => $this->settingsProvider->settlementCycleHelp(),
+            'account_fee_treatments' => $this->settingsProvider->accountFeeTreatments(),
+            'account_fee_treatment_help' => $this->settingsProvider->accountFeeTreatmentHelp(),
             'expected_trades' => count($state['tradeRows']),
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),

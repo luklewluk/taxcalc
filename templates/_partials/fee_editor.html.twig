@@ -1,3 +1,9 @@
+{% if not settings.accountFees.isCost and fee_rows is not empty %}
+    <p class="note">
+        Opłaty są pokazane, ale nie wchodzą do kosztów —
+        <a href="#settings">zmienisz to w Ustawieniach</a> („Opłaty rachunkowe”).
+    </p>
+{% endif %}
 <div class="table-wrapper table-wrapper--editable">
     <table class="table table--editable">
         <thead><tr><th>Opis</th><th>Kategoria</th><th>Data waluty</th><th>Waluta</th><th>Kwota</th><th>Korekta / zwrot</th><th>Uwzględnij w kosztach</th><th>Źródło</th><th>Usuń</th></tr></thead>

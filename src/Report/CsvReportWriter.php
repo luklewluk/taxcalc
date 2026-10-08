@@ -332,7 +332,7 @@ final class CsvReportWriter
                 $fee->currency, (string) $fee->amount->value(), $fee->correction ? 'tak' : 'nie',
                 $fee->included ? 'tak' : 'nie',
                 null === $item ? '' : (string) $item->exchanged->rate,
-                $item->exchanged->rateDate?->format('Y-m-d') ?? '',
+                $item?->exchanged->rateDate?->format('Y-m-d') ?? '',
                 null === $item ? '' : (string) $item->costImpact->value(),
                 $fee->source,
             ]);

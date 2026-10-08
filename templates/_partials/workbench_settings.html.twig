@@ -117,4 +117,30 @@
             W razie wątpliwości rozważ interpretację indywidualną albo konsultację z doradcą podatkowym.
         </p>
     </section>
+
+    <section class="pit-card" aria-labelledby="settings-fees">
+        <h3 id="settings-fees">Opłaty rachunkowe (np. za połączenie z giełdą)</h3>
+        <div class="field--inline">
+            <label for="account_fees">W kosztach PIT-38</label>
+            <select id="account_fees" name="account_fees" data-full-reload>
+                {% for value, label in account_fee_treatments %}
+                    <option value="{{ value }}" {{ settings.accountFees.value == value ? 'selected' : '' }}>{{ label }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <dl class="settings-help">
+            {% for value, help in account_fee_treatment_help %}
+                <div>
+                    <dt>{{ account_fee_treatments[value] }}{{ settings.accountFees.value == value ? ' — wybrane' : '' }}</dt>
+                    <dd>{{ help }}</dd>
+                </div>
+            {% endfor %}
+        </dl>
+        <p class="note">
+            Brokerzy pobierają też opłaty niezwiązane z żadną konkretną transakcją — na przykład
+            roczną opłatę za dostęp do giełdy albo za prowadzenie rachunku. Przepisy nie przesądzają
+            jasno, czy to koszt uzyskania przychodu ze zbycia papierów, dlatego domyślnie ich nie
+            wliczamy. Opłaty są zawsze widoczne w zakładce Opłaty i w raporcie CSV.
+        </p>
+    </section>
 </div>

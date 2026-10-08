@@ -74,8 +74,12 @@ niepełnym zbiorze danych podczas awarii NBP lub przy nieobsługiwanej walucie.
   dostaje dokładną resztę, więc sumy się zgadzają co do grosza.
 - Przychód = suma kwot sprzedaży w PLN; koszt = suma kwot zakupu w PLN (zob.
   [prowizje](#prowizje)).
-- Uwzględnione samodzielne opłaty rachunkowe zwiększają koszt ogólny, ale pozostają osobną
-  pozycją uzgadniającą i nie są przypisywane do kraju PIT/ZG.
+- **Samodzielne opłaty rachunkowe** (np. roczna opłata za dostęp do giełdy) nie dotyczą
+  żadnej konkretnej transakcji, a przepisy nie przesądzają jasno, czy są kosztem uzyskania
+  przychodu ze zbycia papierów. Dlatego domyślnie **nie** są wliczane: widać je w zakładce
+  Opłaty i w raporcie CSV, a do kosztów trafiają dopiero po włączeniu ustawienia „Opłaty
+  rachunkowe”. Wtedy zwiększają koszt ogólny, pozostają osobną pozycją uzgadniającą i nie są
+  przypisywane do kraju PIT/ZG; pojedynczą opłatę można nadal wyłączyć w zakładce Opłaty.
 - Podatek = **19%** dochodu. Przy stracie podatek wynosi **zero** (nigdy wartości ujemnej).
 - PIT/ZG powstaje wyłącznie dla kraju z dodatnim dochodem z art. 30b. Kraj ze stratą
   pozostaje w audycie FIFO z ostrzeżeniem. Dywidendy nie tworzą PIT/ZG ani nie zwiększają

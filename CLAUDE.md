@@ -266,6 +266,13 @@ Ten modules under `src/`, ordered from the inside out:
   JPY, HUF, KRW, CLP and ISK with six decimals and IDR with eight, so the JSON float is
   formatted with `%.8F` and trimmed - `%.4F` turned the yen's `0.026287` into `0.0263`.
 - **FIFO keeps old buys.** Year filtering happens on the *sale* date, after matching.
+- **Standalone account fees count only when the setting says so.** `WorkbenchSettings::$accountFees`
+  (`AccountFeeTreatment`, default `excluded`): the fees are always imported, listed in Opłaty and
+  in the CSV, but `CalculatorController::countedFees()` hands the report every fee as
+  `withIncluded(false)` until the user switches it on - then each row's own checkbox decides.
+  The domain only ever reads `AccountFee::$included`. The texts stay broker-neutral. DEGIRO's
+  connection fee is recognised past the year and exchange its description names
+  (`connectionFeeKey()`); the rest is still an exact match.
 - **The settlement cycle moves rates and years, never the queue.** Under `trade_date` (the
   default) every figure and fingerprint is byte-identical to before. Otherwise
   `WorkbenchCalculator::settle()` gives each `ClosedPosition` `buySettlement`/`sellSettlement`

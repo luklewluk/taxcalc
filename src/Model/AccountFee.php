@@ -39,6 +39,15 @@ final readonly class AccountFee
         }
     }
 
+    /** The same fee, counted in the costs or left out of them. */
+    public function withIncluded(bool $included): self
+    {
+        return new self(
+            $this->description, $this->category, $this->valueDate, $this->currency, $this->amount,
+            $this->correction, $this->source, $this->stableId, $included,
+        );
+    }
+
     public function taxYear(): int
     {
         return (int) $this->valueDate->format('Y');

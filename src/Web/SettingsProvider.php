@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Web;
 
 use App\Settlement\SettlementCycle;
+use App\Tax\AccountFeeTreatment;
 use App\Tax\CreditMethod;
 
 /**
@@ -18,13 +19,44 @@ use App\Tax\CreditMethod;
  */
 final readonly class SettingsProvider
 {
-    public function normalize(mixed $countrySource, mixed $creditMethod, mixed $settlementCycle = null): WorkbenchSettings
-    {
+    public function normalize(
+        mixed $countrySource,
+        mixed $creditMethod,
+        mixed $settlementCycle = null,
+        mixed $accountFees = null,
+    ): WorkbenchSettings {
         return new WorkbenchSettings(
             self::source($countrySource) ?? CountrySource::Exchange,
             self::method($creditMethod) ?? CreditMethod::Conservative,
             self::cycle($settlementCycle) ?? SettlementCycle::TradeDate,
+            is_scalar($accountFees) ? AccountFeeTreatment::tryFrom((string) $accountFees) ?? AccountFeeTreatment::Excluded : AccountFeeTreatment::Excluded,
         );
+    }
+
+    /**
+     * @return array<string, string> value => label, for the settings select
+     */
+    public function accountFeeTreatments(): array
+    {
+        $options = [];
+        foreach (AccountFeeTreatment::cases() as $case) {
+            $options[$case->value] = $case->label();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function accountFeeTreatmentHelp(): array
+    {
+        $help = [];
+        foreach (AccountFeeTreatment::cases() as $case) {
+            $help[$case->value] = $case->description();
+        }
+
+        return $help;
     }
 
     /**

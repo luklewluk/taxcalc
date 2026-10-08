@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Web;
 
 use App\Settlement\SettlementCycle;
+use App\Tax\AccountFeeTreatment;
 use App\Tax\CreditMethod;
 
 /**
@@ -33,6 +34,8 @@ final readonly class WorkbenchSettings
          * leg - its tax year: the trade itself, or the day it settles.
          */
         public SettlementCycle $settlementCycle = SettlementCycle::TradeDate,
+        /** Whether the fees of the Opłaty tab reach the costs at all; per-fee choice applies within. */
+        public AccountFeeTreatment $accountFees = AccountFeeTreatment::Excluded,
     ) {
     }
 }

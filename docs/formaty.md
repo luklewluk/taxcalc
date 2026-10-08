@@ -226,14 +226,17 @@ dywidend jako pozornie kompletnego zestawu.
 **Transakcje z tego pliku nie są importowane.** Zestawienie konta nie podaje liczby sztuk
 ani kursu, a wczytanie ich z obu plików podwoiłoby każdą pozycję; wiersze kupna/sprzedaży
 są tylko policzone w komunikacie. Spośród opłat aplikacja automatycznie importuje wyłącznie
-ścisłe, wielojęzyczne warianty **DEGIRO Exchange Connection Fee** i domyślnie uwzględnia
-je w kosztach PIT-38. Wiersze opłat transakcyjnych są pomijane, bo są już zawarte w `Total`.
+roczne opłaty za połączenie z giełdą — wielojęzyczne warianty **DEGIRO Exchange Connection
+Fee**, także z rokiem i nazwą giełdy w opisie („… Fee 2025 (Xetra - XET)”); reszta opisu musi
+się zgadzać dokładnie. Trafiają do zakładki **Opłaty**, a do kosztów PIT-38 tylko po włączeniu
+ustawienia „Opłaty rachunkowe” (domyślnie wyłączone). Wiersze opłat transakcyjnych są
+pomijane, bo są już zawarte w `Total`.
 Pozostałe operacje (wpłaty, przewalutowania, odsetki i inne opłaty) są pomijane z podsumowaniem.
 
 Dodatnia korekta connection fee zmniejsza koszt. Grupa całkowicie wyzerowana jest pomijana
 z informacją, a zwrot przewyższający opłaty zatrzymuje rozliczenie do ręcznej poprawy.
-Rok oraz kurs NBP D-1 wynikają z daty zaksięgowania na rachunku. Koszty rachunkowe zwiększają koszt PIT-38,
-ale nie są przypisywane do konkretnego kraju PIT/ZG. Zobacz
+Rok oraz kurs NBP D-1 wynikają z daty zaksięgowania na rachunku. Po włączeniu ustawienia koszty
+rachunkowe zwiększają koszt PIT-38, ale nie są przypisywane do konkretnego kraju PIT/ZG. Zobacz
 [broszurę MF do PIT-38 za 2025 r.](https://www.podatki.gov.pl/media/11079/broszura-do-pit-38-za-2025-r.pdf),
 która wymienia wydatki związane z obsługą rachunku maklerskiego wśród możliwych kosztów.
 `Capital Return` i `QIE Distribution Capital Gain` nie są automatycznie doliczane do

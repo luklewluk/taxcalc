@@ -416,18 +416,34 @@ final class WorkbenchStateFlowTest extends WebTestCase
         self::assertSame('0', trim($crawler->filter('[data-fragment="attentionCounter"] .attention-count')->text()));
     }
 
-    public function testOnlyStrictConnectionFeeBecomesAnIncludedPitCost(): void
+    /**
+     * The yearly exchange connection fee is imported - named after its year and
+     * exchange, as DEGIRO writes it - but reaches the PIT-38 costs only once the
+     * setting says so. 2.50 EUR at the test rate 4.3 is 10.75 zł.
+     */
+    public function testTheConnectionFeeIsImportedAndCountsOnlyWhenTheSettingSaysSo(): void
     {
         $account = "Date,Time,Value date,Product,ISIN,Description,FX,Change,,Balance,,Order Id\n"
-            ."02-01-2025,00:00,02-01-2025,,,DEGIRO Exchange Connection Fee,,EUR,-2.50,EUR,100.00,\n"
+            ."03-02-2025,00:00,03-02-2025,,,DEGIRO Exchange Connection Fee 2025 (Xetra - XET),,EUR,-2.50,EUR,100.00,\n"
             ."03-01-2025,00:00,03-01-2025,,,DEGIRO Transaction Fee,,EUR,-9.00,EUR,91.00,\n";
         $client = static::createClient();
         $crawler = $this->firstImport($client, ['account.csv' => $account]);
 
         self::assertSame(1, $crawler->filter('[data-editor-body="fees"] > tr')->count());
-        self::assertStringContainsString('10,75', $crawler->filter('#panel-summary')->text());
-        self::assertSame(1, $crawler->filter('input[name="fees[0][included]"][type="checkbox"][checked]')->count());
+        self::assertStringContainsString('(Xetra - XET)', (string) $crawler->filter('input[name="fees[0][description]"]')->attr('value'));
         self::assertStringNotContainsString('DEGIRO Transaction Fee', $crawler->filter('#panel-fees')->text());
+        self::assertSame('excluded', $crawler->filter('select[name="account_fees"] option[selected]')->attr('value'));
+        self::assertStringContainsString('nie wchodzą do kosztów', $crawler->filter('#panel-fees')->text());
+        self::assertStringNotContainsString('10,75', $crawler->filter('#panel-summary')->text());
+
+        $payload = $this->payload($crawler);
+        $client->request('POST', '/kalkulator/raport.csv', $payload);
+        self::assertStringContainsString(',EUR,2.50,nie,nie,', (string) $client->getResponse()->getContent());
+
+        $payload['account_fees'] = 'included';
+        $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
+        self::assertStringContainsString('10,75', $crawler->filter('#panel-summary')->text());
+        self::assertStringNotContainsString('nie wchodzą do kosztów', $crawler->filter('#panel-fees')->text());
     }
 
     /** @param array<string, string> $files */

@@ -435,7 +435,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
             $description = DegiroHeader::normalize($table->value($row, $descriptionIndex));
 
             $isTax = self::matches($description, self::TAX_MARKERS);
-            $isConnectionFee = in_array($description, self::CONNECTION_FEE_DESCRIPTIONS, true);
+            $isConnectionFee = in_array(self::connectionFeeKey($description), self::CONNECTION_FEE_DESCRIPTIONS, true);
 
             if ($isConnectionFee) {
                 try {
@@ -618,6 +618,19 @@ final class DegiroAccountImporter implements BatchImporterInterface
         }
 
         return [$kept, $duplicates];
+    }
+
+    /**
+     * DEGIRO names the year and the exchange in the description - "DEGIRO
+     * Exchange Connection Fee 2025 (Xetra - XET)", one fee per exchange. Both
+     * are read past; what is left is compared exactly, so a look-alike is not
+     * taken for the fee.
+     */
+    private static function connectionFeeKey(string $description): string
+    {
+        $key = preg_replace('/\s*\((?:[^()]|\([^()]*\))*\)$/u', '', $description) ?? $description;
+
+        return trim(preg_replace('/\s+\d{4}\b/u', '', $key) ?? $key);
     }
 
     /**
