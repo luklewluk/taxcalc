@@ -49,7 +49,7 @@ final class OptionsFlowTest extends WebTestCase
         self::assertStringContainsString('kursem z dnia wystawienia', $stock->text());
         self::assertStringNotContainsString('dochód jest ten sam', $stock->text());
 
-        $fifo = $crawler->filter('#panel-fifo')->text();
+        $fifo = $crawler->filter('#panel-fifo [data-fragment="fifo"]')->text();
         self::assertStringContainsString('kurs z dnia zamknięcia pozycji', $fifo);
         self::assertStringContainsString('opcja · krótka', $fifo);
         self::assertStringContainsString('KIS', $fifo);
@@ -93,7 +93,7 @@ final class OptionsFlowTest extends WebTestCase
         $client = static::createClient();
         $crawler = $this->recalculate($client, $this->withOption($this->importSample($client)), '2025');
 
-        self::assertStringNotContainsString(self::PUT, $crawler->filter('#panel-fifo')->text());
+        self::assertStringNotContainsString(self::PUT, $crawler->filter('#panel-fifo [data-fragment="fifo"]')->text());
     }
 
     public function testTheOptionRowsSurviveTheRenderedForm(): void

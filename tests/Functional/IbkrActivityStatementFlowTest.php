@@ -55,7 +55,7 @@ final class IbkrActivityStatementFlowTest extends WebTestCase
         self::assertSame('US', $payload['dividends'][0]['country']);
         self::assertSame('0.75', $payload['dividends'][0]['tax_paid']);
 
-        $fifo = $crawler->filter('#panel-fifo')->text();
+        $fifo = $crawler->filter('#panel-fifo [data-fragment="fifo"]')->text();
         self::assertStringContainsString('ALFA CORP', $fifo);
         self::assertStringContainsString('opcja · krótka', $fifo);
         self::assertStringContainsString('opcja · długa', $fifo);
@@ -83,7 +83,7 @@ final class IbkrActivityStatementFlowTest extends WebTestCase
         self::assertSame(1, $crawler->filter('[data-diagnostic-code="fifo.unmatched_sell"]')->count());
         self::assertSame(1, substr_count($crawler->filter('#panel-attention')->text(), 'nie ma pokrycia'));
         self::assertStringContainsString('wcześniejszy rok', $crawler->filter('#panel-attention')->text());
-        self::assertStringContainsString('BETA ETF', $crawler->filter('#panel-fifo')->text(), 'The covered sale settles.');
+        self::assertStringContainsString('BETA ETF', $crawler->filter('#panel-fifo [data-fragment="fifo"]')->text(), 'The covered sale settles.');
     }
 
     private static function sample(): string

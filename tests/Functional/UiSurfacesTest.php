@@ -260,7 +260,7 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
         self::assertSame(0, $crawler->filter('#panel-fifo [data-trade-ledger]')->count());
         self::assertSame(1, $crawler->filter('#panel-transactions [data-trade-ledger]')->count());
-        $fifo = $crawler->filter('#panel-fifo')->text();
+        $fifo = $crawler->filter('#panel-fifo [data-fragment="fifo"]')->text();
         self::assertStringContainsString('507,5782 USD', $fifo);
         self::assertStringContainsString('560,00 USD', $fifo);
 
@@ -288,7 +288,7 @@ final class UiSurfacesTest extends WebTestCase
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['degiro.csv' => self::DEGIRO_WITH_FEE]);
-        $fifo = $crawler->filter('#panel-fifo');
+        $fifo = $crawler->filter('#panel-fifo [data-fragment="fifo"]');
 
         self::assertStringContainsString('Przychód PLN', $fifo->text());
         self::assertStringContainsString('Koszt PLN', $fifo->text());
@@ -338,7 +338,7 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
 
         self::assertSame(0, $crawler->filter('.message--error')->count());
-        self::assertGreaterThan(0, $crawler->filter('#panel-fifo tbody tr')->count());
+        self::assertGreaterThan(0, $crawler->filter('#panel-fifo [data-fragment="fifo"] tbody tr')->count());
         self::assertStringContainsString('nie zgłasza prowizji', $crawler->filter('#panel-fifo [data-fragment="fifo"] .note')->last()->text());
     }
 
@@ -430,7 +430,7 @@ final class UiSurfacesTest extends WebTestCase
             20-09-2025,14:30,ALFA CORP,US000ALFA001,NDQ,XNAS,-1,15.0000,USD,15.00,USD,0.00,USD,15.00,USD,sell-1
             CSV]);
 
-        $fifo = $crawler->filter('#panel-fifo');
+        $fifo = $crawler->filter('#panel-fifo [data-fragment="fifo"]');
         self::assertSame(1, $fifo->filter('tbody tr')->count());
         self::assertStringContainsString('—', $fifo->text());
         self::assertStringContainsString('15,0000 USD', $fifo->text());

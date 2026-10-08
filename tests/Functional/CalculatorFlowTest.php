@@ -140,7 +140,7 @@ final class CalculatorFlowTest extends WebTestCase
         $crawler = $this->submitReview($client, $crawler);
 
         // Buy legs are from 2024 while the sale is in 2025.
-        $positions = $crawler->filter('#panel-fifo tbody tr');
+        $positions = $crawler->filter('#panel-fifo [data-fragment="fifo"] tbody tr');
         self::assertSame(2, $positions->count());
         self::assertSame('2024-04-03', trim($positions->eq(0)->filter('td')->eq(1)->text()));
         self::assertSame('2025-02-27', trim($positions->eq(0)->filter('td')->eq(7)->text()));

@@ -235,7 +235,7 @@ final class TradeLedgerTest extends WebTestCase
     /** @return list<string> every closed position, in a stable order */
     private static function fifoRows(Crawler $crawler): array
     {
-        $rows = $crawler->filter('#panel-fifo tbody tr')->each(static fn (Crawler $row): string => $row->text());
+        $rows = $crawler->filter('#panel-fifo [data-fragment="fifo"] tbody tr')->each(static fn (Crawler $row): string => $row->text());
         sort($rows);
 
         return $rows;
