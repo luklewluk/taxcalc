@@ -1077,6 +1077,9 @@ select {
 
 .actions--start { margin-top: 0; }
 
+/* The guide link under the upload button: clear of the button, not a hint glued to it. */
+.upload-help { margin-top: 1.5rem; }
+
 /* Sticky action bar (review screen) */
 
 .action-bar {
