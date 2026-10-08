@@ -16,10 +16,14 @@ services:
       NBP_API_BASE_URL: https://api.nbp.pl/api/
       APP_REPOSITORY_URL: ${APP_REPOSITORY_URL:-https://github.com/luklewluk/taxcalc}
       APP_PUBLIC_URL: ${APP_PUBLIC_URL:-}
+      DATABASE_URL: mysql://taxcalc:${MYSQL_PASSWORD:-taxcalc}@db:3306/taxcalc?serverVersion=8.4.0&charset=utf8mb4
+    depends_on:
+      db:
+        condition: service_healthy
     restart: unless-stopped
 
     # No user data is ever written, so everything except the framework cache
-    # can stay read-only.
+    # can stay read-only. The entrypoint applies migrations before start.
     read_only: true
     tmpfs:
       # Alpine's www-data UID/GID is 82. Mount options matter: a bare tmpfs is
@@ -33,5 +37,28 @@ services:
     cap_drop:
       - ALL
 
+  # Public NBP exchange rates only - never any uploaded data. For local
+  # development `docker compose up -d db` is enough: the port below matches the
+  # default DATABASE_URL in .env (set DB_PORT if 3306 is taken).
+  db:
+    image: mysql:8.4
+    environment:
+      MYSQL_DATABASE: taxcalc
+      MYSQL_USER: taxcalc
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:-taxcalc}
+      MYSQL_RANDOM_ROOT_PASSWORD: "yes"
+    ports:
+      - "127.0.0.1:${DB_PORT:-3306}:3306"
+    volumes:
+      - db-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u taxcalc -p\"$${MYSQL_PASSWORD}\" --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    restart: unless-stopped
+
 volumes:
   app-cache:
+  db-data:

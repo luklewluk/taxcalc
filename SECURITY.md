@@ -41,12 +41,11 @@ Ta aplikacja została zaprojektowana tak, aby **nie przechowywać żadnych danyc
 
 | Obszar | Rozwiązanie |
 | --- | --- |
-| Baza danych | Brak. Aplikacja nie ma warstwy trwałości. |
+| Baza danych | MySQL wyłącznie z publicznymi tabelami kursów NBP. Żaden przesłany plik, wiersz ani wynik nie jest encją i nie trafia do bazy. |
 | Przesłane pliki | Odczytywane raz z tymczasowego pliku PHP, który jest natychmiast usuwany (`unlink`). Zawartość żyje wyłącznie w pamięci procesu obsługującego żądanie. |
 | Katalogi aplikacji | Nic z danych użytkownika nie trafia do `var/`, `public/` ani żadnego innego katalogu projektu. |
 | Sesja | Wyłącznie token CSRF. Żadnych kwot, symboli ani dat. |
 | Stan między żądaniami | Wiersze wracają jako pola formularza w przeglądarce użytkownika — serwer jest bezstanowy. |
-| Pamięć podręczna | Tylko publiczne kursy walut NBP, nigdy dane użytkownika. |
 | Nagłówki odpowiedzi | `Cache-Control: no-store` na każdej odpowiedzi. |
 | Analityka / zewnętrzne zasoby | Brak. CSP `default-src 'self'` bez wyjątków. |
 

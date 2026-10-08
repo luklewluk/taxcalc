@@ -25,4 +25,20 @@ final class ExchangeRateUnavailableException extends RuntimeException
             $previous,
         );
     }
+
+    public static function forTables(
+        DateTimeInterface $from,
+        DateTimeInterface $to,
+        ?Throwable $previous = null,
+    ): self {
+        return new self(
+            sprintf(
+                'NBP table A for %s to %s could not be read.',
+                $from->format('Y-m-d'),
+                $to->format('Y-m-d'),
+            ),
+            0,
+            $previous,
+        );
+    }
 }

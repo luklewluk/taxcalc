@@ -1,5 +1,12 @@
+includes:
+    - vendor/phpstan/phpstan-doctrine/extension.neon
+    - vendor/phpstan/phpstan-doctrine/rules.neon
+
 parameters:
     level: 9
     paths:
         - src
     treatPhpDocTypesAsCertain: false
+    doctrine:
+        # Lets the extension read the real mapping (generated ids, DQL types).
+        objectManagerLoader: tests/object-manager.php

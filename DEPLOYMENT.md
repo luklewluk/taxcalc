@@ -19,17 +19,31 @@ zastąp własnymi wartościami.
 sudo add-apt-repository ppa:ondrej/php   # PHP 8.4, jeśli dystrybucja ma starsze
 sudo apt update
 sudo apt install nginx git unzip \
-  php8.4-fpm php8.4-cli php8.4-mbstring php8.4-xml php8.4-opcache \
-  certbot python3-certbot-nginx
+  php8.4-fpm php8.4-cli php8.4-mbstring php8.4-xml php8.4-opcache php8.4-mysql \
+  mysql-server certbot python3-certbot-nginx
 # Composer 2:
 curl -sS https://getcomposer.org/installer | php -- --install-dir=/usr/local/bin --filename=composer
 
 sudo ufw allow OpenSSH && sudo ufw allow 'Nginx Full' && sudo ufw enable
 ```
 
-Aplikacja nie potrzebuje bazy danych, kolejki ani Redisa. Wymagane rozszerzenia
-(`ctype`, `dom`, `iconv`, `json`, `mbstring`) dają pakiety `php8.4-cli`, `php8.4-xml`
-i `php8.4-mbstring`.
+Aplikacja nie potrzebuje kolejki ani Redisa. Baza MySQL (8.4 albo MariaDB — wystarczy ta,
+którą serwer już ma) przechowuje **wyłącznie publiczne kursy NBP**, nigdy dane użytkowników.
+Wymagane rozszerzenia (`ctype`, `dom`, `iconv`, `json`, `mbstring`, `pdo_mysql`) dają
+pakiety `php8.4-cli`, `php8.4-xml`, `php8.4-mbstring` i `php8.4-mysql`.
+
+Baza i użytkownik z prawami tylko do niej:
+
+```bash
+sudo mysql <<'SQL'
+CREATE DATABASE taxcalc CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE USER 'taxcalc'@'localhost' IDENTIFIED BY 'wygeneruj-dlugie-haslo';
+GRANT ALL PRIVILEGES ON taxcalc.* TO 'taxcalc'@'localhost';
+SQL
+```
+
+Tabele zakłada Deployer przy każdym wdrożeniu (`database:migrate`, migracje Doctrine
+z katalogu `migrations/`), zanim `current` przełączy się na nowe wydanie.
 
 ## 2. Użytkownik wdrożeniowy
 
@@ -90,7 +104,8 @@ sudo -u taxcalc mkdir -p /var/www/taxcalc/shared
 sudo -u taxcalc cp deploy/env.local.example /var/www/taxcalc/shared/.env.local
 sudo -u taxcalc chmod 600 /var/www/taxcalc/shared/.env.local
 # uzupełnij APP_SECRET (php -r 'echo bin2hex(random_bytes(16)), PHP_EOL;'),
-# TRUSTED_HOSTS, DEFAULT_URI i APP_PUBLIC_URL
+# TRUSTED_HOSTS, DEFAULT_URI, APP_PUBLIC_URL i DATABASE_URL (hasło z kroku 1;
+# na MariaDB serverVersion=mariadb-<wersja>, np. mariadb-11.4.2)
 ```
 
 Deployer podlinkuje ten plik do każdego wydania (`shared_files` z recipe Symfony).
@@ -143,6 +158,10 @@ dep rollback prod    # powrót do poprzedniego wydania (Deployer trzyma 3)
 
 - `releases/` — ostatnie 3 wydania; `current` — symlink do aktywnego.
 - `shared/.env.local` — konfiguracja.
-- `var/` w wydaniu — cache Symfony i cache **publicznych** kursów NBP. Aplikacja nie
-  zapisuje żadnych danych użytkowników: przesłane pliki są czytane z pamięci, a
-  tymczasowy plik PHP jest natychmiast usuwany.
+- `var/` w wydaniu — cache Symfony; ginie z każdym wydaniem i nic w nim nie musi przetrwać.
+- baza MySQL `taxcalc` — tabele A NBP pobrane kwartałami (`nbp_rate`, `nbp_coverage`)
+  i tabela wersji migracji. Przetrwa każde wdrożenie, a w razie potrzeby można ją wyczyścić:
+  aplikacja pobierze kursy ponownie.
+
+Aplikacja nie zapisuje żadnych danych użytkowników — ani w bazie, ani na dysku: przesłane
+pliki są czytane z pamięci, a tymczasowy plik PHP jest natychmiast usuwany.

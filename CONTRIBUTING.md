@@ -92,9 +92,11 @@ jak na produkcji. Dlatego `tests/bootstrap.php` przy każdym uruchomieniu kasuje
   i `src/CurrencyRate` nie mogą zależeć od `Request` ani `Response`.
 - **Importery nie rzucają wyjątkami na złe dane.** Błędny wiersz zwraca
   `App\Import\ImportMessage`, żeby jeden zepsuty rekord nie wywracał całego importu.
-- **Nic nie zapisujemy.** Jeśli Twoja zmiana miałaby cokolwiek utrwalać (baza, plik,
-  sesja, cache z danymi użytkownika) — to zmiana modelu prywatności i wymaga osobnej
-  dyskusji w zgłoszeniu.
+- **Nic nie zapisujemy z danych użytkownika.** Baza MySQL przechowuje wyłącznie publiczne
+  kursy NBP. Jeśli Twoja zmiana miałaby utrwalać cokolwiek pochodzącego z przesłanych
+  plików (encja, plik, sesja, cache) — to zmiana modelu prywatności i wymaga osobnej
+  dyskusji w zgłoszeniu. Zmiana encji to nowa migracja: `doctrine:migrations:diff`
+  na MySQL z `docker compose up -d db`.
 - **Zero zewnętrznych zasobów front-endu.** Bez CDN, czcionek Google, bibliotek JS.
   CSS i JS piszemy ręcznie w `public/`, bez kroku budowania.
 - Deklaruj `declare(strict_types=1);` w każdym pliku PHP.

@@ -1,4 +1,5 @@
-# Production image: nginx + PHP-FPM in one container, no database, no build step.
+# Production image: nginx + PHP-FPM in one container, no build step. The MySQL
+# database holding public NBP rates is a separate service (compose.yaml).
 #
 # The application never writes user data, so the filesystem can stay read-only
 # except for the framework cache and the runtime sockets.
@@ -27,11 +28,12 @@ FROM php:8.5-fpm-alpine AS runtime
 
 # Runtime libraries, then build deps for the extensions, then drop the build deps.
 #
-# composer.json requires ext-ctype, ext-dom, ext-iconv, ext-json, ext-mbstring.
-# On the official PHP images ctype, iconv and json are already built in, but
-# dom (libxml) and mbstring (oniguruma) are NOT - they have to be compiled here,
-# together with their -dev headers. intl and opcache are added for correct
-# collation and for production performance.
+# composer.json requires ext-ctype, ext-dom, ext-iconv, ext-json, ext-mbstring,
+# ext-pdo and ext-pdo_mysql. On the official PHP images ctype, iconv, json and
+# pdo are already built in, but dom (libxml), mbstring (oniguruma) and pdo_mysql
+# are NOT - they have to be compiled here, the first two with their -dev
+# headers. intl and opcache are added for correct collation and for production
+# performance.
 RUN set -eux; \
     apk add --no-cache \
         nginx \
@@ -49,6 +51,7 @@ RUN set -eux; \
     docker-php-ext-install -j"$(nproc)" \
         dom \
         mbstring \
+        pdo_mysql \
         intl \
         opcache; \
     apk del --no-network .build-deps; \
@@ -67,6 +70,7 @@ COPY bin bin
 COPY config config
 COPY public public
 COPY src src
+COPY migrations migrations
 COPY templates templates
 COPY examples examples
 COPY composer.json composer.lock ./
@@ -79,7 +83,7 @@ COPY .env.example .env
 RUN set -eux; \
     php -m; \
     composer check-platform-reqs --no-dev; \
-    php -r 'foreach (["ctype","dom","iconv","json","mbstring","intl"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing ext: $e\n"); exit(1); } }'
+    php -r 'foreach (["ctype","dom","iconv","json","mbstring","intl","pdo_mysql"] as $e) { if (!extension_loaded($e)) { fwrite(STDERR, "missing ext: $e\n"); exit(1); } }'
 
 # Warm the container cache at build time so the running container needs no
 # writable application directory beyond var/.
@@ -92,6 +96,7 @@ COPY docker/php.ini /usr/local/etc/php/conf.d/99-app.ini
 COPY docker/php-fpm.conf /usr/local/etc/php-fpm.d/zz-app.conf
 COPY docker/nginx.conf /etc/nginx/nginx.conf
 COPY docker/supervisord.conf /etc/supervisord.conf
+COPY --chmod=755 docker/entrypoint.sh /usr/local/bin/taxcalc-entrypoint
 
 # nginx, supervisord, PHP sessions and upload temporaries all use /tmp, mounted
 # as a www-data-owned tmpfs by compose. Keep fallback directories owned for
@@ -105,4 +110,6 @@ USER www-data
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD php -r '$c=@fsockopen("127.0.0.1",8080);exit($c?0:1);'
 
+# Brings the schema up to date, then hands over to supervisord.
+ENTRYPOINT ["taxcalc-entrypoint"]
 CMD ["supervisord", "-c", "/etc/supervisord.conf"]

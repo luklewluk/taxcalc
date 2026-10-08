@@ -51,7 +51,8 @@ Zestawienie maklerskie to jedne z najbardziej wrażliwych danych, jakie posiadas
 historia transakcji, salda i identyfikator rachunku. Ten kalkulator jest zbudowany tak,
 żeby **nigdzie ich nie zapisywać**:
 
-- **brak bazy danych** — aplikacja nie ma warstwy trwałości,
+- **żadnych Twoich danych w bazie** — jedyna baza (MySQL) przechowuje publiczne kursy NBP;
+  przesłane pliki, transakcje i wyniki nigdy do niej nie trafiają,
 - **brak zapisu na dysku** — tymczasowy plik tworzony przez PHP przy wysyłce jest
   odczytywany raz i natychmiast usuwany,
 - **brak danych w sesji** — sesja przechowuje wyłącznie token CSRF,
@@ -69,18 +70,22 @@ systemu, nie zapisuje niczego).
 | Składnik | Wersja |
 | --- | --- |
 | PHP | **8.4+** (rozwijane i testowane na 8.5) |
-| Rozszerzenia PHP | `ctype`, `dom`, `iconv`, `json`, `mbstring` |
+| Rozszerzenia PHP | `ctype`, `dom`, `iconv`, `json`, `mbstring`, `pdo_mysql` |
 | Composer | 2.x |
-| Baza danych | **niepotrzebna** |
+| Baza danych | MySQL 8.4 lub MariaDB — wyłącznie na publiczne kursy NBP |
 | Node.js / npm | **niepotrzebne** (brak kroku budowania front-endu) |
 
 Dostęp do internetu jest potrzebny wyłącznie do pobrania kursów walut z publicznego API
-NBP. Kursy są zapisywane w pamięci podręcznej, a transakcje w PLN nie wymagają połączenia.
+NBP. Pobrane tabele zostają w bazie na stałe, a transakcje w PLN nie wymagają połączenia.
 
 ## Instalacja lokalna
 
 ```bash
 composer install
+
+# baza na kursy NBP (MySQL z compose.yaml, zgodny z DATABASE_URL w .env)
+docker compose up -d db
+php bin/console doctrine:migrations:migrate
 
 # opcjonalnie: własne ustawienia
 cp .env.example .env.local
@@ -139,21 +144,23 @@ sekretów opisuje [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Obraz produkcyjny oparty na **PHP 8.5** (`php:8.5-fpm-alpine`) z nginx w jednym kontenerze,
 uruchamiany jako użytkownik bez uprawnień roota. Obraz kompiluje wymagane rozszerzenia
-(`dom`, `mbstring`, `intl`, `opcache`) i weryfikuje je w trakcie budowania przez
+(`dom`, `mbstring`, `pdo_mysql`, `intl`, `opcache`) i weryfikuje je w trakcie budowania przez
 `composer check-platform-reqs`, więc brak rozszerzenia zatrzyma build, a nie pierwsze
-żądanie:
+żądanie. Compose uruchamia obok MySQL 8.4 na kursy NBP, a kontener aplikacji przy starcie
+wykonuje migracje Doctrine:
 
 ```bash
 docker compose up --build
 # http://127.0.0.1:8080
 ```
 
-Albo bez compose:
+Albo bez compose, z własną bazą MySQL:
 
 ```bash
 docker build -t taxcalc .
 docker run --rm -p 8080:8080 \
   -e APP_SECRET="$(php -r 'echo bin2hex(random_bytes(16));')" \
+  -e DATABASE_URL="mysql://taxcalc:haslo@host:3306/taxcalc?serverVersion=8.4.0&charset=utf8mb4" \
   taxcalc
 ```
 
@@ -631,6 +638,12 @@ publikował kursu w danym dniu (weekend, święto), sprawdzany jest kolejny wcze
 — maksymalnie 10 dni wstecz. W raporcie widać użyty kurs, jego datę i numer tabeli.
 Kwoty w PLN są przyjmowane z kursem 1 i **nie wymagają połączenia z NBP**.
 
+Opublikowane tabele A są zapisywane w bazie kwartałami: pierwszy kurs z danego kwartału
+pobiera jednym zapytaniem wszystkie waluty ze wszystkich dni tego kwartału, kolejne
+czytane są już z bazy. Kursów opublikowanych tabel się nie zmienia, więc nic nie wygasa
+i wdrożenie niczego nie kasuje. Gdy baza jest niedostępna, kurs jest pobierany wprost
+z NBP — wolniej, ale wynik się nie zmienia.
+
 Jeżeli choć jednego wymaganego kursu nie uda się pobrać, aplikacja działa **fail closed**:
 nie pokazuje ani nie eksportuje sum policzonych z pozostałych rekordów. Wraca do ekranu
 weryfikacji z komunikatem, a CLI kończy się kodem `1`. Zapobiega to rozliczeniu na
@@ -833,11 +846,10 @@ numery mogą się zmienić. Interfejs oferuje wyłącznie lata 2021–2026. Aktu
 
 | Obszar | Rozwiązanie |
 | --- | --- |
-| Baza danych | brak |
+| Baza danych | MySQL wyłącznie z publicznymi kursami NBP — żadnych danych użytkownika |
 | Zapis przesłanych plików | brak — tymczasowy plik PHP jest usuwany zaraz po odczycie |
 | Dane w sesji | tylko token CSRF |
 | Stan między żądaniami | pola formularza w przeglądarce użytkownika |
-| Pamięć podręczna | wyłącznie publiczne kursy NBP |
 | Nagłówki | `Cache-Control: no-store` na każdej odpowiedzi |
 | Analityka, czcionki, CDN | brak; CSP `default-src 'self'` |
 | Ruch wychodzący | wyłącznie `api.nbp.pl` po kursy walut |
@@ -935,14 +947,15 @@ Rzeczy, których to narzędzie **nie robi** — warto wiedzieć przed użyciem:
 
 ## Architektura
 
-Symfony 8.1 na PHP 8.5, bez bazy danych i bez kroku budowania front-endu.
+Symfony 8.1 na PHP 8.5, bez kroku budowania front-endu. Doctrine ORM i migracje obsługują
+jedną bazę MySQL, w której leżą wyłącznie publiczne kursy NBP.
 
 ```
 src/
 ├─ Money/          Decimal, Amount — arytmetyka dziesiętna (brick/math)
 ├─ Fifo/           dopasowanie FIFO z proporcjonalnym podziałem kosztu
 ├─ Model/          ClosedPosition, Dividend, AccountFee — rekordy rozliczenia
-├─ CurrencyRate/   kursy NBP: interfejs, klient HTTP, cache, przeliczanie D-1
+├─ CurrencyRate/   kursy NBP: interfejs, klient HTTP, tabele w bazie, przeliczanie D-1
 ├─ Import/         rozpoznawanie formatu, parsery liczb i dat, 8 importerów
 │  └─ Degiro/      pozycyjny czytnik CSV, aliasy nagłówków, ISIN
 ├─ Tax/            stawki, kalkulator akcji, kalkulator dywidend, filtr roku
@@ -970,7 +983,9 @@ composer audit
 ```
 
 Testy **nigdy nie łączą się z siecią** — kursy walut w środowisku testowym pochodzą
-z deterministycznej atrapy `App\Tests\Support\FixedNbpRateProvider`.
+z deterministycznej atrapy `App\Tests\Support\FixedNbpRateProvider`. Zapis kursów w bazie
+testowany jest na SQLite w pamięci (schemat z mapowania), a CI dodatkowo wykonuje migracje
+na MySQL 8.4 i sprawdza je `doctrine:schema:validate`.
 
 Szczegóły w [CONTRIBUTING.md](CONTRIBUTING.md).
 

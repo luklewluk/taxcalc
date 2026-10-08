@@ -37,7 +37,7 @@ jobs:
       - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
         with:
           php-version: ${{ matrix.php }}
-          extensions: ctype, dom, iconv, json, mbstring
+          extensions: ctype, dom, iconv, json, mbstring, pdo_mysql, pdo_sqlite
           coverage: none
           tools: composer:v2
           ini-values: max_input_vars=120000
@@ -63,9 +63,56 @@ jobs:
           php bin/console lint:container
           php bin/console lint:twig templates
 
+  # The tests use SQLite built from the mapping; this proves the migrations
+  # build the same schema on the MySQL production runs.
+  migrations:
+    name: Migrations (MySQL 8.4)
+    runs-on: ubuntu-latest
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_DATABASE: taxcalc
+          MYSQL_USER: taxcalc
+          MYSQL_PASSWORD: taxcalc
+          MYSQL_RANDOM_ROOT_PASSWORD: 'yes'
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -u taxcalc -ptaxcalc --silent"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=20
+    env:
+      DATABASE_URL: mysql://taxcalc:taxcalc@127.0.0.1:3306/taxcalc?serverVersion=8.4.0&charset=utf8mb4
+
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: shivammathur/setup-php@f3e473d116dcccaddc5834248c87452386958240 # 2.37.2
+        with:
+          php-version: '8.4'
+          extensions: ctype, dom, iconv, json, mbstring, pdo_mysql
+          coverage: none
+          tools: composer:v2
+
+      - name: Install dependencies
+        run: composer install --no-progress --prefer-dist --no-interaction
+
+      - name: Migrate an empty database
+        run: php bin/console doctrine:migrations:migrate --no-interaction
+
+      - name: Mapping matches the migrated schema
+        run: php bin/console doctrine:schema:validate
+
+      - name: Migrations roll back cleanly
+        run: |
+          php bin/console doctrine:migrations:migrate first --no-interaction
+          php bin/console doctrine:migrations:migrate --no-interaction
+
   deploy:
     name: Deploy to production
-    needs: test
+    needs: [test, migrations]
     # Repository variable DEPLOY_ENABLED=true switches deployment on once the
     # server and the `deployment` secrets are in place; until then pushes to
     # main are tested only.

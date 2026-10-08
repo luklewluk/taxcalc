@@ -1,0 +1,37 @@
+# The database holds public NBP quotations and nothing else. No uploaded file,
+# row or figure derived from one may ever become an entity.
+doctrine:
+    dbal:
+        # The server version lives in DATABASE_URL (serverVersion=8.4.0, or
+        # serverVersion=mariadb-11.4.2 on MariaDB).
+        url: '%env(resolve:DATABASE_URL)%'
+    orm:
+        naming_strategy: doctrine.orm.naming_strategy.underscore_number_aware
+        auto_mapping: false
+        mappings:
+            CurrencyRate:
+                type: attribute
+                is_bundle: false
+                dir: '%kernel.project_dir%/src/CurrencyRate/Entity'
+                prefix: 'App\CurrencyRate\Entity'
+                alias: CurrencyRate
+        controller_resolver:
+            auto_mapping: false
+
+when@prod:
+    doctrine:
+        orm:
+            query_cache_driver:
+                type: pool
+                pool: doctrine.system_cache_pool
+            result_cache_driver:
+                type: pool
+                pool: doctrine.result_cache_pool
+
+    framework:
+        cache:
+            pools:
+                doctrine.result_cache_pool:
+                    adapter: cache.app
+                doctrine.system_cache_pool:
+                    adapter: cache.system

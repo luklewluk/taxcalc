@@ -15,7 +15,7 @@ parameters:
 
     # Seconds one full render may spend fetching NBP rates for the Transakcje
     # details of years other than the settled one. What is left is filled in on
-    # a later render, from a warmer rate cache.
+    # a later render, from the quarters stored meanwhile.
     app.ledger.rate_budget_seconds: 10.0
 
 services:
@@ -44,15 +44,13 @@ services:
             - '../src/Import/Dto/'
             - '../src/Tax/Result/'
             - '../src/CurrencyRate/ExchangedAmount.php'
+            - '../src/CurrencyRate/Entity/'
 
     App\CurrencyRate\ExchangeInterface: '@App\CurrencyRate\NbpExchange'
 
-    App\CurrencyRate\NbpRateProviderInterface: '@App\CurrencyRate\CachedNbpRateProvider'
-
-    App\CurrencyRate\CachedNbpRateProvider:
-        arguments:
-            $delegate: '@App\CurrencyRate\NbpApiRateProvider'
-            $cache: '@nbp.rate.cache'
+    # Published NBP tables are stored in the database (public data only) and
+    # fetched a quarter at a time; NbpApiRateProvider is the source behind it.
+    App\CurrencyRate\NbpRateProviderInterface: '@App\CurrencyRate\DatabaseNbpRateProvider'
 
     App\CurrencyRate\NbpApiRateProvider:
         arguments:

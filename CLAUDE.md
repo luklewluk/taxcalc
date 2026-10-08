@@ -13,13 +13,15 @@ Reads Interactive Brokers (Activity Statement, Flex, Dividend Detail) and DEGIRO
 converts amounts using NBP D-1 rates, matches sells to buys with FIFO, and produces
 PIT-38 / PIT-ZG figures.
 
-**No database. No persistence of user data at all.** Uploaded files are read once from
+**No persistence of user data at all.** Uploaded files are read once from
 PHP's temporary upload file, which is immediately unlinked; the content lives only in
 request memory. Between requests, rows travel back to the browser as form fields. The
-session holds nothing but a CSRF token. The only cached data is public NBP exchange rates.
+session holds nothing but a CSRF token. The one database (MySQL, Doctrine ORM + Migrations)
+holds **public NBP exchange rates and nothing else**.
 
-Do not introduce a database, a queue, session storage of financial data, or any
-third-party frontend resource — those would break the product's core promise.
+Never make an uploaded file, a row, or anything derived from one an entity; do not add a
+queue, session storage of financial data, or any third-party frontend resource — those
+would break the product's core promise.
 
 ## Commands
 
@@ -41,6 +43,11 @@ composer audit
 
 # Shortcut
 composer check                                  # phpstan + phpunit
+
+# Database (public NBP rates only) - compose's MySQL matches DATABASE_URL in .env
+docker compose up -d db
+php bin/console doctrine:migrations:migrate
+php bin/console doctrine:migrations:diff        # after changing an entity; review the SQL
 
 # Local server
 # Local server - the limits matter: with PHP's default max_input_vars (1000) the
@@ -90,8 +97,11 @@ Nine modules under `src/`, ordered from the inside out:
   with `ClosedPosition::fromMatch()` so neither can be dropped.
 - **CurrencyRate** — `ExchangeInterface` → `NbpExchange` implements the D-1 rule and
   passes PLN through at rate 1 without any lookup. `NbpRateProviderInterface` is
-  implemented by `NbpApiRateProvider` (scoped `symfony/http-client`, walks back over
-  weekends and holidays, bounded at 10 days) and decorated by `CachedNbpRateProvider`.
+  implemented by `DatabaseNbpRateProvider`, which serves the D-1 rate from published table A
+  quotations stored in MySQL (`Entity\NbpTableRate`, one row per currency and day) and fills
+  a missing quarter with one `NbpApiRateProvider::tablesBetween()` request - every currency
+  of every day of that quarter. `NbpApiRateProvider` (scoped `symfony/http-client`) is the
+  source; its single-day lookup walks back over weekends and holidays, bounded at 10 days.
 - **Import** — `FormatDetector` identifies a file from its structure (never from its name);
   `CsvImportService` routes it to the matching importer and de-duplicates by fingerprint.
   Eight importers implement `ImporterInterface` (auto-collected via `#[AutoconfigureTag]`).
@@ -221,7 +231,24 @@ Nine modules under `src/`, ordered from the inside out:
   rejected - a partial tax dataset is more dangerous than none.
 - **Domain is HTTP-agnostic.** `Money`, `Fifo`, `Model`, `Tax`, `Import`, `CurrencyRate`
   must not reference `Request`/`Response`.
-- **Nothing is persisted.** No writes to `var/`, no financial data in the session.
+- **Nothing of the user's is persisted.** No user data in the database or `var/`, no
+  financial data in the session.
+- **Stored NBP rates never expire, and a missing row means something only under coverage.**
+  Published tables do not change, so nothing is ever refreshed. `Entity\NbpCoverage` records
+  per quarter how far the stored tables are complete; inside it a day without a row is a day
+  NBP published nothing, which is what lets the D-1 walk (`[D-10, D-1]`, the same window as
+  the API's) run as one SQL query. Coverage is written in the same transaction as the rates
+  it vouches for, and only up to **yesterday**: today's table may not be out yet, and
+  recording its absence would hide it for good - a rate from today on goes to NBP directly
+  and is not stored. Two requests filling one quarter collide on the unique key; the loser
+  resets the entity manager and inserts only what is still missing.
+- **The rate store costs speed, never the result.** A database error (down, never migrated)
+  makes `DatabaseNbpRateProvider` read NBP directly for the rest of the request and log a
+  warning. NBP itself being unreachable still blocks the report, as before.
+- **A rate is stored as the exact text NBP published.** `mid` is a `VARCHAR`, not a
+  `DECIMAL`, which would pad zeros and change the scale every report prints. Table A quotes
+  JPY, HUF, KRW, CLP and ISK with six decimals and IDR with eight, so the JSON float is
+  formatted with `%.8F` and trimmed - `%.4F` turned the yen's `0.026287` into `0.0263`.
 - **FIFO keeps old buys.** Year filtering happens on the *sale* date, after matching.
 - **FIFO identity is not a display name.** `Trade::$symbol` is the matching key (ticker +
   currency for IBKR, the **ISIN alone** for DEGIRO); `InstrumentDetails` carries the product
@@ -495,10 +522,17 @@ The public flow is `upload → work with the result`. After the first import,
 
 ## Deployment
 
-- `.github/workflows/ci.yml` tests every push and pull request (PHP 8.4 and 8.5) and, on
-  `main` only, after the tests and only when the repository variable `DEPLOY_ENABLED` is
-  `true`, deploys with Deployer (`deploy.php`, `recipe/symfony.php`) through the GitHub
-  Environment `deployment`.
+- `.github/workflows/ci.yml` tests every push and pull request (PHP 8.4 and 8.5), runs the
+  migrations against a MySQL 8.4 service (`migrate`, `doctrine:schema:validate`, roll back
+  to `first` and forward again) and, on `main` only, after both and only when the repository
+  variable `DEPLOY_ENABLED` is `true`, deploys with Deployer (`deploy.php`,
+  `recipe/symfony.php`) through the GitHub Environment `deployment`.
+- **Migrations run on every deploy**, before `current` switches (`database:migrate` before
+  `deploy:publish`); the Docker image runs them in `docker/entrypoint.sh`. They are
+  generated for MySQL 8.4 but their platform check accepts `AbstractMySQLPlatform`, so
+  MariaDB works with its own `serverVersion` in `DATABASE_URL`. `transactional: false`,
+  because MySQL commits implicitly on DDL. Keep migrations additive: the old release keeps
+  serving while they run.
 - **No server detail in the repository.** Host, user, path, SSH key and known hosts are
   `deployment` secrets read from the environment by `deploy.php`; the examples in `deploy/`
   use placeholders. Never add `pull_request_target`, and keep third-party actions pinned to
@@ -520,6 +554,11 @@ The public flow is `upload → work with the result`. After the first import,
 `NbpRateProviderInterface` for `App\Tests\Support\FixedNbpRateProvider`, with fixed rates
 USD 4.0, EUR 4.3, GBP 5.0, CHF 4.5, CAD 3.0. For HTTP-layer tests use `MockHttpClient`.
 
+The test database is in-memory SQLite (`.env.test`), fresh on every kernel boot; a test that
+needs it builds the schema from the mapping with `SchemaTool` and constructs the
+repositories from the public `doctrine` registry (unused private services are removed from
+the test container). MySQL-specific behaviour is covered by the CI migrations job, not here.
+
 The test kernel runs with `APP_DEBUG=0` so error pages and logging behave like production;
 `tests/bootstrap.php` therefore deletes `var/cache/test` on every run, because a non-debug
 container does not self-invalidate.
@@ -533,7 +572,10 @@ Follow TDD: write a failing test, run it and confirm the expected failure, then 
   or sub-cent withholding such as `0.2025`)
 - `league/csv` — CSV reading/writing
 - `symfony/http-client` — NBP API (replaced the unmaintained `maciej-sz/nbp-php`)
-- No frontend dependencies, no Node.js, no database driver.
+- `doctrine/orm`, `doctrine/doctrine-bundle`, `doctrine/doctrine-migrations-bundle` — the
+  NBP rate store; `symfony/clock` — "yesterday" for the coverage rule, `MockClock` in tests.
+  No Flex: bundles and `config/packages/doctrine*.yaml` are maintained by hand.
+- No frontend dependencies, no Node.js.
 
 ## Data hygiene
 

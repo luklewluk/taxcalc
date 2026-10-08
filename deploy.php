@@ -53,7 +53,8 @@ set('bin/composer', fn (): string => fromEnv('DEPLOY_COMPOSER', '{{bin/php}} '.w
 set('composer_options', '--verbose --prefer-dist --no-progress --no-interaction --no-dev --optimize-autoloader --classmap-authoritative');
 
 // shared_files ['.env.local'] and shared_dirs ['var/log'] come from the Symfony recipe.
-// No database, so no migrations; `composer install` clears and warms the prod cache.
+// The NBP rates live in MySQL (DATABASE_URL in shared/.env.local), so nothing
+// under var/ has to survive a release.
 
 host('prod')
     ->setHostname(fromEnv('DEPLOY_HOST', '-'))
@@ -73,5 +74,10 @@ before('deploy:info', 'deploy:check_env');
 // No PHP-FPM reload and no sudo: nginx passes $realpath_root, so every release
 // is a new path and opcache compiles it fresh even with validate_timestamps
 // off. Old releases' entries stay in opcache memory until PHP-FPM restarts.
+
+// Doctrine migrations run on the new release before `current` switches to it.
+// They only ever add public NBP rate tables, so the release still serving
+// traffic keeps working while they run.
+before('deploy:publish', 'database:migrate');
 
 after('deploy:failed', 'deploy:unlock');

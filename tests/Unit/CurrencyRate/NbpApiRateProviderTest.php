@@ -202,6 +202,122 @@ final class NbpApiRateProviderTest extends TestCase
         (new NbpApiRateProvider($client))->rateForPreviousBusinessDay('../../a', new DateTimeImmutable('2025-03-14'));
     }
 
+    /**
+     * Table A quotes JPY, HUF, KRW, CLP and ISK per unit with six decimals and
+     * IDR with eight. Formatting the JSON float to four places turned the yen's
+     * 0.026287 into 0.0263 - a 0.05% error on every yen amount.
+     */
+    public function testKeepsEveryPublishedDecimalOfSmallUnitCurrencies(): void
+    {
+        foreach (['JPY' => [0.026287, '0.026287'], 'IDR' => [0.00025453, '0.00025453'], 'USD' => [4.1219, '4.1219']] as $code => [$mid, $expected]) {
+            $client = new MockHttpClient(new MockResponse(json_encode([
+                'code' => $code,
+                'rates' => [['no' => '001/A/NBP/2025', 'effectiveDate' => '2025-01-02', 'mid' => $mid]],
+            ], JSON_THROW_ON_ERROR), ['http_code' => 200]), 'https://api.nbp.pl/api/');
+
+            $rate = (new NbpApiRateProvider($client))->rateForPreviousBusinessDay($code, new DateTimeImmutable('2025-01-03'));
+
+            self::assertSame($expected, (string) $rate->rate, $code);
+        }
+    }
+
+    public function testReadsEveryCurrencyOfEveryTableInARange(): void
+    {
+        $requestedUrls = [];
+        $client = new MockHttpClient(function (string $method, string $url) use (&$requestedUrls): MockResponse {
+            $requestedUrls[] = $url;
+
+            return new MockResponse(json_encode([
+                self::table('001/A/NBP/2025', '2025-01-02', ['USD' => 4.1219, 'JPY' => 0.026287]),
+                self::table('002/A/NBP/2025', '2025-01-03', ['USD' => 4.1512, 'JPY' => 0.026411]),
+            ], JSON_THROW_ON_ERROR), ['http_code' => 200]);
+        }, 'https://api.nbp.pl/api/');
+
+        $rates = (new NbpApiRateProvider($client))
+            ->tablesBetween(new DateTimeImmutable('2025-01-01'), new DateTimeImmutable('2025-01-05'));
+
+        self::assertCount(1, $requestedUrls);
+        self::assertStringContainsString('exchangerates/tables/a/2025-01-01/2025-01-05/', $requestedUrls[0]);
+        self::assertSame(
+            [
+                'USD 2025-01-02 4.1219 001/A/NBP/2025',
+                'JPY 2025-01-02 0.026287 001/A/NBP/2025',
+                'USD 2025-01-03 4.1512 002/A/NBP/2025',
+                'JPY 2025-01-03 0.026411 002/A/NBP/2025',
+            ],
+            array_map(
+                static fn ($rate): string => sprintf('%s %s %s %s', $rate->currency, $rate->date->format('Y-m-d'), $rate->rate, $rate->table),
+                $rates,
+            ),
+        );
+    }
+
+    /**
+     * NBP answers 404 when the range holds no table at all - New Year's Day on
+     * its own, or a weekend. That is an answer, not a failure.
+     */
+    public function testARangeWithoutAnyTableIsEmpty(): void
+    {
+        $client = new MockHttpClient(new MockResponse('404 NotFound - Not Found - Brak danych', ['http_code' => 404]), 'https://api.nbp.pl/api/');
+
+        self::assertSame([], (new NbpApiRateProvider($client))
+            ->tablesBetween(new DateTimeImmutable('2025-01-01'), new DateTimeImmutable('2025-01-01')));
+    }
+
+    /**
+     * @return iterable<string, array{mixed}>
+     */
+    public static function malformedRanges(): iterable
+    {
+        yield 'not a list' => [['table' => 'A']];
+        yield 'table B' => [[['table' => 'B'] + self::table('001/B/NBP/2025', '2025-01-02', ['USD' => 4.1])]];
+        yield 'date outside the range' => [[self::table('x', '2024-12-31', ['USD' => 4.1])]];
+        yield 'impossible date' => [[self::table('x', '2025-01-32', ['USD' => 4.1])]];
+        yield 'the same day twice' => [[self::table('x', '2025-01-02', ['USD' => 4.1]), self::table('y', '2025-01-02', ['USD' => 4.2])]];
+        yield 'the same currency twice' => [[['table' => 'A', 'no' => 'x', 'effectiveDate' => '2025-01-02', 'rates' => [
+            ['code' => 'USD', 'mid' => 4.1], ['code' => 'USD', 'mid' => 4.2],
+        ]]]];
+        yield 'bad code' => [[self::table('x', '2025-01-02', ['US' => 4.1])]];
+        yield 'zero rate' => [[self::table('x', '2025-01-02', ['USD' => 0])]];
+        yield 'text rate' => [[self::table('x', '2025-01-02', ['USD' => 'oops'])]];
+        yield 'no rates' => [[['table' => 'A', 'no' => 'x', 'effectiveDate' => '2025-01-02', 'rates' => []]]];
+    }
+
+    #[\PHPUnit\Framework\Attributes\DataProvider('malformedRanges')]
+    public function testRejectsAMalformedTableRange(mixed $payload): void
+    {
+        $client = new MockHttpClient(new MockResponse(json_encode($payload, JSON_THROW_ON_ERROR), ['http_code' => 200]), 'https://api.nbp.pl/api/');
+
+        $this->expectException(ExchangeRateUnavailableException::class);
+
+        (new NbpApiRateProvider($client))->tablesBetween(new DateTimeImmutable('2025-01-01'), new DateTimeImmutable('2025-01-05'));
+    }
+
+    public function testATableRangeTransportFailureBecomesDomainException(): void
+    {
+        $client = new MockHttpClient(static function (): never {
+            throw new \Symfony\Component\HttpClient\Exception\TransportException('network down');
+        }, 'https://api.nbp.pl/api/');
+
+        $this->expectException(ExchangeRateUnavailableException::class);
+
+        (new NbpApiRateProvider($client))->tablesBetween(new DateTimeImmutable('2025-01-01'), new DateTimeImmutable('2025-01-05'));
+    }
+
+    public function testRefusesARangeNbpWouldReject(): void
+    {
+        $provider = new NbpApiRateProvider(new MockHttpClient([], 'https://api.nbp.pl/api/'));
+
+        foreach ([['2025-01-05', '2025-01-01'], ['2025-01-01', '2025-04-04']] as [$from, $to]) {
+            try {
+                $provider->tablesBetween(new DateTimeImmutable($from), new DateTimeImmutable($to));
+                self::fail(sprintf('Range %s..%s was accepted.', $from, $to));
+            } catch (\InvalidArgumentException) {
+                self::addToAssertionCount(1);
+            }
+        }
+    }
+
     public function testTransportFailureBecomesDomainException(): void
     {
         $client = new MockHttpClient(static function (): never {
@@ -211,5 +327,20 @@ final class NbpApiRateProviderTest extends TestCase
         $this->expectException(ExchangeRateUnavailableException::class);
 
         (new NbpApiRateProvider($client))->rateForPreviousBusinessDay('USD', new DateTimeImmutable('2025-03-14'));
+    }
+
+    /**
+     * @param array<string, mixed> $mids
+     *
+     * @return array<string, mixed>
+     */
+    private static function table(string $no, string $effectiveDate, array $mids): array
+    {
+        $rates = [];
+        foreach ($mids as $code => $mid) {
+            $rates[] = ['currency' => 'waluta', 'code' => $code, 'mid' => $mid];
+        }
+
+        return ['table' => 'A', 'no' => $no, 'effectiveDate' => $effectiveDate, 'rates' => $rates];
     }
 }

@@ -1,0 +1,7 @@
+doctrine_migrations:
+    migrations_paths:
+        'DoctrineMigrations': '%kernel.project_dir%/migrations'
+    # MySQL commits implicitly on every DDL statement, so a migration cannot be
+    # wrapped in a transaction there; pretending otherwise only produces warnings.
+    transactional: false
+    enable_profiler: false
