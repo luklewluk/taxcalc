@@ -80,4 +80,14 @@ before('deploy:info', 'deploy:check_env');
 // traffic keeps working while they run.
 before('deploy:publish', 'database:migrate');
 
+// An entity changed without a migration would not fail loudly: the rate store
+// falls back to NBP and the site just gets slower. Checking the mapping against
+// the real, freshly migrated database stops such a release before `current`
+// switches; the release in service keeps running.
+desc('Checks that the entity mapping matches the migrated database');
+task('database:validate', static function (): void {
+    run('cd {{release_or_current_path}} && {{bin/console}} doctrine:schema:validate {{console_options}}');
+});
+after('database:migrate', 'database:validate');
+
 after('deploy:failed', 'deploy:unlock');

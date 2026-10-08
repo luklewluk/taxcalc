@@ -522,13 +522,16 @@ The public flow is `upload → work with the result`. After the first import,
 
 ## Deployment
 
-- `.github/workflows/ci.yml` tests every push and pull request (PHP 8.4 and 8.5), runs the
-  migrations against a MySQL 8.4 service (`migrate`, `doctrine:schema:validate`, roll back
-  to `first` and forward again) and, on `main` only, after both and only when the repository
-  variable `DEPLOY_ENABLED` is `true`, deploys with Deployer (`deploy.php`,
-  `recipe/symfony.php`) through the GitHub Environment `deployment`.
-- **Migrations run on every deploy**, before `current` switches (`database:migrate` before
-  `deploy:publish`); the Docker image runs them in `docker/entrypoint.sh`. They are
+- `.github/workflows/ci.yml` tests every push and pull request (PHP 8.4 and 8.5) and, on
+  `main` only, after the tests and only when the repository variable `DEPLOY_ENABLED` is
+  `true`, deploys with Deployer (`deploy.php`, `recipe/symfony.php`) through the GitHub
+  Environment `deployment`.
+- **Migrations run and are validated on every deploy**, before `current` switches:
+  `database:migrate`, then `database:validate` (`doctrine:schema:validate` against the real,
+  freshly migrated database), both before `deploy:publish`. A mismatch fails the deploy and
+  the release in service keeps running - without it, an entity changed without a migration
+  would only make the rate store fall back to NBP, silently. The Docker image migrates in
+  `docker/entrypoint.sh`. They are
   generated for MySQL 8.4 but their platform check accepts `AbstractMySQLPlatform`, so
   MariaDB works with its own `serverVersion` in `DATABASE_URL`. `transactional: false`,
   because MySQL commits implicitly on DDL. Keep migrations additive: the old release keeps
@@ -557,7 +560,8 @@ USD 4.0, EUR 4.3, GBP 5.0, CHF 4.5, CAD 3.0. For HTTP-layer tests use `MockHttpC
 The test database is in-memory SQLite (`.env.test`), fresh on every kernel boot; a test that
 needs it builds the schema from the mapping with `SchemaTool` and constructs the
 repositories from the public `doctrine` registry (unused private services are removed from
-the test container). MySQL-specific behaviour is covered by the CI migrations job, not here.
+the test container). The migrations themselves meet MySQL only on deploy, where
+`database:validate` checks them against the mapping.
 
 The test kernel runs with `APP_DEBUG=0` so error pages and logging behave like production;
 `tests/bootstrap.php` therefore deletes `var/cache/test` on every run, because a non-debug

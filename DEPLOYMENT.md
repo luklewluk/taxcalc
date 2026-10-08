@@ -43,7 +43,9 @@ SQL
 ```
 
 Tabele zakłada Deployer przy każdym wdrożeniu (`database:migrate`, migracje Doctrine
-z katalogu `migrations/`), zanim `current` przełączy się na nowe wydanie.
+z katalogu `migrations/`) i od razu sprawdza je `doctrine:schema:validate`
+(`database:validate`), zanim `current` przełączy się na nowe wydanie. Gdy schemat nie zgadza
+się z encjami, wdrożenie się zatrzymuje, a dotychczasowe wydanie działa dalej.
 
 ## 2. Użytkownik wdrożeniowy
 

@@ -984,8 +984,9 @@ composer audit
 
 Testy **nigdy nie łączą się z siecią** — kursy walut w środowisku testowym pochodzą
 z deterministycznej atrapy `App\Tests\Support\FixedNbpRateProvider`. Zapis kursów w bazie
-testowany jest na SQLite w pamięci (schemat z mapowania), a CI dodatkowo wykonuje migracje
-na MySQL 8.4 i sprawdza je `doctrine:schema:validate`.
+testowany jest na SQLite w pamięci (schemat z mapowania). Migracje na MySQL sprawdza
+wdrożenie: po `doctrine:migrations:migrate` wykonuje `doctrine:schema:validate` i przy
+niezgodności z encjami nie przełącza się na nowe wydanie.
 
 Szczegóły w [CONTRIBUTING.md](CONTRIBUTING.md).
 
