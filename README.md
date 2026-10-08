@@ -7,7 +7,7 @@
 
 # TaxCalc.pl — kalkulator PIT-38 (akcje, opcje, dywidendy)
 
-Darmowy, otwartoźródłowy kalkulator podatku od zysków giełdowych, opcji i dywidend dla
+Darmowy kalkulator podatku od zysków giełdowych, opcji i dywidend dla
 polskich podatników: **[taxcalc.pl](https://taxcalc.pl)**. Wgrywasz zestawienie od brokera,
 a kalkulator przelicza kwoty po kursach NBP, dopasowuje sprzedaże do zakupów metodą FIFO
 i podaje wartości do wpisania w **PIT-38** i **PIT/ZG**. Twoje dane nigdzie nie są zapisywane.

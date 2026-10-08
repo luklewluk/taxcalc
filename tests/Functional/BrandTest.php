@@ -54,6 +54,17 @@ final class BrandTest extends WebTestCase
         self::assertPublicFile('/img/brand/og-image.png');
     }
 
+    public function testTheDescriptionIsFriendlyAndSharedWithTheLinkPreview(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/');
+
+        $description = (string) $crawler->filter('meta[name="description"]')->attr('content');
+        self::assertStringContainsString('Za darmo, bez zakładania konta', $description);
+        self::assertStringNotContainsStringIgnoringCase('otwartoźródłow', $description);
+        self::assertSame($description, $crawler->filter('meta[property="og:description"]')->attr('content'));
+    }
+
     public function testThePaletteIsTealAndHasNoLimeLeft(): void
     {
         $css = (string) file_get_contents(dirname(__DIR__, 2).'/public/css/app.css');
