@@ -7,6 +7,7 @@ namespace App\Model;
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatch;
 use App\Fifo\InstrumentKind;
+use App\Fifo\LotMethod;
 use App\Fifo\PositionDirection;
 use App\Money\Amount;
 use App\Money\Decimal;
@@ -64,6 +65,8 @@ final readonly class ClosedPosition
         public ?Amount $sellUnitPrice = null,
         public InstrumentKind $kind = InstrumentKind::Stock,
         public PositionDirection $direction = PositionDirection::Long,
+        /** How the lot was chosen; deliberately outside {@see fingerprint()}. */
+        public LotMethod $lotMethod = LotMethod::Fifo,
     ) {
         // Invariants live here because this is the one type every importer
         // produces and every form submission is mapped into. A negative or zero
@@ -209,6 +212,7 @@ final readonly class ClosedPosition
             $match->sellUnitPrice,
             $match->kind,
             $match->direction,
+            $match->lotMethod,
         );
     }
 

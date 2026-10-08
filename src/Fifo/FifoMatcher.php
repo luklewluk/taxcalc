@@ -18,25 +18,29 @@ use App\Money\Decimal;
  *
  * Buy lots are never filtered by year: an opening trade from an earlier tax
  * year stays available to match a sale in the year being settled.
+ *
+ * A stock sale the user tied to named lots ({@see LotAssignments}) consumes
+ * exactly those instead - specific identification, which art. 30b ust. 7
+ * allows when the units sold can be identified. Every other sale stays FIFO,
+ * and an assignment that cannot be honoured is a violation, never a silent
+ * fallback to FIFO.
  */
 final class FifoMatcher
 {
     /**
      * @param list<Trade> $trades
      */
-    public function match(array $trades): FifoResult
+    public function match(array $trades, LotAssignments $assignments = new LotAssignments()): FifoResult
     {
-        /** @var array<string, list<Trade>> $bySymbol */
-        $bySymbol = [];
-        foreach ($trades as $trade) {
-            $pool = '' === $trade->fifoPool ? $trade->symbol : $trade->fifoPool;
-            $bySymbol[$trade->broker.'|'.$pool][] = $trade;
-        }
+        $bySymbol = self::queues($trades);
+        $index = self::index($trades);
 
         $matches = [];
         $unmatched = [];
         $violations = [];
         $open = [];
+        /** @var array<string, true> $stockSales sales of a stock-only queue, which read their assignment */
+        $stockSales = [];
 
         foreach ($bySymbol as $symbolTrades) {
             $kinds = array_unique(array_map(static fn (Trade $trade): string => $trade->kind->value, $symbolTrades));
@@ -53,16 +57,100 @@ final class FifoMatcher
                 continue;
             }
 
+            if (InstrumentKind::Option !== $symbolTrades[0]->kind) {
+                foreach ($symbolTrades as $trade) {
+                    if ($trade->isSell()) {
+                        $stockSales[$trade->id()] = true;
+                    }
+                }
+            }
+
             $result = InstrumentKind::Option === $symbolTrades[0]->kind
                 ? $this->matchOptionPool($symbolTrades)
-                : $this->matchSymbol($symbolTrades);
+                : $this->matchSymbol($symbolTrades, $assignments, $index);
             $matches = [...$matches, ...$result->matches];
             $unmatched = [...$unmatched, ...$result->unmatchedSells];
             $violations = [...$violations, ...$result->violations];
             $open = [...$open, ...$result->openPositions];
         }
 
+        // Lots named for a trade that is no stock sale: a buy, an option, a
+        // zero-quantity row. A sale of a queue already blocked as mixed, or an
+        // id that is no trade at all, changes no figure and is left alone.
+        foreach ($assignments->saleIds() as $saleId) {
+            $trade = $index[$saleId] ?? null;
+            if (null === $trade || isset($stockSales[$saleId])) {
+                continue;
+            }
+            if ($trade->isOption() || !$trade->isSell()) {
+                $violations[] = self::violation(FifoViolationKind::AssignmentNotASale, $trade, $trade->quantity->abs());
+            }
+        }
+
         return new FifoResult($matches, $unmatched, $violations, $open);
+    }
+
+    /**
+     * The lots of a stock sale's queue still open just before that sale - what
+     * the user may name for it. Null when the id is no stock sale.
+     *
+     * @param list<Trade> $trades
+     *
+     * @return list<OpenPosition>|null
+     */
+    public function openLotsBefore(array $trades, LotAssignments $assignments, string $saleId): ?array
+    {
+        $index = self::index($trades);
+        $sale = $index[$saleId] ?? null;
+        if (null === $sale || $sale->isOption() || !$sale->isSell()) {
+            return null;
+        }
+
+        foreach (self::queues($trades) as $queue) {
+            if (!in_array($sale, $queue, true)) {
+                continue;
+            }
+            foreach ($queue as $trade) {
+                if ($trade->isOption()) {
+                    return null;
+                }
+            }
+
+            return $this->matchSymbol($queue, $assignments, $index, $saleId)->openPositions;
+        }
+
+        return null;
+    }
+
+    /**
+     * @param list<Trade> $trades
+     *
+     * @return array<string, list<Trade>>
+     */
+    private static function queues(array $trades): array
+    {
+        $bySymbol = [];
+        foreach ($trades as $trade) {
+            $pool = '' === $trade->fifoPool ? $trade->symbol : $trade->fifoPool;
+            $bySymbol[$trade->broker.'|'.$pool][] = $trade;
+        }
+
+        return $bySymbol;
+    }
+
+    /**
+     * @param list<Trade> $trades
+     *
+     * @return array<string, Trade>
+     */
+    private static function index(array $trades): array
+    {
+        $index = [];
+        foreach ($trades as $trade) {
+            $index[$trade->id()] ??= $trade;
+        }
+
+        return $index;
     }
 
     /**
@@ -259,10 +347,16 @@ final class FifoMatcher
     }
 
     /**
-     * @param list<Trade> $trades all belonging to a single symbol
+     * @param list<Trade>          $trades all belonging to a single symbol
+     * @param array<string, Trade> $index  every trade of the run, for naming a lot of another queue
+     * @param string|null          $stopBefore a sale id: return the lots open just before it
      */
-    private function matchSymbol(array $trades): FifoResult
-    {
+    private function matchSymbol(
+        array $trades,
+        LotAssignments $assignments = new LotAssignments(),
+        array $index = [],
+        ?string $stopBefore = null,
+    ): FifoResult {
         // Stable sort by date: trades on the same day keep their file order,
         // which is the only ordering information a broker export gives us.
         usort($trades, static fn (Trade $a, Trade $b) => $a->date <=> $b->date);
@@ -271,6 +365,17 @@ final class FifoMatcher
         $openLots = [];
         $matches = [];
         $unmatched = [];
+        $violations = [];
+
+        /** @var array<string, true> $buys buy ids of this queue */
+        $buys = [];
+        foreach ($trades as $trade) {
+            if ($trade->isBuy()) {
+                $buys[$trade->id()] = true;
+            }
+        }
+        /** @var array<string, OpenLot> $lotsById the buys seen so far */
+        $lotsById = [];
 
         // Counted per symbol, not per run: the ordinal only has to separate two
         // otherwise identical matches of *this* queue. Numbering across symbols
@@ -280,8 +385,14 @@ final class FifoMatcher
         $sequence = 0;
 
         foreach ($trades as $trade) {
+            if (null !== $stopBefore && $trade->id() === $stopBefore) {
+                break;
+            }
+
             if ($trade->isBuy()) {
-                $openLots[] = new OpenLot($trade);
+                $lot = new OpenLot($trade);
+                $openLots[] = $lot;
+                $lotsById[$trade->id()] ??= $lot;
 
                 continue;
             }
@@ -292,14 +403,36 @@ final class FifoMatcher
                 continue;
             }
 
-            $sellQtyLeft = $trade->quantity->abs();
-            $sellQtyTotal = $sellQtyLeft;
-            $sellAmountLeft = $trade->grossAmount->abs();
-            $sellCommissionLeft = $trade->commission?->abs();
-            $sellAutoFxLeft = $trade->autoFx?->abs();
+            $sale = new SaleProgress($trade);
+            $allocations = $assignments->for($trade->id());
+
+            if (null !== $allocations) {
+                $problems = self::assignmentProblems($trade, $allocations, $buys, $lotsById, $index);
+                if ([] !== $problems) {
+                    // Nothing consumed, and no "uncovered sale" either - the
+                    // assignment is the one thing to fix.
+                    $violations = [...$violations, ...$problems];
+
+                    continue;
+                }
+
+                $wanted = [];
+                foreach ($allocations as $allocation) {
+                    $wanted[$allocation->buyTradeId] = $allocation->quantity;
+                }
+                // Queue order, whatever order the lots were named in.
+                foreach ($openLots as $lot) {
+                    $quantity = $wanted[$lot->trade->id()] ?? null;
+                    if (null !== $quantity) {
+                        $matches[] = $this->consume($lot, $quantity, $sale, ++$sequence, LotMethod::Specific);
+                    }
+                }
+
+                continue;
+            }
 
             foreach ($openLots as $lot) {
-                if (!$sellQtyLeft->isPositive()) {
+                if (!$sale->quantityLeft->isPositive()) {
                     break;
                 }
 
@@ -307,74 +440,158 @@ final class FifoMatcher
                     continue;
                 }
 
-                $matchedQty = $lot->remainingQuantity->min($sellQtyLeft);
-
-                $lotQtyBefore = $lot->remainingQuantity;
-                $buyCost = $lot->take($matchedQty);
-                [$buyCommission, $buyAutoFx] = $lot->takeFees($matchedQty, $lotQtyBefore);
-                $sellProceeds = $this->slice(
-                    $sellAmountLeft,
-                    $matchedQty,
-                    $sellQtyLeft,
-                    $sellQtyTotal,
-                    $trade->grossAmount->abs(),
-                );
-                $sellCommission = $this->sliceOptional(
-                    $trade->commission,
-                    $sellCommissionLeft,
-                    $matchedQty,
-                    $sellQtyLeft,
-                    $sellQtyTotal,
-                );
-                $sellAutoFx = $this->sliceOptional(
-                    $trade->autoFx,
-                    $sellAutoFxLeft,
-                    $matchedQty,
-                    $sellQtyLeft,
-                    $sellQtyTotal,
-                );
-
-                $matches[] = new FifoMatch(
-                    $trade->symbol,
-                    $lot->trade->date,
-                    $trade->date,
-                    $matchedQty,
-                    $buyCost,
-                    $sellProceeds,
-                    $lot->trade->externalId,
-                    $trade->externalId,
-                    $lot->trade->source,
-                    $trade->source,
-                    ++$sequence,
-                    $lot->trade->instrument,
-                    $trade->instrument,
-                    $buyCommission,
-                    $sellCommission,
-                    $buyAutoFx,
-                    $sellAutoFx,
-                    $trade->broker,
-                    $lot->trade->id(),
-                    $trade->id(),
-                    $lot->trade->unitPrice,
-                    $trade->unitPrice,
-                );
-
-                $sellQtyLeft = $sellQtyLeft->minus($matchedQty);
-                $sellAmountLeft = $sellAmountLeft->minus($sellProceeds);
-                if (null !== $sellCommissionLeft && null !== $sellCommission) {
-                    $sellCommissionLeft = $sellCommissionLeft->minus($sellCommission);
-                }
-                if (null !== $sellAutoFxLeft && null !== $sellAutoFx) {
-                    $sellAutoFxLeft = $sellAutoFxLeft->minus($sellAutoFx);
-                }
+                $matches[] = $this->consume($lot, $lot->remainingQuantity->min($sale->quantityLeft), $sale, ++$sequence, LotMethod::Fifo);
             }
 
-            if ($sellQtyLeft->isPositive()) {
-                $unmatched[] = new UnmatchedSell($trade->symbol, $trade->date, $sellQtyLeft, $trade->id());
+            if ($sale->quantityLeft->isPositive()) {
+                $unmatched[] = new UnmatchedSell($trade->symbol, $trade->date, $sale->quantityLeft, $trade->id());
             }
         }
 
-        return new FifoResult($matches, $unmatched, [], self::openPositions($openLots, PositionDirection::Long));
+        return new FifoResult($matches, $unmatched, $violations, self::openPositions($openLots, PositionDirection::Long));
+    }
+
+    /**
+     * Why a sale's named lots cannot be honoured - all of it, before anything
+     * is consumed.
+     *
+     * @param list<LotAllocation>     $allocations
+     * @param array<string, true>     $buys     buy ids of the sale's queue
+     * @param array<string, OpenLot>  $lotsById buys of the queue seen before the sale
+     * @param array<string, Trade>    $index
+     *
+     * @return list<FifoViolation>
+     */
+    private static function assignmentProblems(Trade $sale, array $allocations, array $buys, array $lotsById, array $index): array
+    {
+        $problems = [];
+        $sold = $sale->quantity->abs();
+
+        $named = Decimal::zero();
+        foreach ($allocations as $allocation) {
+            $named = $named->plus($allocation->quantity);
+        }
+        if (0 !== $named->compareTo($sold)) {
+            $problems[] = new FifoViolation(
+                FifoViolationKind::LotQuantityMismatch,
+                $sale->symbol,
+                $sale->date,
+                $sold,
+                $sale->id(),
+                requested: $named,
+            );
+        }
+
+        foreach ($allocations as $allocation) {
+            $id = $allocation->buyTradeId;
+            $lot = $lotsById[$id] ?? null;
+
+            if (null === $lot) {
+                $other = $index[$id] ?? null;
+                $kind = match (true) {
+                    isset($buys[$id]) => FifoViolationKind::LotNotYetOpen,
+                    null !== $other => FifoViolationKind::LotNotEligible,
+                    default => FifoViolationKind::LotMissing,
+                };
+                $problems[] = new FifoViolation(
+                    $kind,
+                    $sale->symbol,
+                    $sale->date,
+                    $sold,
+                    $sale->id(),
+                    lotDate: $other?->date,
+                    requested: $allocation->quantity,
+                    lotTradeId: $id,
+                );
+
+                continue;
+            }
+
+            if ($lot->remainingQuantity->compareTo($allocation->quantity) < 0) {
+                $problems[] = new FifoViolation(
+                    FifoViolationKind::LotInsufficient,
+                    $sale->symbol,
+                    $sale->date,
+                    $sold,
+                    $sale->id(),
+                    lotDate: $lot->trade->date,
+                    requested: $allocation->quantity,
+                    available: $lot->remainingQuantity,
+                    lotTradeId: $id,
+                );
+            }
+        }
+
+        return $problems;
+    }
+
+    /**
+     * Takes `$quantity` from one lot for the sale - the one place FIFO and
+     * named lots share, so both prorate the same way: the last slice of a lot
+     * or a sale takes the exact remainder, fee slices are never negative.
+     */
+    private function consume(OpenLot $lot, Decimal $quantity, SaleProgress $sale, int $sequence, LotMethod $method): FifoMatch
+    {
+        $trade = $sale->trade;
+        $lotQtyBefore = $lot->remainingQuantity;
+        $buyCost = $lot->take($quantity);
+        [$buyCommission, $buyAutoFx] = $lot->takeFees($quantity, $lotQtyBefore);
+        $sellProceeds = $this->slice(
+            $sale->amountLeft,
+            $quantity,
+            $sale->quantityLeft,
+            $sale->quantityTotal,
+            $trade->grossAmount->abs(),
+        );
+        $sellCommission = $this->sliceOptional(
+            $trade->commission,
+            $sale->commissionLeft,
+            $quantity,
+            $sale->quantityLeft,
+            $sale->quantityTotal,
+        );
+        $sellAutoFx = $this->sliceOptional(
+            $trade->autoFx,
+            $sale->autoFxLeft,
+            $quantity,
+            $sale->quantityLeft,
+            $sale->quantityTotal,
+        );
+
+        $sale->quantityLeft = $sale->quantityLeft->minus($quantity);
+        $sale->amountLeft = $sale->amountLeft->minus($sellProceeds);
+        if (null !== $sale->commissionLeft && null !== $sellCommission) {
+            $sale->commissionLeft = $sale->commissionLeft->minus($sellCommission);
+        }
+        if (null !== $sale->autoFxLeft && null !== $sellAutoFx) {
+            $sale->autoFxLeft = $sale->autoFxLeft->minus($sellAutoFx);
+        }
+
+        return new FifoMatch(
+            $trade->symbol,
+            $lot->trade->date,
+            $trade->date,
+            $quantity,
+            $buyCost,
+            $sellProceeds,
+            $lot->trade->externalId,
+            $trade->externalId,
+            $lot->trade->source,
+            $trade->source,
+            $sequence,
+            $lot->trade->instrument,
+            $trade->instrument,
+            $buyCommission,
+            $sellCommission,
+            $buyAutoFx,
+            $sellAutoFx,
+            $trade->broker,
+            $lot->trade->id(),
+            $trade->id(),
+            $lot->trade->unitPrice,
+            $trade->unitPrice,
+            lotMethod: $method,
+        );
     }
 
     /**

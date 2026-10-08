@@ -6,6 +6,7 @@ namespace App\Tests\Unit\Model;
 
 use App\Exception\InvalidRecordException;
 use App\Fifo\InstrumentKind;
+use App\Fifo\LotMethod;
 use App\Fifo\PositionDirection;
 use App\Fifo\PositionEffect;
 use App\Fifo\Trade;
@@ -30,6 +31,28 @@ final class OptionPositionTest extends TestCase
         // by an open workbench must keep matching.
         self::assertSame('e062884c4e7cf5895fc7d08cf0829f07164989d45a7d70c4fe4685d65587ee55', self::stock()->fingerprint());
         self::assertSame('99e3c2c9bbb23b2ced20f5b1b211d5c8e38d446adf23a71885dab0d1afca273f', self::stockTrade()->id());
+    }
+
+    /**
+     * Naming the lot (specific identification) records how it was chosen, but
+     * the position's identity stays the one FIFO would have produced.
+     */
+    public function testTheLotMethodIsNotPartOfTheIdentity(): void
+    {
+        $named = new ClosedPosition(
+            'ALFA CORP',
+            'US',
+            'USD',
+            new DateTimeImmutable('2025-03-03'),
+            Amount::of('1001.00', 'USD'),
+            new DateTimeImmutable('2026-02-02'),
+            Amount::of('1198.50', 'USD'),
+            Decimal::of('10'),
+            'f.csv',
+            lotMethod: LotMethod::Specific,
+        );
+
+        self::assertSame(self::stock()->fingerprint(), $named->fingerprint());
     }
 
     public function testAnOptionTradeDoesNotShareAnIdentityWithTheSameStockRow(): void

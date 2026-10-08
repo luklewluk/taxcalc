@@ -6,6 +6,9 @@ namespace App\Tests\Unit\Web;
 
 use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
+use App\Fifo\LotAllocation;
+use App\Fifo\LotAssignments;
+use App\Fifo\LotMethod;
 use App\Fifo\PositionDirection;
 use App\Fifo\Trade;
 use App\Money\Amount;
@@ -63,6 +66,45 @@ final class WorkbenchCalculatorTest extends TestCase
         self::assertCount(1, $settlement->unmatchedSells);
         self::assertSame($orphan->id(), $settlement->unmatchedSells[0]->tradeId);
         self::assertSame([], $settlement->violations);
+    }
+
+    public function testNamedLotsReachThePositionsTheyBecome(): void
+    {
+        $older = self::trade('AAA', '2024-01-10', '10', '1000.00', 'USD');
+        $newer = self::trade('AAA', '2024-02-10', '10', '1500.00', 'USD');
+        $sale = self::trade('AAA', '2024-03-10', '-10', '2000.00', 'USD');
+
+        $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle(
+            [$older, $newer, $sale],
+            new LotAssignments([$sale->id() => [new LotAllocation($newer->id(), Decimal::of('10'))]]),
+        );
+
+        self::assertSame([], $settlement->errors);
+        self::assertSame('1500.00', (string) $settlement->positions[0]->buyAmount->value());
+        self::assertSame(LotMethod::Specific, $settlement->positions[0]->lotMethod);
+    }
+
+    /**
+     * A named lot that cannot be honoured blocks the result and points at the
+     * FIFO tab, where the lots are chosen - never a quiet return to FIFO.
+     */
+    public function testAnAssignmentThatCannotBeHonouredBlocksAndPointsAtTheFifoTab(): void
+    {
+        $lot = self::trade('AAA', '2024-01-10', '10', '1000.00', 'USD');
+        $sale = self::trade('AAA', '2024-03-10', '-10', '2000.00', 'USD');
+
+        $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle(
+            [$lot, $sale],
+            new LotAssignments([$sale->id() => [new LotAllocation($lot->id(), Decimal::of('4'))]]),
+        );
+
+        self::assertNotEmpty($settlement->errors);
+        self::assertSame([], $settlement->positions);
+        $diagnostic = $settlement->diagnostics[0];
+        self::assertSame('fifo.lot_quantity_mismatch', $diagnostic->code);
+        self::assertSame(\App\Web\DiagnosticLevel::Blocking, $diagnostic->level);
+        self::assertSame('fifo', $diagnostic->targetTab);
+        self::assertSame($sale->id(), $diagnostic->rowId);
     }
 
     private static function trade(string $symbol, string $date, string $quantity, string $total, string $currency): Trade

@@ -47,6 +47,8 @@ final readonly class FifoMatch
         public ?Amount $sellUnitPrice = null,
         public InstrumentKind $kind = InstrumentKind::Stock,
         public PositionDirection $direction = PositionDirection::Long,
+        /** How the lot was chosen; deliberately outside {@see lineageKey()}. */
+        public LotMethod $lotMethod = LotMethod::Fifo,
     ) {
     }
 

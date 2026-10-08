@@ -7,6 +7,7 @@ namespace App\Web;
 use App\Exception\InvalidRecordException;
 use App\Fifo\FifoMatcher;
 use App\Fifo\FifoViolationKind;
+use App\Fifo\LotAssignments;
 use App\Fifo\UnmatchedSell;
 use App\Fifo\Trade;
 use App\Model\ClosedPosition;
@@ -21,9 +22,9 @@ final readonly class WorkbenchCalculator
     /**
      * @param list<Trade> $trades
      */
-    public function settle(array $trades): SettlementResult
+    public function settle(array $trades, LotAssignments $assignments = new LotAssignments()): SettlementResult
     {
-        $fifo = $this->fifoMatcher->match($trades);
+        $fifo = $this->fifoMatcher->match($trades, $assignments);
         $positions = [];
         $matchPositions = [];
         $errors = [];
@@ -88,10 +89,17 @@ final readonly class WorkbenchCalculator
             }
 
             // The rest contradict the data itself (an open against an open
-            // position, a missing open/close, stocks and options in one queue).
+            // position, a missing open/close, stocks and options in one queue)
+            // - or a named lot that cannot be honoured, fixed where lots are
+            // chosen, on the FIFO tab.
             $message = $violation->describe();
             $errors[] = $message;
-            $diagnostics[] = Diagnostic::blocking($code, $message, 'transactions', $violation->tradeId ?: null);
+            $diagnostics[] = Diagnostic::blocking(
+                $code,
+                $message,
+                $violation->kind->isLotAssignment() ? 'fifo' : 'transactions',
+                $violation->tradeId ?: null,
+            );
         }
 
         return new SettlementResult(
