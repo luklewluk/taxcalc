@@ -2056,16 +2056,21 @@ kbd {
 
 .settings-help dt {
     color: var(--ink);
-    font-size: 0.8125rem;
     font-weight: 650;
 }
 
 .settings-help dd {
     margin: 0.125rem 0 0;
     color: var(--ink-2);
-    font-size: 0.8125rem;
-    line-height: 1.5;
 }
+
+/* One text size across the settings cards: labels, choices, help and notes. */
+.settings-grid .field--inline > label,
+.settings-grid select,
+.settings-help dt,
+.settings-help dd,
+.settings-grid .note { font-size: 0.9375rem; line-height: 1.5; }
+.settings-grid .field--inline > label { font-weight: 650; }
 
 .pit-card {
     padding: 1.25rem;
