@@ -22,6 +22,7 @@
                     <th>
                         {{ item.position.name }}
                         {% if item.position.isOption %}<span class="cell-note position-kind{{ item.position.isShort ? ' position-kind--short' : '' }}">opcja · {{ item.position.direction.label }}</span>{% endif %}
+                        {% if item.position.lotMethod.value == 'specific' %}<span class="cell-note">wskazana partia</span>{% endif %}
                     </th>
                     <td>{{ item.position.quantity ?: '—' }}</td>
                     <td>{{ item.position.buyDate|date('Y-m-d') }}</td>
@@ -68,6 +69,15 @@
             zmienia ich kosztu nabycia. Cena opcji jest podana za jedną akcję bazową, a Total uwzględnia
             mnożnik. Jeśli w latach ubiegłych rozliczałeś premię w dniu jej otrzymania, nie rozliczaj jej
             ponownie.
+        </p>
+    {% endif %}
+    {% if report.stock.positions|filter(item => item.position.lotMethod.value == 'specific')|length > 0 %}
+        <p class="note">
+            Pozycje oznaczone „wskazana partia” mają koszt partii wybranej w mapie partii, a nie najstarszej.
+            Kolejność FIFO z art. 30b ust. 7 ustawy o PIT stosuje się, gdy nie da się ustalić, które papiery
+            zbyto; jeśli broker pozwolił wskazać partię, można przyjąć jej koszt (interpretacja indywidualna
+            Dyrektora KIS z 13.02.2026, 0112-KDIL2-1.4011.929.2025.1.TR). Interpretacja chroni tylko
+            wnioskodawcę — zachowaj potwierdzenie wyboru partii od brokera.
         </p>
     {% endif %}
     {% if report.stock.positions|filter(item => item.disposalCost is null)|length > 0 %}

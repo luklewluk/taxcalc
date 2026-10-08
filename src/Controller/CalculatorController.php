@@ -6,6 +6,7 @@ namespace App\Controller;
 
 use App\Fifo\FifoMatch;
 use App\Fifo\Trade;
+use App\Fifo\LotAssignments;
 use App\Import\CsvImportService;
 use App\Import\CsvSource;
 use App\Import\Degiro\ExchangeCountry;
@@ -31,6 +32,9 @@ use App\Web\RowFormMapper;
 use App\Web\SettlementResult;
 use App\Web\SettingsProvider;
 use App\Web\TaxFormMap;
+use App\Web\Lots\LotBoardBuilder;
+use App\Web\Lots\LotEditorRequest;
+use App\Web\Lots\LotSelection;
 use App\Web\TaxYearProvider;
 use App\Web\Upload\UploadedCsvReader;
 use App\Web\WorkbenchCalculator;
@@ -61,7 +65,11 @@ use Symfony\Component\Routing\Attribute\Route;
  *     diagnostics: list<Diagnostic>,
  *     settings: WorkbenchSettings,
  *     tradesComplete: bool,
- *     demo: bool
+ *     demo: bool,
+ *     lotAssignments: LotAssignments,
+ *     lotField: string,
+ *     lotFieldValid: bool,
+ *     lotEditor: LotEditorRequest|null
  * }
  * @phpstan-type WorkbenchContext array{
  *     report: TaxReport|null,
@@ -93,7 +101,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     expected_dividends: int,
  *     expected_fees: int,
  *     disclaimer: string,
- *     demo: bool
+ *     demo: bool,
+ *     lot_assignments_field: string
  * }
  * @phpstan-type PreparedWorkbench array{state: WorkbenchState, context: WorkbenchContext, settlement: SettlementResult|null}
  */
@@ -128,6 +137,8 @@ final class CalculatorController extends AbstractController
         private readonly CountrySourceApplier $countrySourceApplier,
         private readonly TaxRates $taxRates,
         private readonly TradeLedgerBuilder $tradeLedgerBuilder,
+        private readonly LotSelection $lotSelection,
+        private readonly LotBoardBuilder $lotBoardBuilder,
         private readonly int $maxFiles,
         private readonly int $maxBytes,
         private readonly string $demoDir,
@@ -282,6 +293,7 @@ final class CalculatorController extends AbstractController
             $state['fees'],
             $state['dividends'],
             $state['settings']->creditMethod,
+            $state['lotAssignments'],
         ));
         $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
         $response->headers->set('Content-Disposition', $response->headers->makeDisposition(
@@ -313,6 +325,7 @@ final class CalculatorController extends AbstractController
             'tradeRows' => [], 'dividendRows' => [], 'feeRows' => [],
             'tombstones' => [], 'errors' => [], 'settings' => new WorkbenchSettings(),
             'diagnostics' => [], 'tradesComplete' => true, 'demo' => false,
+            ...self::noLots(),
         ];
     }
 
@@ -333,6 +346,7 @@ final class CalculatorController extends AbstractController
             'settings' => $settings,
             'tradesComplete' => true,
             'demo' => false,
+            ...self::noLots(),
         ];
     }
 
@@ -400,6 +414,10 @@ final class CalculatorController extends AbstractController
         $fees = $this->rowFormMapper->mapFees($rawFees);
 
         $tradeTruncation = $this->truncationErrors('transakcji', $request, 'expected_trades', count($rawTrades));
+        $tradesComplete = [] === $trades->errors && [] === $tradeTruncation;
+        // The whole body, type-checked inside: InputBag::get() answers a
+        // tampered array with a 400 rather than a finding.
+        $lots = $this->lotSelection->read($request->request->all(), $trades->trades, $trades->rows, $tradesComplete);
         $dividendTruncation = $this->truncationErrors('dywidend', $request, 'expected_dividends', count($rawDividends));
         $feeTruncation = $this->truncationErrors('opłat', $request, 'expected_fees', count($rawFees));
 
@@ -409,6 +427,7 @@ final class CalculatorController extends AbstractController
             ...$dividendTruncation,
             ...$feeTruncation,
             ...$trades->errors, ...$dividends->errors, ...$fees->errors,
+            ...$lots->errors,
         ];
         $diagnostics = [
             ...$groupDiagnostics,
@@ -418,6 +437,7 @@ final class CalculatorController extends AbstractController
             ...$trades->diagnostics,
             ...$dividends->diagnostics,
             ...$fees->diagnostics,
+            ...$lots->diagnostics,
         ];
 
         return [
@@ -434,9 +454,13 @@ final class CalculatorController extends AbstractController
             'settings' => $settings,
             // Every posted trade row became a trade, so FIFO over them means
             // something even while another tab blocks the result.
-            'tradesComplete' => [] === $trades->errors && [] === $tradeTruncation,
+            'tradesComplete' => $tradesComplete && $lots->fieldValid,
             // Rides the form like the tax year, so the notice outlives a recalculation.
             'demo' => $this->truthy($request->request->get('demo')),
+            'lotAssignments' => $lots->assignments,
+            'lotField' => $lots->field,
+            'lotFieldValid' => $lots->fieldValid,
+            'lotEditor' => $lots->editor,
         ];
     }
 
@@ -457,7 +481,7 @@ final class CalculatorController extends AbstractController
         $report = null;
         $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
         if (!$hasBlocking) {
-            $settlement = $this->workbenchCalculator->settle($state['trades']);
+            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments']);
             $state['errors'] = [...$state['errors'], ...$settlement->errors];
             $diagnostics = $this->uniqueDiagnostics([...$diagnostics, ...$settlement->diagnostics]);
             $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
@@ -518,6 +542,7 @@ final class CalculatorController extends AbstractController
             'expected_fees' => count($state['feeRows']),
             'disclaimer' => CsvReportWriter::DISCLAIMER,
             'demo' => $state['demo'],
+            'lot_assignments_field' => $state['lotField'],
         ];
 
         return ['state' => $state, 'context' => $context, 'settlement' => $settlement];
@@ -548,7 +573,7 @@ final class CalculatorController extends AbstractController
         // are not merged: the panel lists what blocks the result, and FIFO's
         // own items join it once the result is computed again.
         if (null === $settlement && $state['tradesComplete'] && [] !== $state['trades']) {
-            $settlement = $this->workbenchCalculator->settle($state['trades']);
+            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments']);
         }
 
         $context['trade_ledger'] = $this->tradeLedgerBuilder->build(
@@ -557,6 +582,16 @@ final class CalculatorController extends AbstractController
             $settlement,
             $context['report']->stock->positions ?? [],
             $context['diagnostics'],
+        );
+        // Like the ledger it is built from: full renders only, outside every
+        // AJAX fragment, so a background recalculation cannot wipe an open
+        // lot editor.
+        $context['lot_board'] = $this->lotBoardBuilder->build(
+            $context['trade_ledger'],
+            $state['lotAssignments'],
+            $state['trades'],
+            $state['lotEditor'],
+            $state['lotFieldValid'],
         );
 
         return $this->render('calculator/workbench.html.twig', $context);
@@ -664,6 +699,16 @@ final class CalculatorController extends AbstractController
         }
 
         return $existing;
+    }
+
+    /**
+     * The lot keys of a state that names no lot: every sale is FIFO.
+     *
+     * @return array{lotAssignments: LotAssignments, lotField: string, lotFieldValid: bool, lotEditor: null}
+     */
+    private static function noLots(): array
+    {
+        return ['lotAssignments' => new LotAssignments(), 'lotField' => '', 'lotFieldValid' => true, 'lotEditor' => null];
     }
 
     private function queueKey(Trade $trade): string

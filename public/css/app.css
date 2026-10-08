@@ -2472,6 +2472,141 @@ a.flag { text-decoration: underline; }
     .attention-action .button--link { min-height: var(--tap); font-size: 1rem; }
 }
 
+/*
+ * FIFO tab: the lot map. One disclosure per FIFO queue, openings (lots) on
+ * the left and the closings that consumed them on the right; side by side
+ * once there is room, stacked below that. Lot references are links between
+ * the two panes.
+ */
+.lot-board { display: grid; gap: 1rem; margin-bottom: 2rem; }
+.lot-board__intro h3 { margin: 0 0 0.25rem; font-size: 1.125rem; }
+.lot-board__intro .note,
+.lot-board__reset { margin: 0; }
+.lot-board__reset .button--link { padding-inline: 0; }
+.lot-pairs-title { margin: 0 0 0.75rem; font-size: 1.125rem; }
+
+.lot-queue {
+    border: 1px solid var(--hairline);
+    border-radius: var(--r-1);
+    background: var(--surface);
+}
+
+.lot-queue > summary {
+    position: relative;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 1rem;
+    min-height: var(--tap);
+    padding: 0.75rem 2.75rem 0.75rem 1rem;
+    cursor: pointer;
+    list-style: none;
+}
+
+.lot-queue > summary::-webkit-details-marker { display: none; }
+.lot-queue > summary::marker { content: ""; }
+
+/* The same border-drawn chevron as .disclosure, flipped while open. */
+.lot-queue > summary::after {
+    content: "";
+    position: absolute;
+    right: 1.25rem;
+    top: 50%;
+    width: 0.45rem;
+    height: 0.45rem;
+    margin-top: -0.32rem;
+    border-right: 2px solid var(--ink-2);
+    border-bottom: 2px solid var(--ink-2);
+    border-radius: 0 0 2px 0;
+    transform: rotate(45deg);
+    transition: transform 0.25s var(--ease), margin-top 0.25s var(--ease);
+}
+
+.lot-queue[open] > summary::after { margin-top: -0.14rem; transform: rotate(-135deg); }
+.lot-queue > summary:hover .lot-queue__title { color: var(--accent); }
+.lot-queue > summary:hover::after { border-color: var(--accent); }
+.lot-queue__title { font-weight: 650; overflow-wrap: anywhere; }
+.lot-queue__meta { color: var(--ink-2); font-size: 0.8125rem; }
+
+.lot-panes {
+    display: grid;
+    gap: 1rem;
+    padding: 0 1rem 1rem;
+}
+
+@media (min-width: 46rem) {
+    .lot-panes { grid-template-columns: 1fr 1fr; }
+}
+
+.lot-pane { min-width: 0; }
+
+.lot-pane__title {
+    margin: 0 0 0.5rem;
+    padding-bottom: 0.375rem;
+    border-bottom: 1px solid var(--hairline);
+    color: var(--ink-2);
+    font-size: 0.8125rem;
+    font-weight: 650;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.lot-list { display: grid; gap: 0.5rem; margin: 0; padding: 0; list-style: none; }
+
+.lot {
+    scroll-margin-top: 13rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: calc(var(--r-1) - 4px);
+    background: var(--canvas);
+    font-size: 0.875rem;
+}
+
+.lot:target { box-shadow: inset 3px 0 0 var(--brand); }
+.lot--editing { background: color-mix(in srgb, var(--brand-soft) 55%, transparent); box-shadow: inset 3px 0 0 var(--brand); }
+.lot--problem { box-shadow: inset 3px 0 0 var(--error); }
+
+.lot__head {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.25rem 0.75rem;
+    margin: 0;
+}
+
+.lot__label { font-weight: 700; }
+.lot__date { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+.lot__qty { font-variant-numeric: tabular-nums; }
+.lot__trade { margin-left: auto; font-size: 0.8125rem; }
+
+.lot__links,
+.lot__problems { display: grid; gap: 0.125rem; margin: 0.375rem 0 0; padding: 0; list-style: none; }
+.lot__links li { font-variant-numeric: tabular-nums; }
+.lot__problems { color: var(--error); font-size: 0.8125rem; }
+.lot__open { margin: 0.375rem 0 0; color: var(--ink-2); font-size: 0.8125rem; }
+.lot__open.flag { color: var(--warning); }
+.lot__actions { display: flex; flex-wrap: wrap; gap: 0.25rem 1rem; margin: 0.375rem 0 0; }
+.lot__actions .button--link { min-height: 2rem; padding-inline: 0; font-size: 0.875rem; }
+
+.lot-ref { font-weight: 650; }
+.lot-ref--specific { color: var(--accent-strong); }
+
+.lot-method {
+    padding: 0.0625rem 0.5rem;
+    border-radius: var(--r-pill);
+    background: var(--accent-tint);
+    color: var(--accent);
+    font-size: 0.75rem;
+    font-weight: 650;
+}
+
+.lot-method--specific { background: var(--brand); color: var(--on-accent); }
+
+.lot-editor { display: grid; gap: 0.75rem; margin-top: 0.75rem; }
+.lot-editor__intro,
+.lot-editor__actions { margin: 0; }
+.lot-editor__actions { display: flex; flex-wrap: wrap; align-items: center; gap: 0.5rem 1rem; }
+.lot-editor__table input { width: 7rem; padding: 0.375rem 0.5rem; font-size: 0.9375rem; text-align: right; }
+
 @media print {
     .workbench-bar,
     .attention-action,
@@ -2484,7 +2619,10 @@ a.flag { text-decoration: underline; }
     .trade__panel--edit,
     .trade__panel > summary,
     .trade__actions,
-    .ledger-notice .button { display: none !important; }
+    .ledger-notice .button,
+    .lot-editor,
+    .lot__actions,
+    .lot-board__reset { display: none !important; }
     .trade-ledger.is-enhanced .trade__panels { display: table-row; }
     .workbench-panel,
     .workbench-panel[hidden] {

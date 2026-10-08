@@ -1,0 +1,48 @@
+{#
+    The one lot editor open on this render. Its inputs are the only per-lot
+    fields the form ever carries; the lot ids ride in one hidden list next to a
+    count, so a POST cut short is noticed instead of saving half the lots.
+#}
+{% set result_url = path('app_calculator_result') %}
+<div class="lot-editor" data-lot-editor>
+    <input type="hidden" name="lot_edit_ids" value="{{ editor.lotIds|json_encode }}">
+    <input type="hidden" name="lot_edit_count" value="{{ editor.rows|length }}">
+    <p class="lot-editor__intro">
+        Sprzedano <strong>{{ editor.soldQuantity }} szt.</strong> Wpisz, ile sztuk pochodzi z każdej partii otwartej
+        w dniu sprzedaży — suma musi się zgadzać.
+    </p>
+    {% if editor.errors is not empty %}
+        <ul class="lot__problems" role="alert">
+            {% for error in editor.errors %}<li>{{ error }}</li>{% endfor %}
+        </ul>
+    {% endif %}
+    {% if editor.rows is empty %}
+        <p class="note">W dniu tej sprzedaży nie było otwartych partii.</p>
+    {% else %}
+        <div class="table-wrapper">
+            <table class="table table--compact lot-editor__table">
+                <thead><tr><th scope="col">Partia</th><th scope="col">Data zakupu</th><th scope="col">Dostępne w dniu sprzedaży</th><th scope="col">Sprzedane z partii</th></tr></thead>
+                <tbody>
+                {% for row in editor.rows %}
+                    <tr>
+                        <th scope="row">{{ row.label }}</th>
+                        <td>{{ row.row.date }}</td>
+                        <td>{{ row.available }} szt.</td>
+                        <td>
+                            <label class="visually-hidden" for="lot-edit-qty-{{ row.index }}">Sztuk sprzedanych z partii {{ row.label }}</label>
+                            <input id="lot-edit-qty-{{ row.index }}" type="text" inputmode="decimal" autocomplete="off"
+                                   name="lot_edit_qty[{{ row.index }}]" value="{{ row.value }}" size="8">
+                        </td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% endif %}
+    <p class="lot-editor__actions">
+        <button type="submit" class="button button--primary" name="lot_save" value="{{ editor.saleId }}"
+                formaction="{{ result_url }}#lot-close-{{ editor.saleId }}" formnovalidate data-lot-save>Zapisz partie</button>
+        <button type="submit" class="button button--plain" name="lot_cancel" value="1"
+                formaction="{{ result_url }}#lot-close-{{ editor.saleId }}" formnovalidate>Anuluj</button>
+    </p>
+</div>

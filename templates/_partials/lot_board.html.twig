@@ -1,0 +1,126 @@
+{#
+    The FIFO tab's lot map: per FIFO queue, the lots that opened positions on
+    the left and the closings that consumed them on the right - every year, not
+    just the one being settled. Outside every data-fragment and built on full
+    renders only, like Transakcje, so a background recalculation cannot wipe an
+    open lot editor. Every lot action is a real submit with a formaction:
+    without one app.js would send the form over AJAX and drop the button's name.
+#}
+{% set board = lot_board %}
+{% set result_url = path('app_calculator_result') %}
+<section class="lot-board" data-lot-board data-manual-commit aria-labelledby="lot-board-title">
+    <div class="lot-board__intro">
+        <h3 id="lot-board-title">Partie i zamknięcia</h3>
+        <p class="note">
+            Domyślnie sprzedaż zamyka najstarsze partie (FIFO). Jeśli broker pozwolił wskazać, którą partię
+            sprzedajesz, odwzoruj to przyciskiem „Zmień partie” przy sprzedaży — zgodnie z interpretacją
+            Dyrektora KIS z 13.02.2026 (0112-KDIL2-1.4011.929.2025.1.TR). Zachowaj potwierdzenie wyboru od brokera.
+        </p>
+    </div>
+
+    {% if not board.fieldValid %}
+        <div class="ledger-notice" role="alert">
+            <p>Nie udało się odczytać wskazanych partii z formularza, więc nic nie zostało przeliczone.</p>
+            <button type="submit" class="button button--link no-print" name="lot_reset" value="1"
+                    formaction="{{ result_url }}#panel-fifo" formnovalidate>Przywróć FIFO wszędzie</button>
+        </div>
+    {% elseif not board.available %}
+        <p class="note">Mapa partii pojawi się, gdy wszystkie transakcje będą poprawne.</p>
+    {% elseif board.empty %}
+        <p class="note">Brak transakcji kupna lub sprzedaży.</p>
+    {% elseif board.hasSpecific %}
+        <p class="lot-board__reset">
+            <button type="submit" class="button button--link no-print" name="lot_reset" value="1"
+                    formaction="{{ result_url }}#panel-fifo" formnovalidate>Przywróć FIFO we wszystkich sprzedażach</button>
+        </p>
+    {% endif %}
+
+    {% for queue in board.queues %}
+        {% set unit = queue.isOption ? 'kontr.' : 'szt.' %}
+        <details class="lot-queue" id="lot-queue-{{ loop.index }}"{{ queue.expanded ? ' open' : '' }}>
+            <summary>
+                <span class="lot-queue__title">{{ queue.title }}</span>
+                <span class="lot-queue__meta">
+                    {{ queue.broker }} · otwarcia: {{ queue.openings|length }} · zamknięcia: {{ queue.closings|length }}
+                    {%- if queue.isOption %} · opcje — dopasowanie w serii, bez wskazywania partii{% endif %}
+                    {%- if queue.mixedKinds %} · <span class="flag flag--error">akcje i opcje w jednej puli FIFO</span>{% endif %}
+                </span>
+            </summary>
+            <div class="lot-panes">
+                <div class="lot-pane">
+                    <h4 class="lot-pane__title">Otwarcia</h4>
+                    {% if queue.openings is empty %}<p class="note">Brak otwarć.</p>{% endif %}
+                    <ol class="lot-list">
+                        {% for lot in queue.openings %}
+                            <li class="lot" id="lot-open-{{ lot.tradeId }}">
+                                <p class="lot__head">
+                                    <span class="lot__label">{{ lot.label }}</span>
+                                    <span class="lot__date">{{ lot.row.date ?? '' }}</span>
+                                    <span class="lot__qty">{{ lot.quantity ?? lot.row.quantity ?? '' }} {{ unit }}</span>
+                                    <a class="lot__trade" href="#row-{{ lot.tradeId }}">transakcja</a>
+                                </p>
+                                {% if lot.closedBy is not empty %}
+                                    <ul class="lot__links">
+                                        {% for link in lot.closedBy %}
+                                            <li><a class="lot-ref lot-ref--{{ link.method.value }}" href="#lot-close-{{ link.tradeId }}">→ {{ link.label }}</a> {{ link.quantity }} {{ unit }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                                {% if lot.remaining.positive %}
+                                    <p class="lot__open">{{ lot.closedBy is empty ? 'nieprzypisana · ' : '' }}{{ queue.isOption ? 'otwarte' : 'w portfelu' }} {{ lot.remaining }} {{ unit }}</p>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ol>
+                </div>
+                <div class="lot-pane">
+                    <h4 class="lot-pane__title">Zamknięcia</h4>
+                    {% if queue.closings is empty %}<p class="note">Brak zamknięć.</p>{% endif %}
+                    <ol class="lot-list">
+                        {% for close in queue.closings %}
+                            {% set editing = board.editor and board.editor.saleId == close.tradeId %}
+                            <li class="lot lot--close{{ close.problems is not empty ? ' lot--problem' : '' }}{{ editing ? ' lot--editing' : '' }}" id="lot-close-{{ close.tradeId }}">
+                                <p class="lot__head">
+                                    <span class="lot__label">{{ close.label }}</span>
+                                    <span class="lot__date">{{ close.row.date ?? '' }}</span>
+                                    <span class="lot__qty">{{ close.quantity ?? close.row.quantity ?? '' }} {{ unit }}</span>
+                                    {% if not queue.isOption %}
+                                        <span class="lot-method lot-method--{{ close.specific ? 'specific' : 'fifo' }}">{{ close.specific ? 'wskazane' : 'FIFO' }}</span>
+                                    {% endif %}
+                                    <a class="lot__trade" href="#row-{{ close.tradeId }}">transakcja</a>
+                                </p>
+                                {% if close.lots is not empty %}
+                                    <ul class="lot__links">
+                                        {% for link in close.lots %}
+                                            <li><a class="lot-ref lot-ref--{{ link.method.value }}" href="#lot-open-{{ link.tradeId }}">← {{ link.label }}</a> {{ link.quantity }} {{ unit }}</li>
+                                        {% endfor %}
+                                    </ul>
+                                {% endif %}
+                                {% if close.unmatched is not null %}
+                                    <p class="lot__open flag flag--warning">bez pokrycia w otwarciach: {{ close.unmatched }} {{ unit }}</p>
+                                {% endif %}
+                                {% if close.problems is not empty %}
+                                    <ul class="lot__problems" role="alert">
+                                        {% for problem in close.problems %}<li>{{ problem }}</li>{% endfor %}
+                                    </ul>
+                                {% endif %}
+                                {% if editing %}
+                                    {% include '_partials/lot_editor.html.twig' with {editor: board.editor} %}
+                                {% elseif close.editable %}
+                                    <p class="lot__actions no-print">
+                                        <button type="submit" class="button button--link" name="lot_edit" value="{{ close.tradeId }}"
+                                                formaction="{{ result_url }}#lot-close-{{ close.tradeId }}" formnovalidate>Zmień partie</button>
+                                        {% if close.specific %}
+                                            <button type="submit" class="button button--link" name="lot_fifo" value="{{ close.tradeId }}"
+                                                    formaction="{{ result_url }}#lot-close-{{ close.tradeId }}" formnovalidate>Przywróć FIFO</button>
+                                        {% endif %}
+                                    </p>
+                                {% endif %}
+                            </li>
+                        {% endfor %}
+                    </ol>
+                </div>
+            </div>
+        </details>
+    {% endfor %}
+</section>

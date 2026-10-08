@@ -30,6 +30,9 @@
                 caption: is_option and row.side == 'BUY' ? 'Zamyka wystawione kontrakty' : 'Zamyka partie',
                 other: 'Otwarcie',
             } %}
+            {% if detail.closes|filter(m => m.match.lotMethod.value == 'specific')|length > 0 %}
+                <p class="cell-note">Partia wskazana ręcznie zamiast FIFO — <a href="#lot-close-{{ row.id }}" data-trade-link>zmień w mapie partii</a>.</p>
+            {% endif %}
             {% if detail.income is not null %}
                 <p class="trade-details__total">
                     Dochód z tej transakcji: <strong class="{{ detail.income.isNegative ? 'figure--negative' : '' }}">{{ detail.income|money_with_currency }}</strong>
@@ -45,6 +48,9 @@
                 caption: 'Zamknięta przez',
                 other: 'Zamknięcie',
             } %}
+            {% if detail.closedBy|filter(m => m.match.lotMethod.value == 'specific')|length > 0 %}
+                <p class="cell-note">Część zamknięć to partia wskazana ręcznie zamiast FIFO — <a href="#lot-open-{{ row.id }}" data-trade-link>mapa partii</a>.</p>
+            {% endif %}
         {% endif %}
 
         {% if detail.openQuantity %}

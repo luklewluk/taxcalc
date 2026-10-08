@@ -216,6 +216,15 @@
     /* Set up further down, once the ledger exists. */
     var openTrade = function () { return false; };
 
+    /* A lot inside a collapsed FIFO queue is invisible until its <details> opens. */
+    var openAncestors = function (element) {
+        var details = element.parentElement ? element.parentElement.closest('details') : null;
+        while (details) {
+            details.open = true;
+            details = details.parentElement ? details.parentElement.closest('details') : null;
+        }
+    };
+
     /**
      * A hash names a tab, or an element inside one: a trade row after "Zapisz"
      * (#row-...), an attention item, a whole panel. Only a tab name used to be
@@ -242,6 +251,7 @@
         if (target.hasAttribute('data-trade')) {
             openTrade(target, intent || 'details');
         }
+        openAncestors(target);
         target.scrollIntoView({block: 'start'});
     };
 
@@ -283,6 +293,12 @@
             activateTab(link.getAttribute('data-attention-target') || 'attention', false);
             var rowId = link.getAttribute('data-row-target');
             if (!rowId) {
+                // A lot problem points at its sale in the FIFO tab's lot map.
+                var anchor = document.getElementById((link.getAttribute('href') || '').replace(/^#/, ''));
+                if (anchor && !anchor.hasAttribute('role')) {
+                    openAncestors(anchor);
+                    anchor.scrollIntoView({block: 'start'});
+                }
                 return;
             }
             var row = document.getElementById('row-' + rowId);
@@ -761,6 +777,20 @@
             if (event.submitter && !event.submitter.hasAttribute('formaction')) {
                 event.preventDefault();
                 recalculate(true);
+            }
+        });
+
+        // Enter in the lot editor saves the lots. Left alone it would press the
+        // form's first submit button, which uploads files.
+        workbench.addEventListener('keydown', function (event) {
+            if (event.key !== 'Enter' || !(event.target instanceof HTMLInputElement)) {
+                return;
+            }
+            var editor = event.target.closest('[data-lot-editor]');
+            var save = editor ? editor.querySelector('[data-lot-save]') : null;
+            if (save instanceof HTMLButtonElement) {
+                event.preventDefault();
+                save.click();
             }
         });
 

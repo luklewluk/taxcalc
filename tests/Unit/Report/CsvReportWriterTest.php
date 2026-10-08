@@ -4,10 +4,16 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Report;
 
+use App\Fifo\LotAllocation;
+use App\Fifo\LotAssignments;
+use App\Fifo\LotMethod;
+use App\Fifo\Trade;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
 use App\Money\Amount;
+use App\Money\Decimal;
 use App\Report\CsvReportWriter;
+use App\Report\TaxReport;
 use App\Report\TaxReportBuilder;
 use App\Tax\DividendTaxCalculator;
 use App\Tax\StockTaxCalculator;
@@ -100,6 +106,15 @@ final class CsvReportWriterTest extends TestCase
      */
     private function write(array $positions, array $dividends): string
     {
+        return (new CsvReportWriter())->write($this->report($positions, $dividends));
+    }
+
+    /**
+     * @param list<ClosedPosition> $positions
+     * @param list<Dividend>       $dividends
+     */
+    private function report(array $positions, array $dividends): TaxReport
+    {
         $exchange = FixedExchange::create();
         $builder = new TaxReportBuilder(
             new TaxYearFilter(),
@@ -108,7 +123,7 @@ final class CsvReportWriterTest extends TestCase
             $exchange,
         );
 
-        return (new CsvReportWriter())->write($builder->build($positions, $dividends, 2024));
+        return $builder->build($positions, $dividends, 2024);
     }
 
     public function testThePositionRowSeparatesTheGrossAmountFromTheSettledCash(): void
@@ -160,6 +175,56 @@ final class CsvReportWriterTest extends TestCase
         self::assertStringContainsString(',Akcje,dluga,2024-12-16,,', $csv);
     }
 
+    public function testEveryPositionNamesHowItsLotWasChosen(): void
+    {
+        $fifo = self::position('AAA', 'US', '2024-05-04', '100.00', '2024-12-16', '150.00');
+        $named = self::position('BBB', 'US', '2024-05-04', '100.00', '2024-12-16', '150.00', lotMethod: LotMethod::Specific);
+
+        $csv = $this->write([$fifo, $named], []);
+
+        self::assertStringContainsString(',"Data kursu kosztu zbycia","Metoda doboru partii"', $csv);
+        self::assertStringContainsString(',Akcje,dluga,2024-12-16,,,FIFO', $csv);
+        self::assertStringContainsString(',Akcje,dluga,2024-12-16,,,"wskazanie partii"', $csv);
+        self::assertStringContainsString('0112-KDIL2-1.4011.929.2025.1.TR', $csv);
+    }
+
+    public function testAFifoOnlyReportCarriesNoLotNote(): void
+    {
+        $csv = $this->write([self::position('AAA', 'US', '2024-05-04', '100.00', '2024-12-16', '150.00')], []);
+
+        self::assertStringNotContainsString('0112-KDIL2', $csv);
+        self::assertStringNotContainsString('WSKAZANE PARTIE', $csv);
+    }
+
+    public function testTheChosenLotsAreListedWithTheirTrades(): void
+    {
+        $buy = self::trade('b-1', '2024-05-04', '2');
+        $sell = self::trade('s-1', '2024-12-16', '-2');
+        $assignments = (new LotAssignments())->with('s-1', [new LotAllocation('b-1', Decimal::of('2'))]);
+
+        $csv = (new CsvReportWriter())->write(
+            $this->report([], []),
+            [$buy, $sell],
+            assignments: $assignments,
+        );
+
+        self::assertStringContainsString('"AKTUALNY STAN - WSKAZANE PARTIE"', $csv);
+        self::assertStringContainsString('"ID sprzedazy","Data sprzedazy","ID partii","Data zakupu partii",Liczba', $csv);
+        self::assertStringContainsString('s-1,2024-12-16,b-1,2024-05-04,2', $csv);
+    }
+
+    private static function trade(string $id, string $date, string $quantity): Trade
+    {
+        return new Trade(
+            'AAA',
+            new DateTimeImmutable($date),
+            Decimal::of($quantity),
+            Amount::of('-' === $quantity[0] ? '150.00' : '-100.00', 'USD'),
+            source: 'test',
+            stableId: $id,
+        );
+    }
+
     private static function position(
         string $name,
         string $country,
@@ -168,6 +233,7 @@ final class CsvReportWriterTest extends TestCase
         string $sellDate,
         string $sellAmount,
         ?string $sellCommission = null,
+        LotMethod $lotMethod = LotMethod::Fifo,
     ): ClosedPosition {
         return new ClosedPosition(
             $name,
@@ -180,6 +246,7 @@ final class CsvReportWriterTest extends TestCase
             null,
             'test',
             sellCommission: null === $sellCommission ? null : Amount::of($sellCommission, 'USD'),
+            lotMethod: $lotMethod,
         );
     }
 

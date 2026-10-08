@@ -8,6 +8,8 @@ use App\Tax\CreditMethod;
 use App\Tax\Result\CalculatedDividend;
 use App\Tax\Result\CalculatedPosition;
 use League\Csv\Writer;
+use App\Fifo\LotAssignments;
+use App\Fifo\LotMethod;
 use App\Fifo\Trade;
 use App\Model\AccountFee;
 use App\Model\Dividend;
@@ -27,6 +29,13 @@ final class CsvReportWriter
         .'w ustawieniach kalkulatora. W razie watpliwosci rozwaz wystapienie o interpretacje indywidualna '
         .'albo konsultacje z doradca podatkowym.';
 
+    public const string SPECIFIC_LOT_NOTE =
+        'Czesc pozycji ma koszt partii wskazanej zamiast najstarszej (FIFO). Kolejnosc FIFO z art. 30b ust. 7 '
+        .'ustawy o PIT stosuje sie, gdy nie da sie ustalic, ktore papiery zbyto; jesli broker pozwolil wskazac '
+        .'partie, mozna przyjac jej koszt - interpretacja indywidualna Dyrektora KIS z 13.02.2026, '
+        .'0112-KDIL2-1.4011.929.2025.1.TR. Interpretacja chroni tylko wnioskodawce; zachowaj potwierdzenie '
+        .'wyboru partii od brokera.';
+
     public const string DISCLAIMER =
         'Wyliczenie ma charakter pomocniczy i nie stanowi porady podatkowej. '
         .'Zweryfikuj wartości z aktualnymi przepisami i formularzami przed złożeniem zeznania.';
@@ -42,6 +51,7 @@ final class CsvReportWriter
         array $fees = [],
         array $dividends = [],
         CreditMethod $chosen = CreditMethod::Conservative,
+        LotAssignments $assignments = new LotAssignments(),
     ): string {
         $writer = Writer::fromString();
 
@@ -53,6 +63,7 @@ final class CsvReportWriter
         $this->writePositions($writer, $report);
         $this->writeDividends($writer, $report, $chosen);
         $this->writeRawTrades($writer, $trades);
+        $this->writeLotAssignments($writer, $assignments, $trades);
         $this->writeCurrentDividends($writer, $dividends);
         $this->writeFees($writer, $fees, $report);
         $this->writeMessages($writer, $report);
@@ -176,6 +187,7 @@ final class CsvReportWriter
             // Appended, so the columns above keep their positions for anyone
             // who reads this file by index.
             'Rodzaj instrumentu', 'Pozycja (dluga/krotka)', 'Data zamkniecia', 'Kurs NBP kosztu zbycia', 'Data kursu kosztu zbycia',
+            'Metoda doboru partii',
         ]);
 
         foreach ($report->stock->positions as $index => $position) {
@@ -226,6 +238,7 @@ final class CsvReportWriter
             $position->position->closeDate()->format('Y-m-d'),
             null === $position->disposalCost ? '' : (string) $position->disposalCost->rate,
             $position->disposalCost?->rateDate?->format('Y-m-d') ?? '',
+            LotMethod::Specific === $position->position->lotMethod ? 'wskazanie partii' : 'FIFO',
         ];
     }
 
@@ -257,6 +270,36 @@ final class CsvReportWriter
                 $trade->isOption() ? 'Opcja' : 'Akcje',
                 $trade->effect->value ?? '',
             ]);
+        }
+        $this->row($writer, []);
+    }
+
+    /**
+     * Which lots each sale named, so the choice can be audited - and typed back
+     * - without the page. Every year, like the trades above it.
+     *
+     * @param list<Trade> $trades
+     */
+    private function writeLotAssignments(Writer $writer, LotAssignments $assignments, array $trades): void
+    {
+        if ($assignments->isEmpty()) {
+            return;
+        }
+        $dates = [];
+        foreach ($trades as $trade) {
+            $dates[$trade->id()] = $trade->date->format('Y-m-d');
+        }
+
+        $this->section($writer, 'AKTUALNY STAN - WSKAZANE PARTIE');
+        $this->row($writer, ['ID sprzedazy', 'Data sprzedazy', 'ID partii', 'Data zakupu partii', 'Liczba']);
+        foreach ($assignments->all() as $saleId => $allocations) {
+            foreach ($allocations as $allocation) {
+                $this->row($writer, [
+                    $saleId, $dates[$saleId] ?? '',
+                    $allocation->buyTradeId, $dates[$allocation->buyTradeId] ?? '',
+                    (string) $allocation->quantity,
+                ]);
+            }
         }
         $this->row($writer, []);
     }
@@ -362,6 +405,12 @@ final class CsvReportWriter
     private function writeMessages(Writer $writer, TaxReport $report): void
     {
         $messages = [...$report->errors, ...$report->warnings];
+        foreach ($report->stock->positions as $position) {
+            if (LotMethod::Specific === $position->position->lotMethod) {
+                $messages[] = self::SPECIFIC_LOT_NOTE;
+                break;
+            }
+        }
         if ([] === $messages) {
             return;
         }
