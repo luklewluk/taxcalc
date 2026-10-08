@@ -200,9 +200,13 @@ tablica giełd, oraz każdy poprawny kod już obecny w danych, z etykietą
   rejestracji instrumentu. Kalkulator domyślnie idzie za giełdą, a w zakładce **Ustawienia**
   można to przełączyć — zmiana przelicza propozycje dla transakcji i nie nadpisuje krajów
   wpisanych ręcznie.
-- **Dywidendy zawsze idą za numerem ISIN**, bo stawkę umowną wyznacza rezydencja
-  wypłacającego: kanadyjski emitent notowany w USA wypłaca dywidendę z Kanady. Transakcje
-  i dywidendy tego samego papieru mogą więc mieć **różne** kraje i nie jest to sprzeczność.
+- **Kraj dywidendy to kraj siedziby spółki lub funduszu, który ją wypłaca**, bo od niego
+  zależy stawka z umowy o unikaniu podwójnego opodatkowania; ustawienie kraju transakcji
+  dywidend nie dotyczy. Kalkulator proponuje kraj z prefiksu ISIN — zwykle trafnie, ale kwit
+  depozytowy (ADR, GDR) ma ISIN kraju emisji kwitu, najczęściej `US`, choć dywidendę wypłaca
+  spółka z innego kraju. Przy takich papierach sprawdź i popraw kraj w zakładce Dywidendy.
+  Transakcje i dywidendy tego samego papieru mogą więc mieć **różne** kraje (kanadyjski
+  emitent notowany w USA: sprzedaż w USA, dywidenda z Kanady) i nie jest to sprzeczność.
 - **Kraj z pliku jest tylko propozycją.** Eksporty nie podają kraju źródła dochodu. Dla
   transakcji kalkulator bierze kraj **giełdy notowania** (Activity Statement: `Listing Exch`;
   DEGIRO: `Giełda referencyjna`, a gdy jej brak `Miejsce wykonania`); dla dywidend z DEGIRO —

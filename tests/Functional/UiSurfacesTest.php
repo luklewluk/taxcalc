@@ -154,6 +154,15 @@ final class UiSurfacesTest extends WebTestCase
         self::assertStringContainsString('giełd', $panel->text());
         self::assertStringContainsString('ISIN', $panel->text());
         self::assertStringContainsString('II FSK 1171/22', $panel->text());
+
+        // The country setting says what it is for, and the panel no longer
+        // claims a dividend follows its ISIN: the payer's residence decides,
+        // and a depositary receipt carries the ISIN of the receipt.
+        self::assertStringContainsString('(PIT/ZG)', $panel->filter('#settings-country')->text());
+        self::assertStringNotContainsString('nic nie jest zapisywane', $panel->text());
+        self::assertStringNotContainsString('zawsze idą za numerem ISIN', $panel->text());
+        self::assertStringContainsString('siedziby spółki lub funduszu', $panel->text());
+        self::assertStringContainsString('ADR', $panel->text());
     }
 
     /**

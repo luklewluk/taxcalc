@@ -40,7 +40,8 @@ enum CountrySource: string
             self::Isin => 'Dochodem ze zbycia jest dochód z kraju rejestracji instrumentu - '
                 .'irlandzki ETF sprzedany we Frankfurcie to dochód z Irlandii. Kalkulator czyta '
                 .'dwa pierwsze znaki numeru ISIN; prefiksy, które nie są kodem kraju (XS, EU, QZ), '
-                .'zostawiają pole puste.',
+                .'zostawiają pole puste. Kwit depozytowy (ADR) ma ISIN kraju emisji kwitu, a nie '
+                .'spółki - przy takim papierze popraw kraj ręcznie.',
         };
     }
 }

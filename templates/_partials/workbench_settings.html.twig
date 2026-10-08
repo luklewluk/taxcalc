@@ -7,16 +7,14 @@
         <h2>Ustawienia rozliczenia</h2>
         <p class="note">
             Tu decydujesz o rzeczach, w których przepisy dopuszczają więcej niż jedno odczytanie.
-            Nie są to błędy do naprawy, więc nie pojawiają się w „Wymaga uwagi”. Zmiana ustawienia
-            od razu przelicza cały arkusz (bez JavaScriptu — przyciskiem „Przelicz”). Ustawienia
-            jadą razem z danymi w formularzu — nic nie jest zapisywane.
+            Nie są to błędy do naprawy, więc nie pojawiają się w „Wymaga uwagi”.
         </p>
     </div>
 </div>
 
 <div class="settings-grid">
     <section class="pit-card" aria-labelledby="settings-country">
-        <h3 id="settings-country">Kraj uzyskania dochodu dla transakcji</h3>
+        <h3 id="settings-country">Kraj uzyskania dochodu dla transakcji (PIT/ZG)</h3>
         <div class="field--inline">
             <label for="country_source">Źródło kraju</label>
             <select id="country_source" name="country_source" data-full-reload>
@@ -40,10 +38,14 @@
             wpisałeś ręcznie.
         </p>
         <p class="note">
-            <strong>Dywidendy zawsze idą za numerem ISIN</strong> i to ustawienie ich nie dotyczy.
-            Stawkę umowną wyznacza rezydencja wypłacającego, a nie parkiet: kanadyjski emitent
-            notowany w USA wypłaca dywidendę z Kanady. Dlatego transakcje i dywidendy tego samego
-            papieru mogą mieć różne kraje i nie jest to sprzeczność.
+            <strong>Kraj dywidendy to kraj siedziby spółki lub funduszu, który ją wypłaca</strong> — od
+            niego zależy stawka z umowy o unikaniu podwójnego opodatkowania. To ustawienie dywidend nie
+            dotyczy. Kalkulator proponuje kraj z dwóch pierwszych znaków numeru ISIN. Zwykle to trafna
+            podpowiedź, ale nie reguła: kwit depozytowy (ADR, GDR) ma ISIN kraju, w którym wyemitowano
+            kwit — najczęściej US — a dywidendę wypłaca spółka z innego kraju. Przy takich papierach
+            sprawdź kraj i w razie potrzeby popraw go w zakładce Dywidendy. Transakcje i dywidendy
+            jednego papieru mogą mieć różne kraje (kanadyjski emitent notowany w USA: sprzedaż w USA,
+            dywidenda z Kanady) i nie jest to sprzeczność.
         </p>
         <p class="note">
             <strong>Opcje zawsze idą za giełdą</strong> (np. CBOE — Stany Zjednoczone): nie mają numeru

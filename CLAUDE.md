@@ -216,7 +216,10 @@ Nine modules under `src/`, ordered from the inside out:
   `CountrySource` and the workbench never reports the disagreement. Switching it re-derives the
   *proposal* for trade rows through `CountrySourceApplier`, which reads the round-tripped
   `trades[N][exchange]` and the ISIN-shaped symbol; a value matching neither proposal was typed
-  by hand and is left alone. It applies to trades only — a dividend always follows its ISIN.
+  by hand and is left alone. It applies to trades only. A dividend's country is the payer's
+  residence; its *proposal* always comes from the ISIN prefix, which a depositary receipt
+  (ADR/GDR, the receipt's own ISIN, usually `US`) gets wrong - the settings panel and
+  `docs/metodyka.md` say so, and never claim a dividend "follows its ISIN".
 - **Dividends are art. 30a, not PIT/ZG.** They are taxed at a flat 19% and reported in part G
   of PIT-38; PIT/ZG covers art. 27/30b/30c/30e. A dividend's country is required only to pick
   the treaty withholding cap for the conservative credit scenario, and its messages must say

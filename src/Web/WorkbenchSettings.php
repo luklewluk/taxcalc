@@ -16,7 +16,11 @@ use App\Tax\CreditMethod;
 final readonly class WorkbenchSettings
 {
     public function __construct(
-        /** Which country a *trade* declares; a dividend always follows its ISIN. */
+        /**
+         * Which country a *trade* declares. A dividend's country is the payer's
+         * residence; its proposal always comes from the ISIN, which a depositary
+         * receipt gets wrong.
+         */
         public CountrySource $countrySource = CountrySource::Exchange,
         /**
          * Which reading of the foreign-tax credit the return uses. The domain
