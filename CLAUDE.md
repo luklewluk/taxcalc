@@ -346,12 +346,13 @@ Nine modules under `src/`, ordered from the inside out:
   double-count it. A sign that contradicts the quantity is an error, not something to fix.
 - **PIT field numbers are versioned, never hard-coded in templates.** `TaxFormMap` owns the
   2021–2026 PIT-38/PIT-ZG mapping; 2026 is explicitly provisional.
-- **The chosen credit reading is the only one shown, and it is always named.** The dispute
+- **The chosen credit reading is the only one shown, and it is not repeated.** The dispute
   is live, so the user picks the reading in Ustawienia (default: conservative/KIS). The domain
   still computes both - switching must not need a re-import - but no surface prints the other
-  one, an "alternative" figure or a difference. Every figure that depends on the reading
-  carries its label (`CreditMethod::shortLabel()`); what the readings mean and their sources
-  live in Ustawienia, where the choice is made.
+  one, an "alternative" figure or a difference. Set once, the reading is not repeated on
+  the figures either - no label on the PIT fields, the Dywidendy totals or table headers.
+  What the readings mean and their sources live in Ustawienia, where the choice is made;
+  only the CSV export, a document that leaves the page, states once which reading it follows.
 - **Corporate actions are never settled silently.** Splits, mergers and spin-offs are out
   of scope. A row with a non-zero quantity but no price or no cash is *fatal*: skipping it
   would change the cost basis of every later sale of that instrument, so the batch stops

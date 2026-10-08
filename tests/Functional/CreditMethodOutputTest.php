@@ -11,8 +11,9 @@ use Symfony\Component\HttpFoundation\File\UploadedFile;
 
 /**
  * The foreign-tax credit has two readings; the user picks one in Ustawienia and
- * every surface - summary, Dywidendy, print, CSV - shows that one only, named,
- * so the page never reads as a choice still to be made.
+ * every surface - summary, Dywidendy, print, CSV - shows that one only. Set
+ * once, it is not repeated on the figures: only the CSV, a document that leaves
+ * the page, states once which reading it follows.
  *
  * The fixture is the canonical case: US dividend, 100 USD gross, 30 USD withheld.
  * At the fixed test rate of 4.0 that is 400 PLN gross and 120 PLN withheld, so
@@ -57,8 +58,7 @@ final class CreditMethodOutputTest extends WebTestCase
         self::assertSame('60,00 zł', self::fieldValue($crawler, '#panel-dividends', 'Do odliczenia'));
 
         $shown = $crawler->filter('#panel-summary')->text().' '.$crawler->filter('#panel-dividends')->text();
-        self::assertStringContainsString('zachowawczy (KIS)', $shown);
-        self::assertNoTraceOf('NSA', $shown);
+        self::assertNoVariantLabels($shown);
     }
 
     public function testSwitchingToNsaReplacesTheFiguresEverywhereOnTheWorkbench(): void
@@ -70,8 +70,7 @@ final class CreditMethodOutputTest extends WebTestCase
         self::assertSame('76,00 zł', self::fieldValue($crawler, '#panel-dividends', 'Do odliczenia'));
 
         $shown = $crawler->filter('#panel-summary')->text().' '.$crawler->filter('#panel-dividends')->text();
-        self::assertStringContainsString('wg NSA', $shown);
-        self::assertNoTraceOf('KIS', $shown);
+        self::assertNoVariantLabels($shown);
     }
 
     /**
@@ -100,13 +99,12 @@ final class CreditMethodOutputTest extends WebTestCase
         $client = static::createClient();
 
         $kis = $this->report($client, '/kalkulator/raport', null)->filter('body')->text();
-        self::assertStringContainsString('zachowawczy (KIS)', $kis);
         self::assertStringContainsString('16,00', $kis);
-        self::assertNoTraceOf('NSA', $kis);
+        self::assertNoVariantLabels($kis);
 
         $nsa = $this->report($client, '/kalkulator/raport', 'nsa')->filter('body')->text();
-        self::assertStringContainsString('wg NSA', $nsa);
-        self::assertNoTraceOf('KIS', $nsa);
+        self::assertStringNotContainsString('16,00', $nsa);
+        self::assertNoVariantLabels($nsa);
     }
 
     public function testCsvReportCarriesOnlyTheChosenVariant(): void
@@ -146,11 +144,13 @@ final class CreditMethodOutputTest extends WebTestCase
     }
 
     /**
-     * Nothing that names the other reading, its figures or a comparison.
+     * No reading named - neither the chosen one nor the other - and no comparison.
      */
-    private static function assertNoTraceOf(string $other, string $text): void
+    private static function assertNoVariantLabels(string $text): void
     {
-        self::assertStringNotContainsString($other, $text);
+        self::assertStringNotContainsString('KIS', $text);
+        self::assertStringNotContainsString('NSA', $text);
+        self::assertStringNotContainsStringIgnoringCase('zachowawcz', $text);
         self::assertStringNotContainsStringIgnoringCase('alternatywn', $text);
         self::assertStringNotContainsStringIgnoringCase('różnica', $text);
         self::assertStringNotContainsStringIgnoringCase('dwa warianty', $text);

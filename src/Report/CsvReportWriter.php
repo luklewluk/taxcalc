@@ -45,8 +45,9 @@ final class CsvReportWriter
     ): string {
         $writer = Writer::fromString();
 
-        // Only the reading chosen in the workbench settings, named in every
-        // column that depends on it - the file mirrors what the screen showed.
+        // Only the reading chosen in the workbench settings. The file leaves the
+        // page, so its summary states once which reading that is; the columns
+        // are not labelled again.
         $this->writeSummary($writer, $report, $chosen);
         $this->writeCountries($writer, $report, $chosen);
         $this->writePositions($writer, $report);
@@ -141,7 +142,7 @@ final class CsvReportWriter
             $this->section($writer, 'AUDYT DYWIDEND WEDLUG KRAJU (BEZ PIT/ZG)');
             $this->row($writer, [
                 'Kraj', 'Nazwa', 'Przychod brutto (PLN)', 'Podatek pobrany (PLN)', 'Podatek polski (PLN)',
-                self::chosenColumn('Do odliczenia', $chosen), self::chosenColumn('Do zaplaty', $chosen),
+                'Do odliczenia (PLN)', 'Do zaplaty (PLN)',
             ]);
             foreach ($report->dividends->countries as $country) {
                 $this->row($writer, [
@@ -322,7 +323,7 @@ final class CsvReportWriter
             'Lp.', 'Instrument', 'Kraj', 'Waluta', 'Data wyplaty',
             'Brutto', 'Kurs NBP', 'Data kursu', 'Brutto (PLN)',
             'Podatek pobrany', 'Podatek pobrany (PLN)', 'Stawka umowna (%)', 'Podatek polski (PLN)',
-            self::chosenColumn('Do odliczenia', $chosen), self::chosenColumn('Do zaplaty', $chosen), 'Zrodlo', 'Uwagi',
+            'Do odliczenia (PLN)', 'Do zaplaty (PLN)', 'Zrodlo', 'Uwagi',
         ]);
 
         foreach ($report->dividends->dividends as $index => $dividend) {
@@ -356,14 +357,6 @@ final class CsvReportWriter
             $dividend->dividend->source,
             $dividend->warning ?? '',
         ];
-    }
-
-    /**
-     * A column header that names the reading its figures follow.
-     */
-    private static function chosenColumn(string $what, CreditMethod $chosen): string
-    {
-        return sprintf('%s - %s (PLN)', $what, $chosen->shortLabel());
     }
 
     private function writeMessages(Writer $writer, TaxReport $report): void

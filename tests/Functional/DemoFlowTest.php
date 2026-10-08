@@ -33,7 +33,7 @@ final class DemoFlowTest extends WebTestCase
         $summary = $crawler->filter('#panel-summary')->text();
         self::assertStringContainsString('Przychód', $summary);
         self::assertStringContainsString('PIT/ZG', $summary);
-        self::assertStringContainsString('zachowawczy (KIS)', $crawler->filter('#panel-dividends')->text());
+        self::assertStringNotContainsString('zachowawczy', $crawler->filter('#panel-dividends')->text());
     }
 
     public function testTheDemoCoversBothBrokersEveryCurrencyAndEveryKindOfOption(): void

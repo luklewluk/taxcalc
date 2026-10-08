@@ -363,7 +363,7 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
         $summary = $crawler->filter('#panel-summary');
 
-        self::assertStringContainsString('wariant wg NSA', $summary->text());
+        self::assertStringNotContainsString('NSA', $summary->text());
         self::assertStringNotContainsString('alternatywn', mb_strtolower($summary->text()));
         self::assertStringNotContainsString('zachowawcz', mb_strtolower($summary->text()));
     }
@@ -434,10 +434,10 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
         $text = $crawler->filter('[data-fragment="dividendResults"]')->text();
 
-        foreach (['Stawka umowna', 'Pobrany PLN', 'Podatek PL', 'Odliczenie (zachowawczy (KIS))', 'Do zapłaty (zachowawczy (KIS))'] as $heading) {
+        foreach (['Stawka umowna', 'Pobrany PLN', 'Podatek PL', 'Odliczenie', 'Do zapłaty'] as $heading) {
             self::assertStringContainsString($heading, $text);
         }
-        foreach (['NSA', 'Różnica'] as $absent) {
+        foreach (['KIS', 'NSA', 'zachowawcz', 'Różnica'] as $absent) {
             self::assertStringNotContainsString($absent, $text);
         }
         self::assertStringContainsString('15%', $text);

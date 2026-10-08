@@ -66,20 +66,18 @@
             <dl class="pit-fields">
                 <div><dt>Pole {{ form_map.dividend_polish_tax }} — polski podatek 19%</dt><dd>{{ dividends.totalPolishTax|money }} zł</dd></div>
                 <div><dt>Pole {{ form_map.dividend_foreign_tax }} — pobrany za granicą</dt><dd>{{ dividends.totalWithheldTax|money }} zł</dd></div>
-                {# Only the reading chosen in Ustawienia, named so it is clear which one. #}
+                {# Only the reading chosen in Ustawienia; set once, it is not repeated here. #}
                 {% set chosen = settings.creditMethod %}
                 <div>
                     <dt>Pole {{ form_map.dividend_tax_due }} — do zapłaty</dt>
                     <dd>
                         {{ dividends.scenarioFor(chosen).taxDue|money }} zł
-                        <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                     </dd>
                 </div>
                 <div>
                     <dt>Pole {{ form_map.total_tax }} — podatek łącznie</dt>
                     <dd>
                         {{ report.totalTaxRoundedFor(chosen)|money }} zł
-                        <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                     </dd>
                 </div>
             </dl>

@@ -5,10 +5,7 @@
         <div class="panel-heading">
             <div>
                 <h3>Podsumowanie dywidend</h3>
-                <p class="note">
-                    Liczby, z których powstają pola PIT-38 część G, w wariancie odliczenia
-                    {{ chosen.shortLabel }} — zmienisz go w zakładce „Ustawienia”.
-                </p>
+                <p class="note">Liczby, z których powstają pola PIT-38 część G.</p>
             </div>
         </div>
 
@@ -22,14 +19,13 @@
                         <dt>Pole {{ form_map.dividend_tax_due }} — do zapłaty</dt>
                         <dd>
                             {{ dividends.scenarioFor(chosen).taxDue|money }} zł
-                            <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                         </dd>
                     </div>
                     <div>
                         <dt>Pole {{ form_map.total_tax }} — podatek łącznie (z akcjami)</dt>
                         <dd>
                             {{ report.totalTaxRoundedFor(chosen)|money }} zł
-                            <span class="cell-note">w pełnych złotych, wariant {{ chosen.shortLabel }}</span>
+                            <span class="cell-note">w pełnych złotych</span>
                         </dd>
                     </div>
                 </dl>
@@ -41,7 +37,7 @@
                     <div><dt>Przychód brutto</dt><dd>{{ dividends.totalGross|money }} zł</dd></div>
                     <div><dt>Podatek polski 19%</dt><dd>{{ dividends.totalPolishTax|money }} zł</dd></div>
                     <div><dt>Podatek pobrany za granicą</dt><dd>{{ dividends.totalWithheldTax|money }} zł</dd></div>
-                    <div><dt>Do odliczenia ({{ chosen.shortLabel }})</dt><dd>{{ dividends.scenarioFor(chosen).creditableTax|money }} zł</dd></div>
+                    <div><dt>Do odliczenia</dt><dd>{{ dividends.scenarioFor(chosen).creditableTax|money }} zł</dd></div>
                     <div><dt>Do zapłaty w pełnych złotych</dt><dd>{{ dividends.scenarioFor(chosen).taxDueRoundedToZloty|money }} zł</dd></div>
                     <div><dt>Liczba wypłat</dt><dd>{{ dividends.dividends|length }}</dd></div>
                 </dl>
@@ -63,7 +59,7 @@
                     </caption>
                     <thead><tr>
                         <th>Kraj</th><th>Przychód brutto</th><th>Pobrany za granicą</th><th>Podatek polski 19%</th>
-                        <th>Do odliczenia ({{ chosen.shortLabel }})</th><th>Do zapłaty ({{ chosen.shortLabel }})</th>
+                        <th>Do odliczenia</th><th>Do zapłaty</th>
                     </tr></thead>
                     <tbody>
                     {% for country in dividends.countries %}

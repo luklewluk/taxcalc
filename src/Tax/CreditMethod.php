@@ -37,14 +37,6 @@ enum CreditMethod: string
         };
     }
 
-    public function shortLabel(): string
-    {
-        return match ($this) {
-            self::Conservative => 'zachowawczy (KIS)',
-            self::Nsa => 'wg NSA',
-        };
-    }
-
     public function description(): string
     {
         return match ($this) {
