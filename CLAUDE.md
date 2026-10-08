@@ -81,6 +81,16 @@ Nine modules under `src/`, ordered from the inside out:
   mixing stocks and options is a violation. `FifoResult::$openPositions` lists what every
   queue still holds (`OpenPosition`: the trade, the quantity left, the direction) -
   informational, for the Transakcje tab; nothing is taxed before a position closes.
+  **Specific lot identification** rides `match($trades, LotAssignments)`: a stock sale may name
+  the lots it closed (`LotAllocation`: buy trade id + quantity) instead of FIFO (art. 30b ust. 7;
+  KIS 0112-KDIL2-1.4011.929.2025.1.TR). Only `matchSymbol()` reads them, through the same
+  `consume()` proration as FIFO; a named lot must be in the same queue, open before the sale in
+  the matcher's order and hold enough at that moment. Anything else is a blocking
+  `FifoViolation` (`isLotAssignment()`), the sale consumes nothing - **never a silent fallback
+  to FIFO**. `openLotsBefore()` feeds the editor. `LotMethod` travels on `FifoMatch` and
+  `ClosedPosition`, outside `lineageKey()`/`fingerprint()`: without assignments every figure
+  and fingerprint is byte-identical, and other queues - and matches before the first named
+  sale in the same queue - keep theirs.
 - **Model** — `ClosedPosition`, `Dividend`, and `AccountFee`, the normalized settlement
   records. Editable records carry stable form IDs in addition to content fingerprints.
   `ClosedPosition` carries `InstrumentKind` and `PositionDirection`; build it from a match
@@ -164,6 +174,10 @@ Nine modules under `src/`, ordered from the inside out:
   `Trade::id()` echoed back, so it keeps one identity from then on), `WorkbenchCalculator`
   (re-runs FIFO; `SettlementResult` also carries `matchPositions` - the `ClosedPosition` each
   match became, keyed by match index - plus open positions, unmatched sells and violations),
+  `Lots\` (the lot choice: `LotAssignmentCodec` - one JSON field, decoded totally, never
+  throws; `LotSelection` - prune by posted rows, then one action `lot_reset` > `lot_fifo` >
+  `lot_save` > `lot_edit`, a failed save keeps the editor open and changes nothing;
+  `LotBoardBuilder` - the FIFO tab's lot map, built from the `TradeLedger`),
   `CountryReview` (groups every editable row by instrument, across the Transakcje and
   Dywidendy tabs, and reports what is wrong with its country), `Ledger\TradeLedgerBuilder`
   (the Transakcje tab, see the Interface section), `TaxFormMap` (year-specific
@@ -242,6 +256,14 @@ Nine modules under `src/`, ordered from the inside out:
   JPY, HUF, KRW, CLP and ISK with six decimals and IDR with eight, so the JSON float is
   formatted with `%.8F` and trimmed - `%.4F` turned the yen's `0.026287` into `0.0263`.
 - **FIFO keeps old buys.** Year filtering happens on the *sale* date, after matching.
+- **FIFO is the default; a named lot is a choice that can only block.** The choice is one hidden
+  field `lot_assignments` (JSON v1), rendered after `expected_fees` and **before** the first
+  `trades[`, so a truncated post loses it together with the trades and `expected_trades`
+  notices. Never a field per row; the editor posts only the open sale's lots. A malformed
+  field is blocking `lots.invalid_field` with *Przywróć FIFO wszędzie*; an assignment whose
+  lot vanished or shrank is blocking `fifo.lot_*` (tab `fifo`, linked to `#lot-close-<id>`).
+  A removed sale drops its assignment silently, a row that stopped being a stock sale drops
+  it with review `lots.assignment_dropped`. Options never take an assignment.
 - **FIFO identity is not a display name.** The queue key (`Trade::$fifoPool`, else `$symbol`) is
   `ISIN@CURRENCY` for the Activity Statement and the **ISIN alone** for DEGIRO; `InstrumentDetails` carries the product
   name and country alongside so a rename cannot split a position. `FifoMatch::$sequence`
@@ -443,6 +465,13 @@ The public flow is `upload → work with the result`. After the first import,
   `Diagnostic`, not an `ImportMessage` warning; `upload.nothing_added` is the pattern to
   follow, because an upload that changed nothing would otherwise return an identical page
   with no explanation.
+- **The FIFO tab is a lot map above the PLN pairs.** `_partials/lot_board.html.twig` sits in
+  `panel-fifo` **outside every `data-fragment`** and is built on full renders only, like
+  Transakcje: per queue a `<details>` with openings (every lot, never-closed ones included) on
+  the left and closings on the right, linked both ways (`#lot-open-<id>` / `#lot-close-<id>`).
+  Every lot action is a real submit with `formaction=…/wynik#lot-close-<id>` and
+  `formnovalidate` - without `formaction` app.js would send it over AJAX and drop the button's
+  name. Tests read the PLN pairs through `#panel-fifo [data-fragment="fifo"]`, never the panel.
 - **Seven tabs.** `PIT-38 / PIT-ZG`, `Wymaga uwagi`, `Transakcje`, `FIFO`, `Dywidendy`, `Opłaty`,
   `Ustawienia`. The Dywidendy tab carries its own summary of everything that feeds the PIT-38
   part G fields, inside the existing `dividendResults` fragment — the AJAX fragment list is a

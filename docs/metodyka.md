@@ -47,6 +47,32 @@ niepełnym zbiorze danych podczas awarii NBP lub przy nieobsługiwanej walucie.
   pozostaje w audycie FIFO z ostrzeżeniem. Dywidendy nie tworzą PIT/ZG ani nie zwiększają
   liczby załączników.
 
+#### Wskazanie partii zamiast FIFO
+
+Art. 30b ust. 7 ustawy o PIT każe przyjąć, że zbyto papiery nabyte najwcześniej — ale tylko
+wtedy, gdy nie da się ustalić, które papiery zbyto. Dyrektor KIS w interpretacji
+indywidualnej z 13.02.2026 r. (sygn. 0112-KDIL2-1.4011.929.2025.1.TR) uznał, że jeśli broker
+pozwala wskazać sprzedawaną partię, podatnik może rozliczyć koszt tej partii zamiast
+najstarszej.
+
+- **Domyślnie zawsze FIFO.** Wskazanie jest ręczne: w zakładce FIFO, w mapie partii, przy
+  sprzedaży akcji lub ETF-u wybierasz „Zmień partie” i wpisujesz, ile sztuk pochodzi
+  z każdej partii otwartej w dniu sprzedaży. Suma musi równać się liczbie sprzedanych sztuk;
+  jedną sprzedaż można rozłożyć na kilka partii.
+- Wskazana partia musi być w tej samej kolejce FIFO (ten sam broker i papier), kupiona przed
+  sprzedażą i mieć w tym momencie dość sztuk — także po uwzględnieniu wcześniejszych
+  sprzedaży. Późniejsze sprzedaże bez wskazania biorą najstarsze z tego, co zostało.
+- **Wskazanie, które przestało pasować** (partia usunięta, zmieniona albo za mała), blokuje
+  wynik z opisem problemu. Kalkulator nigdy nie wraca po cichu do FIFO — zmień partie albo
+  przywróć FIFO.
+- Opcje zawsze dopasowują się w obrębie serii; wskazanie partii ich nie dotyczy.
+- Wskazanie widać w tabeli par („wskazana partia”), w szczegółach transakcji, na wydruku
+  i w raporcie CSV (kolumna „Metoda doboru partii” i sekcja „AKTUALNY STAN - WSKAZANE
+  PARTIE”).
+- Interpretacja indywidualna chroni tylko wnioskodawcę. Korzystaj ze wskazania, gdy broker
+  rzeczywiście pozwolił wybrać partię przy zleceniu, i **zachowaj potwierdzenie** tego
+  wyboru.
+
 ### Opcje (PIT-38 część C)
 
 Opcje z Activity Statement (klasa `Equity and Index Options`) trafiają do tych samych pól

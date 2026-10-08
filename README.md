@@ -35,7 +35,8 @@ i podaje wartości do wpisania w **PIT-38** i **PIT/ZG**. Twoje dane nigdzie nie
   oraz Zestawienie konta) — także oba brokery naraz i pliki z wielu lat.
 - Rozlicza **akcje i ETF-y**, **opcje** oraz **dywidendy** z podatkiem pobranym za granicą.
 - Dopasowuje sprzedaże do zakupów metodą **FIFO** przez wszystkie wgrane lata — zakup
-  z 2022 r. pokrywa sprzedaż z 2025 r.
+  z 2022 r. pokrywa sprzedaż z 2025 r. Jeśli broker pozwolił wskazać sprzedawaną partię,
+  możesz ją **wskazać ręcznie** (interpretacja KIS 0112-KDIL2-1.4011.929.2025.1.TR).
 - Przelicza każdą kwotę **kursem średnim NBP z dnia roboczego przed transakcją**.
 - Podaje numery pól **PIT-38** i **PIT/ZG** właściwe dla wybranego roku (2021–2026).
 - Pozwala wybrać **wariant odliczenia** podatku od dywidend — stanowisko urzędu (KIS)
@@ -73,8 +74,9 @@ ekran roboczy z fikcyjnymi danymi: akcje i ETF-y z kilku giełd i walut, opcje c
 (kupione i wystawione) oraz dywidendy — bez wgrywania czegokolwiek.
 
 Pozostałe zakładki pozwalają wszystko sprawdzić i poprawić: **Transakcje** (każda
-transakcja z dopasowanymi partiami, kursami i dochodem; edycja), **FIFO** (pary
-zakup–sprzedaż), **Dywidendy** (wypłaty i podsumowanie części G), **Opłaty** (koszty
+transakcja z dopasowanymi partiami, kursami i dochodem; edycja), **FIFO** (mapa
+partii: które zakupy zamknęła każda sprzedaż, ze wskazaniem partii; pod nią pary
+zakup–sprzedaż w złotych), **Dywidendy** (wypłaty i podsumowanie części G), **Opłaty** (koszty
 rachunku) i **Ustawienia** (wybory, przy których przepisy dopuszczają więcej niż jedno
 odczytanie).
 
@@ -103,8 +105,9 @@ jest każdy eksport: [docs/formaty.md](docs/formaty.md).
 
 - **Kurs:** średni NBP (tabela A) z ostatniego dnia roboczego przed transakcją lub wypłatą
   (art. 11a ustawy o PIT).
-- **Akcje i ETF-y:** FIFO — najstarsze zakupy najpierw, przez wszystkie wgrane lata.
-  Do rozliczenia trafiają sprzedaże z wybranego roku. Podatek to 19% dochodu; strata daje
+- **Akcje i ETF-y:** FIFO — najstarsze zakupy najpierw, przez wszystkie wgrane lata —
+  chyba że sprzedaży wskażesz konkretne partie (art. 30b ust. 7 ustawy o PIT; interpretacja
+  KIS 0112-KDIL2-1.4011.929.2025.1.TR). Do rozliczenia trafiają sprzedaże z wybranego roku. Podatek to 19% dochodu; strata daje
   podatek zero.
 - **Opcje:** rozliczane w dniu **zamknięcia** pozycji (odkup, sprzedaż, wygaśnięcie,
   przydział), nigdy w dniu otwarcia — zgodnie z interpretacją KIS
