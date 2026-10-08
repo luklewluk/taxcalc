@@ -1,7 +1,9 @@
 {#
     One trade: a read-only summary row, then a row holding its two disclosures.
-    Without JavaScript the <summary> elements are the toggles; with it, the
-    buttons in the summary row take over and the summaries are hidden.
+    Without JavaScript the <summary> elements are the toggles; with it, a click
+    on the summary row opens the details and "Edytuj" the editor, and the
+    summaries are hidden. The details button stays for the keyboard and screen
+    readers, visually hidden - the row shows its focus instead.
 #}
 {% set row = entry.row %}
 {% set index = entry.index %}
@@ -44,7 +46,7 @@
             {% endif %}
         </td>
         <td class="trade__actions">
-            <button type="button" class="button button--link" data-trade-toggle="details" aria-expanded="false" aria-controls="details-{{ rid }}" hidden>Szczegóły</button>
+            <button type="button" class="button button--link visually-hidden" data-trade-toggle="details" aria-expanded="false" aria-controls="details-{{ rid }}" hidden>Szczegóły transakcji</button>
             <button type="button" class="button button--link" data-trade-toggle="edit" aria-expanded="{{ entry.editorOpen ? 'true' : 'false' }}" aria-controls="edit-{{ rid }}" hidden>Edytuj</button>
         </td>
     </tr>

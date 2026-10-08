@@ -6,9 +6,9 @@
 #}
 {% set trade_columns %}
     <thead><tr>
-        <th scope="col">Data</th><th scope="col">Transakcja</th><th scope="col">Liczba</th><th scope="col">Cena</th>
-        <th scope="col">Total</th><th scope="col">Prowizja</th><th scope="col">Wynik</th>
-        <th scope="col"><span class="visually-hidden">Działania</span></th>
+        <th scope="col">Data</th><th scope="col">Transakcja</th><th scope="col" class="cell--number">Liczba</th><th scope="col" class="cell--number">Cena</th>
+        <th scope="col" class="cell--number">Total</th><th scope="col" class="cell--number">Prowizja</th><th scope="col">Wynik</th>
+        <th scope="col" class="ledger-table__actions"><span class="visually-hidden">Działania</span></th>
     </tr></thead>
 {% endset %}
 <div class="trade-ledger" data-trade-ledger data-manual-commit>

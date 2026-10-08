@@ -421,7 +421,11 @@ The public flow is `upload → work with the result`. After the first import,
     `<details>` - *Szczegóły* and *Edytuj*. Every `trades[N][...]` field lives in the closed
     *Edytuj*; a closed `<details>` still posts, so the round trip is unchanged. **No new field
     per row** (a test pins the names): 5,000 rows × 21 fields already sit close to
-    `max_input_vars`. Without JS the `<summary>` elements toggle; with JS buttons do.
+    `max_input_vars`. Without JS the `<summary>` elements toggle. With JS a click on the
+    summary row opens *Szczegóły* (not on a control, not at the end of a text selection) and
+    keeps the hover colour while open (`is-open`); its button stays for the keyboard, visually
+    hidden, with the focus ring drawn on the row. *Edytuj* is the one visible action, at the
+    right edge; the seven data columns share the width (`table-layout: fixed`).
   - **A change counts only after *Zapisz*.** *Zapisz* is a real submit
     (`formaction=…/wynik#row-<id>`, `formnovalidate`); *Anuluj* restores the rendered values.
     The `formdata` handler makes every other request - the debounced recalculation, a year

@@ -112,6 +112,35 @@ final class TradeLedgerTest extends WebTestCase
         self::assertStringEndsWith('/kalkulator/wynik#row-'.$id, (string) $save->attr('formaction'));
     }
 
+    /**
+     * A click on the row opens its details; the toggle stays for the keyboard
+     * and screen readers but is no longer a visible link. "Edytuj" is the one
+     * visible action, at the right edge of evenly spread columns.
+     */
+    public function testTheDetailsToggleIsTheRowItselfAndOnlyEditIsVisible(): void
+    {
+        $client = static::createClient();
+        $crawler = $this->importSample($client);
+
+        $id = $this->payload($crawler)['trades'][0]['id'];
+        $toggle = $crawler->filter('#row-'.$id.' [data-trade-toggle="details"]');
+        self::assertSame(1, $toggle->count());
+        self::assertSame('details-'.$id, $toggle->attr('aria-controls'));
+        self::assertStringContainsString('visually-hidden', (string) $toggle->attr('class'));
+        self::assertSame(
+            ['Edytuj'],
+            $crawler->filter('#row-'.$id.' .trade__actions button:not(.visually-hidden)')->each(static fn (Crawler $b): string => trim($b->text())),
+        );
+
+        $headers = $crawler->filter('[data-trade-ledger] .ledger-table > thead')->first()->filter('th');
+        self::assertSame(
+            ['Liczba', 'Cena', 'Total', 'Prowizja'],
+            $headers->reduce(static fn (Crawler $th): bool => str_contains((string) $th->attr('class'), 'cell--number'))
+                ->each(static fn (Crawler $th): string => trim($th->text())),
+        );
+        self::assertStringContainsString('ledger-table__actions', (string) $headers->last()->attr('class'));
+    }
+
     public function testPostingTheLedgerBackChangesNoFigure(): void
     {
         $client = static::createClient();

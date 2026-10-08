@@ -2299,11 +2299,31 @@ kbd {
 .ledger-table .trade__summary > td { border-top: 1px solid var(--hairline); }
 .ledger-table .trade:hover > .trade__summary { background: color-mix(in srgb, var(--accent-tint) 55%, transparent); }
 
+/*
+ * With JavaScript the summary row opens the details. An open trade keeps the
+ * hover colour on both its rows, and the visually hidden details button shows
+ * its keyboard focus on the row it stands for.
+ */
+.trade-ledger.is-enhanced .trade__summary { cursor: pointer; }
+.ledger-table .trade.is-open:not(.is-editing) > tr { background: color-mix(in srgb, var(--accent-tint) 55%, transparent); }
+.trade__actions .button.visually-hidden { min-height: 0; }
+.trade:has([data-trade-toggle="details"]:focus-visible) > .trade__summary {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+}
+
+/* Seven data columns share the width evenly; "Edytuj" sits at the right edge. */
+@media (min-width: 48rem) {
+    .ledger-table { table-layout: fixed; min-width: 52rem; }
+    .ledger-table__actions { width: 6rem; }
+}
+
 .trade__side { font-weight: 650; }
 .trade__side--sell { color: var(--accent); }
 .trade__result { white-space: nowrap; }
-.trade__actions { text-align: right; white-space: nowrap; }
-.trade__actions .button { min-height: 2rem; font-size: 0.875rem; }
+/* .table td would otherwise win and leave "Edytuj" at the cell's left. */
+.ledger-table .trade__actions { text-align: right; white-space: nowrap; }
+.trade__actions .button { min-height: 2rem; padding-right: 0; font-size: 0.875rem; }
 .ledger-table .trade__panels > td { padding-top: 0; border-top: 0; }
 .trade__panel + .trade__panel { margin-top: 0.5rem; }
 
@@ -2439,6 +2459,9 @@ a.flag { text-decoration: underline; }
         text-transform: uppercase;
     }
 
+    /* A card has padding of its own: tint the card, not just its rows. */
+    .ledger-table .trade.is-open:not(.is-editing) { background: color-mix(in srgb, var(--accent-tint) 55%, transparent); }
+    .ledger-table .trade.is-open:not(.is-editing) > tr { background: none; }
     .trade.is-editing > tr > td:first-child { box-shadow: none; }
     .trade.is-editing { box-shadow: inset 3px 0 0 var(--brand); }
     .trade__result { white-space: normal; }
@@ -2448,6 +2471,7 @@ a.flag { text-decoration: underline; }
     .trade__panel > summary,
     .trade-form__actions .button,
     .remove-toggle--labelled { min-height: var(--tap); font-size: 1rem; }
+    .trade__actions .button.visually-hidden { min-height: 0; }
 
     .trade-form { grid-template-columns: minmax(0, 1fr); }
     .trade-form__field--wide { grid-column: auto; }

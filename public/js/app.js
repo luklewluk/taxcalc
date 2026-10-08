@@ -389,6 +389,8 @@
                 }
             });
             row.classList.toggle('is-editing', isEditing(row));
+            var details = panelOf(row, 'details');
+            row.classList.toggle('is-open', !!details && details.open);
             var remove = row.querySelector('[data-trade-remove]');
             var save = row.querySelector('[data-trade-save]');
             row.classList.toggle('is-removed', !!remove && remove.checked);
@@ -544,6 +546,22 @@
                     var hash = link.getAttribute('href') || '';
                     history.replaceState(null, '', hash);
                     revealHash(hash, 'details');
+                    return;
+                }
+
+                // The summary row itself is the details toggle - unless the
+                // click meant a control in it, or was the end of selecting text.
+                if (!target.closest('.trade__summary') || target.closest('a, button, input, select, textarea, label, summary')) {
+                    return;
+                }
+                var selection = window.getSelection ? window.getSelection() : null;
+                if (selection && selection.toString() !== '') {
+                    return;
+                }
+                var detailsPanel = panelOf(row, 'details');
+                if (detailsPanel) {
+                    detailsPanel.open = !detailsPanel.open;
+                    syncRow(row);
                 }
             });
 
