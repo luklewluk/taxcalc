@@ -229,8 +229,13 @@ są tylko policzone w komunikacie. Spośród opłat aplikacja automatycznie impo
 roczne opłaty za połączenie z giełdą — wielojęzyczne warianty **DEGIRO Exchange Connection
 Fee**, także z rokiem i nazwą giełdy w opisie („… Fee 2025 (Xetra - XET)”); reszta opisu musi
 się zgadzać dokładnie. Trafiają do zakładki **Opłaty**, a do kosztów PIT-38 tylko po włączeniu
-ustawienia „Opłaty rachunkowe” (domyślnie wyłączone). Wiersze opłat transakcyjnych są
-pomijane, bo są już zawarte w `Total`.
+ustawienia „Opłaty rachunkowe” (domyślnie wyłączone); w zakładce dostają kategorię
+„Połączenie z giełdą” (pozostałe kategorie do wyboru: Prowadzenie rachunku, Dane rynkowe,
+Przelewy i wypłaty, Inne). Wiersze opłat transakcyjnych są pomijane, bo są już zawarte
+w `Total`. **Podatki od transakcji** („Francuski podatek od transakcji”, „French Transaction
+Tax”, „Italian Financial Transaction Tax” i odpowiedniki w innych językach) nie są opłatą
+rachunkową: trafiają do kwoty zakupu, którego dotyczą — zob.
+[metodykę](metodyka.md#akcje-i-etf-y-pit-38-część-c).
 Pozostałe operacje (wpłaty, przewalutowania, odsetki i inne opłaty) są pomijane z podsumowaniem.
 
 Dodatnia korekta connection fee zmniejsza koszt. Grupa całkowicie wyzerowana jest pomijana

@@ -90,6 +90,24 @@ final readonly class Trade
         return $this->quantity->isNegative();
     }
 
+    /**
+     * The same purchase with a cost the trade file did not carry - a transaction
+     * tax booked on the account statement - added to its settled cash and its
+     * fee. The amount grows in the direction the cash already went, so it works
+     * for a source that signs its amounts and for one that does not.
+     */
+    public function withAddedBuyCost(Amount $cost): self
+    {
+        $grow = static fn (Amount $amount): Amount => $amount->isNegative() ? $amount->minus($cost) : $amount->plus($cost);
+
+        return new self(
+            $this->symbol, $this->date, $this->quantity, $grow($this->grossAmount), $this->externalId,
+            $this->source, $this->instrument, $this->fillOrdinal, $this->externalIdReported, $this->unitPrice,
+            $this->executionVenue, $this->broker, null === $this->commission ? $cost : $grow($this->commission),
+            $this->autoFx, $this->stableId, $this->fifoPool, $this->kind, $this->effect,
+        );
+    }
+
     public function id(): string
     {
         if ('' !== $this->stableId) {

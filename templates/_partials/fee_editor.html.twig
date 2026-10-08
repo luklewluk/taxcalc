@@ -11,14 +11,20 @@
         {% for index, row in fee_rows %}
             <tr id="row-{{ row.id }}" data-row-id="{{ row.id }}">
                 <td><input type="hidden" name="fees[{{ index }}][id]" value="{{ row.id }}"><input name="fees[{{ index }}][description]" value="{{ row.description }}" required></td>
-                <td><input name="fees[{{ index }}][category]" value="{{ row.category }}" required></td>
+                <td>
+                    <select name="fees[{{ index }}][category]" aria-label="Kategoria opłaty, wiersz {{ index + 1 }}" required>
+                        {% for category in fee_categories %}<option value="{{ category }}" {{ row.category == category ? 'selected' : '' }}>{{ category }}</option>{% endfor %}
+                        {# A value from before the list keeps an option, or the next post would lose it. #}
+                        {% if row.category != '' and row.category not in fee_categories %}<option value="{{ row.category }}" selected>{{ row.category }}</option>{% endif %}
+                    </select>
+                </td>
                 <td><input type="date" name="fees[{{ index }}][value_date]" value="{{ row.value_date }}" required></td>
                 <td><input name="fees[{{ index }}][currency]" value="{{ row.currency }}" size="4" required></td>
                 <td><input name="fees[{{ index }}][amount]" value="{{ row.amount }}" size="10" inputmode="decimal" required></td>
                 <td><label class="toggle-label"><input type="hidden" name="fees[{{ index }}][correction]" value="0"><input type="checkbox" name="fees[{{ index }}][correction]" value="1" {{ row.correction == '1' ? 'checked' : '' }}> Tak</label></td>
                 <td><label class="toggle-label"><input type="hidden" name="fees[{{ index }}][included]" value="0"><input type="checkbox" name="fees[{{ index }}][included]" value="1" {{ row.included == '1' ? 'checked' : '' }}> Tak</label></td>
                 <td class="cell--source">{{ row.source ?: 'ręcznie' }}<input type="hidden" name="fees[{{ index }}][source]" value="{{ row.source }}"></td>
-                <td><label class="remove-toggle"><input type="checkbox" name="fees[{{ index }}][remove]" value="1"><span class="visually-hidden">Usuń opłatę {{ index + 1 }}</span></label></td>
+                <td class="cell--remove"><button type="submit" class="button button--link row-remove" name="fees[{{ index }}][remove]" value="1" formaction="{{ path('app_calculator_result') }}#panel-fees" formnovalidate data-row-remove aria-label="Usuń opłatę {{ index + 1 }}">Usuń</button></td>
             </tr>
         {% endfor %}
         </tbody>
@@ -32,10 +38,18 @@
     </tbody></table></div>
 {% endif %}
 <p class="note">
-    Dodatnia korekta zmniejsza koszt. Opłaty ogólne nie są przypisywane do konkretnego PIT/ZG.
-    Zobacz <a href="https://www.podatki.gov.pl/media/11079/broszura-do-pit-38-za-2025-r.pdf" rel="noopener noreferrer">broszurę MF do PIT-38 za 2025 r.</a>
+    <strong>Korekta / zwrot</strong> — zaznacz, gdy broker oddał pieniądze, np. zwrócił pobraną
+    wcześniej opłatę. Taka kwota zmniejsza koszty zamiast je zwiększać. <strong>Uwzględnij
+    w kosztach</strong> pozwala pominąć pojedynczą opłatę. Opłaty z tej zakładki nie są
+    przypisywane do żadnego kraju w PIT/ZG.
+</p>
+<p class="note">
+    Nie ma tu prowizji ani podatków od transakcji: prowizje są już w kwotach zakupu i sprzedaży,
+    a podatek od transakcji (np. francuski) z zestawienia konta doliczamy do kwoty zakupu,
+    którego dotyczy — widać go w zakładce Transakcje. Zobacz też
+    <a href="https://www.podatki.gov.pl/media/11079/broszura-do-pit-38-za-2025-r.pdf" rel="noopener noreferrer">broszurę MF do PIT-38 za 2025 r.</a>
 </p>
 <template data-row-template="fees"><tr data-row-id="">
-    <td><input type="hidden" name="fees[__INDEX__][id]" value=""><input name="fees[__INDEX__][description]" required></td><td><input name="fees[__INDEX__][category]" value="Inna opłata rachunkowa" required></td><td><input type="date" name="fees[__INDEX__][value_date]" required></td><td><input name="fees[__INDEX__][currency]" size="4" required></td><td><input name="fees[__INDEX__][amount]" size="10" inputmode="decimal" required></td>
-    <td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][correction]" value="0"><input type="checkbox" name="fees[__INDEX__][correction]" value="1"> Tak</label></td><td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][included]" value="0"><input type="checkbox" name="fees[__INDEX__][included]" value="1" checked> Tak</label></td><td class="cell--source">ręcznie<input type="hidden" name="fees[__INDEX__][source]" value="ręcznie"></td><td><label class="remove-toggle"><input type="checkbox" name="fees[__INDEX__][remove]" value="1"><span class="visually-hidden">Usuń opłatę</span></label></td>
+    <td><input type="hidden" name="fees[__INDEX__][id]" value=""><input name="fees[__INDEX__][description]" required></td><td><select name="fees[__INDEX__][category]" aria-label="Kategoria opłaty" required>{% for category in fee_categories %}<option value="{{ category }}" {{ category == 'Inne' ? 'selected' : '' }}>{{ category }}</option>{% endfor %}</select></td><td><input type="date" name="fees[__INDEX__][value_date]" required></td><td><input name="fees[__INDEX__][currency]" size="4" required></td><td><input name="fees[__INDEX__][amount]" size="10" inputmode="decimal" required></td>
+    <td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][correction]" value="0"><input type="checkbox" name="fees[__INDEX__][correction]" value="1"> Tak</label></td><td><label class="toggle-label"><input type="hidden" name="fees[__INDEX__][included]" value="0"><input type="checkbox" name="fees[__INDEX__][included]" value="1" checked> Tak</label></td><td class="cell--source">ręcznie<input type="hidden" name="fees[__INDEX__][source]" value="ręcznie"></td><td class="cell--remove"><button type="submit" class="button button--link row-remove" name="fees[__INDEX__][remove]" value="1" formaction="{{ path('app_calculator_result') }}#panel-fees" formnovalidate data-row-remove aria-label="Usuń opłatę">Usuń</button></td>
 </tr></template>

@@ -26,26 +26,6 @@
     });
 
     /**
-     * Fade rows marked for removal so the effect is visible before the form is
-     * submitted.
-     */
-    document.addEventListener('change', function (event) {
-        var input = event.target;
-        if (!(input instanceof HTMLInputElement) || input.type !== 'checkbox') {
-            return;
-        }
-
-        if (!/\[remove]$/.test(input.name) || input.closest('[data-trade-ledger]')) {
-            return;
-        }
-
-        var row = input.closest('tr');
-        if (row) {
-            row.classList.toggle('row--removed', input.checked);
-        }
-    });
-
-    /**
      * Warn before leaving a filled-in review form: the data lives only in this
      * page, so navigating away really does lose it.
      */
@@ -641,23 +621,16 @@
             });
         });
 
-        var setTombstone = function (checkbox) {
-            var row = checkbox.closest('tr');
-            var idInput = row ? row.querySelector('input[name$="[id]"]') : null;
-            if (!idInput || !idInput.value) {
+        var addTombstone = function (id) {
+            var escaped = window.CSS && CSS.escape ? CSS.escape(id) : id.replace(/"/g, '\\"');
+            if (workbench.querySelector('input[name="tombstones[]"][value="' + escaped + '"]')) {
                 return;
             }
-            var escaped = window.CSS && CSS.escape ? CSS.escape(idInput.value) : idInput.value.replace(/"/g, '\\"');
-            var existing = workbench.querySelector('input[name="tombstones[]"][value="' + escaped + '"]');
-            if (checkbox.checked && !existing) {
-                var tombstone = document.createElement('input');
-                tombstone.type = 'hidden';
-                tombstone.name = 'tombstones[]';
-                tombstone.value = idInput.value;
-                workbench.appendChild(tombstone);
-            } else if (!checkbox.checked && existing) {
-                existing.remove();
-            }
+            var tombstone = document.createElement('input');
+            tombstone.type = 'hidden';
+            tombstone.name = 'tombstones[]';
+            tombstone.value = id;
+            workbench.appendChild(tombstone);
         };
 
         var timer = null;
@@ -794,13 +767,32 @@
             window.clearTimeout(timer);
             timer = window.setTimeout(function () { recalculate(false); }, 450);
         });
-        workbench.addEventListener('change', function (event) {
-            var input = event.target;
-            // A trade is removed by saving it removed; the server turns the
-            // posted flag into a tombstone.
-            if (input instanceof HTMLInputElement && /\[remove]$/.test(input.name) && !input.closest('[data-trade-ledger]')) {
-                setTombstone(input);
+        // "Usuń" in the dividend and fee editors takes the row off the list at
+        // once. A saved row still posts - hidden, flagged [remove] and
+        // tombstoned - so the counts the form rendered stay true and the server
+        // drops it; an unsaved new row simply goes. Without JavaScript the
+        // button is a real submit and the server does the same.
+        workbench.addEventListener('click', function (event) {
+            var button = event.target instanceof Element ? event.target.closest('[data-row-remove]') : null;
+            var row = button instanceof HTMLButtonElement ? button.closest('tr') : null;
+            if (!button || !row) {
+                return;
             }
+            event.preventDefault();
+            var idInput = row.querySelector('input[name$="[id]"]');
+            if (idInput instanceof HTMLInputElement && idInput.value) {
+                var flag = document.createElement('input');
+                flag.type = 'hidden';
+                flag.name = button.name;
+                flag.value = '1';
+                idInput.after(flag);
+                addTombstone(idInput.value);
+                row.hidden = true;
+            } else {
+                row.remove();
+            }
+            window.clearTimeout(timer);
+            timer = window.setTimeout(function () { recalculate(false); }, 0);
         });
         workbench.addEventListener('submit', function (event) {
             if (event.submitter && event.submitter.hasAttribute('formaction')) {

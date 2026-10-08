@@ -74,6 +74,13 @@ niepełnym zbiorze danych podczas awarii NBP lub przy nieobsługiwanej walucie.
   dostaje dokładną resztę, więc sumy się zgadzają co do grosza.
 - Przychód = suma kwot sprzedaży w PLN; koszt = suma kwot zakupu w PLN (zob.
   [prowizje](#prowizje)).
+- **Podatek od transakcji** pobrany przy zakupie (np. francuski, włoski, hiszpański), który
+  DEGIRO księguje osobno w zestawieniu konta, jest doliczany do kwoty tego zakupu (Total
+  i prowizja) — zwiększa koszt nabycia. Zakup jest szukany po ISIN: z dnia zaksięgowania
+  podatku, a gdy go brak, z ostatniego dnia zakupów w tygodniu wcześniej; kilka zakupów tego
+  dnia dzieli podatek proporcjonalnie do wartości. Działa w obrębie jednego wgrania — bez
+  zakupu w tej samej paczce plików (albo przy zwrocie podatku) kalkulator nic nie zgaduje
+  i zgłasza to w „Wymaga uwagi”.
 - **Samodzielne opłaty rachunkowe** (np. roczna opłata za dostęp do giełdy) nie dotyczą
   żadnej konkretnej transakcji, a przepisy nie przesądzają jasno, czy są kosztem uzyskania
   przychodu ze zbycia papierów. Dlatego domyślnie **nie** są wliczane: widać je w zakładce

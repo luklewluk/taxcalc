@@ -63,6 +63,43 @@ final class DegiroAccountFeeImporterTest extends TestCase
         self::assertSame([], $result->fees);
     }
 
+    /**
+     * A transaction tax is not an account fee: it belongs to one purchase, so
+     * it leaves the importer as a TransactionTax for the import service to add
+     * to that purchase - counted once across overlapping statements.
+     */
+    public function testATransactionTaxIsHandedOverForItsPurchase(): void
+    {
+        $row = '10-03-2023,09:01,10-03-2023,ALFA SA,FR000ALFA001,Francuski podatek od transakcji,,EUR,-3.00,EUR,97.00,ftt-1'."\n";
+        $csv = self::HEADER."\n".$row;
+        $result = (new DegiroAccountImporter())->importMany([
+            new CsvSource('a.csv', $csv),
+            new CsvSource('b.csv', $csv),
+        ]);
+
+        self::assertSame([], $result->errors());
+        self::assertSame([], $result->fees);
+        self::assertCount(1, $result->transactionTaxes);
+        $tax = $result->transactionTaxes[0];
+        self::assertSame('FR000ALFA001', $tax->isin);
+        self::assertSame('3.00', (string) $tax->amount->value());
+        self::assertSame('2023-03-10', $tax->date->format('Y-m-d'));
+        self::assertSame('DEGIRO', $tax->broker);
+    }
+
+    public function testTheTaxIsRecognisedInOtherLanguagesAndARefundIsLeftForReview(): void
+    {
+        $csv = self::HEADER."\n"
+            .'10-03-2023,09:01,10-03-2023,ALFA SA,FR000ALFA001,French Transaction Tax,,EUR,-3.00,EUR,97.00,'."\n"
+            .'11-03-2023,09:01,11-03-2023,BETA SPA,IT000BETA002,Italian Financial Transaction Tax,,EUR,-1.00,EUR,96.00,'."\n"
+            .'12-03-2023,09:01,12-03-2023,ALFA SA,FR000ALFA001,Francuski podatek od transakcji,,EUR,3.00,EUR,99.00,'."\n";
+        $result = (new DegiroAccountImporter())->import(new CsvSource('account.csv', $csv));
+
+        self::assertSame([], $result->errors());
+        self::assertCount(2, $result->transactionTaxes);
+        self::assertStringContainsString('Rozlicz', implode(' ', $result->warnings()));
+    }
+
     public function testFullyReversedFeeGroupIsOmitted(): void
     {
         $csv = self::HEADER."\n"

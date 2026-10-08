@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Import;
 
+use App\Import\Dto\TransactionTax;
 use App\Model\ClosedPosition;
 use App\Model\Dividend;
 use App\Fifo\Trade;
@@ -17,6 +18,7 @@ final readonly class ImportResult
      * @param list<ImportMessage>  $messages
      * @param list<Trade>          $trades logical transactions entering FIFO
      * @param list<AccountFee>     $fees standalone account charges
+     * @param list<TransactionTax> $transactionTaxes taxes on purchases, booked apart from the trade
      */
     public function __construct(
         public array $positions = [],
@@ -24,6 +26,7 @@ final readonly class ImportResult
         public array $messages = [],
         public array $trades = [],
         public array $fees = [],
+        public array $transactionTaxes = [],
     ) {
     }
 
@@ -35,6 +38,7 @@ final readonly class ImportResult
             [...$this->messages, ...$other->messages],
             [...$this->trades, ...$other->trades],
             [...$this->fees, ...$other->fees],
+            [...$this->transactionTaxes, ...$other->transactionTaxes],
         );
     }
 
@@ -49,6 +53,7 @@ final readonly class ImportResult
             [...$this->messages, ...$messages],
             $this->trades,
             $this->fees,
+            $this->transactionTaxes,
         );
     }
 

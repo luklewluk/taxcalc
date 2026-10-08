@@ -12,7 +12,7 @@
                 <td><input name="dividends[{{ index }}][gross]" value="{{ row.gross }}" size="12" inputmode="decimal" required></td>
                 <td><input name="dividends[{{ index }}][tax_paid]" value="{{ row.tax_paid }}" size="12" inputmode="decimal"></td>
                 <td class="cell--source">{{ row.source ?: 'ręcznie' }}<input type="hidden" name="dividends[{{ index }}][source]" value="{{ row.source }}"></td>
-                <td><label class="remove-toggle"><input type="checkbox" name="dividends[{{ index }}][remove]" value="1"><span class="visually-hidden">Usuń dywidendę {{ index + 1 }}</span></label></td>
+                <td class="cell--remove"><button type="submit" class="button button--link row-remove" name="dividends[{{ index }}][remove]" value="1" formaction="{{ path('app_calculator_result') }}#panel-dividends" formnovalidate data-row-remove aria-label="Usuń dywidendę {{ index + 1 }}">Usuń</button></td>
             </tr>
         {% endfor %}
         </tbody>
@@ -23,5 +23,5 @@
     <td><input type="hidden" name="dividends[__INDEX__][id]" value=""><input name="dividends[__INDEX__][name]" aria-label="Nazwa dywidendy" required></td>
     <td><select name="dividends[__INDEX__][country]" aria-label="Kraj dywidendy" required aria-required="true"><option value="">— wybierz —</option>{% for code, name in country_options %}<option value="{{ code }}">{{ code }} — {{ name }}</option>{% endfor %}</select></td>
     <td><input type="date" name="dividends[__INDEX__][date]" required></td><td><input name="dividends[__INDEX__][currency]" size="4" required></td><td><input name="dividends[__INDEX__][gross]" size="12" inputmode="decimal" required></td><td><input name="dividends[__INDEX__][tax_paid]" value="0" size="12" inputmode="decimal"></td>
-    <td class="cell--source">ręcznie<input type="hidden" name="dividends[__INDEX__][source]" value="ręcznie"></td><td><label class="remove-toggle"><input type="checkbox" name="dividends[__INDEX__][remove]" value="1"><span class="visually-hidden">Usuń dywidendę</span></label></td>
+    <td class="cell--source">ręcznie<input type="hidden" name="dividends[__INDEX__][source]" value="ręcznie"></td><td class="cell--remove"><button type="submit" class="button button--link row-remove" name="dividends[__INDEX__][remove]" value="1" formaction="{{ path('app_calculator_result') }}#panel-dividends" formnovalidate data-row-remove aria-label="Usuń dywidendę">Usuń</button></td>
 </tr></template>

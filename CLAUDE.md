@@ -389,6 +389,19 @@ Ten modules under `src/`, ordered from the inside out:
   overshoot: 0.02 over four one-share sells leaves -0.01. Non-final slices are therefore capped
   at the remaining balance. Now that the fee is a tax figure, a negative slice would declare a
   przychód *below* the settled cash.
+- **A transaction tax belongs to the purchase, not to the fees.** The account statement books
+  the French/Italian/Spanish tax apart from the trade, under its own identifier (not the order's).
+  `DegiroAccountImporter` hands it over as `Dto\TransactionTax`; `CsvImportService` ends with
+  `TransactionTaxApplier`, which adds it to the buy's `grossAmount` and `commission`
+  (`Trade::withAddedBuyCost()`) - same broker, ISIN and currency, the booking day or else the
+  latest purchase day of the 7 before, shared pro rata between same-day buys. Only within one
+  upload; no purchase, a refund or another currency is a review item, never a guess. No new
+  form field: Total and commission already round-trip.
+- **Fee categories are a fixed list** (`AccountFeeCategory`, value = Polish label, `Inne` last).
+  A posted value outside it keeps an extra selected option, like the country select.
+- **"Usuń" in the dividend and fee editors is a button.** A real submit without JavaScript
+  (`formaction`, `formnovalidate`, name `…[remove]`); with it the row is hidden, flagged and
+  tombstoned but still posts, so `expected_*` counts stay true, and a recalculation runs.
 - **DEGIRO amounts come from `Total`, never `Quantity * Price`.** That column is the settled
   cash and already carries the transaction fee; adding the fee column again would
   double-count it. A sign that contradicts the quantity is an error, not something to fix.

@@ -14,6 +14,7 @@ use App\Import\ImportResult;
 use App\Import\MessageLevel;
 use App\Exception\InvalidRecordException;
 use App\Model\AccountFee;
+use App\Model\AccountFeeCategory;
 use App\Model\CountryCode;
 use App\Model\Dividend;
 use App\Report\CsvReportWriter;
@@ -101,6 +102,7 @@ use Symfony\Component\Routing\Attribute\Route;
  *     settlement_cycle_help: array<string, string>,
  *     account_fee_treatments: array<string, string>,
  *     account_fee_treatment_help: array<string, string>,
+ *     fee_categories: list<string>,
  *     expected_trades: int,
  *     expected_dividends: int,
  *     expected_fees: int,
@@ -567,6 +569,7 @@ final class CalculatorController extends AbstractController
             'settlement_cycle_help' => $this->settingsProvider->settlementCycleHelp(),
             'account_fee_treatments' => $this->settingsProvider->accountFeeTreatments(),
             'account_fee_treatment_help' => $this->settingsProvider->accountFeeTreatmentHelp(),
+            'fee_categories' => AccountFeeCategory::values(),
             'expected_trades' => count($state['tradeRows']),
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),

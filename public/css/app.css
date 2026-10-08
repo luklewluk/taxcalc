@@ -1299,12 +1299,15 @@ select {
 
 .remove-toggle:hover { background: color-mix(in srgb, var(--error) 12%, transparent); }
 
-.cell--remove input[type="checkbox"] {
-    width: 1.125rem;
-    height: 1.125rem;
-    margin: 0;
-    accent-color: var(--error);
+/* "Usuń" in the dividend and fee editors: a button that takes the row off at once. */
+.row-remove {
+    min-height: 2rem;
+    padding-inline: 0;
+    color: var(--error);
+    font-size: 0.875rem;
 }
+
+.row-remove:hover { color: var(--error); }
 
 .cell--source {
     color: var(--ink-2);
@@ -1318,7 +1321,6 @@ select {
     background-color: var(--warning-bg);
 }
 
-.row--removed { opacity: 0.42; }
 
 /* Technical columns, revealed by the review toggle (works without JS) */
 
@@ -1842,17 +1844,7 @@ kbd {
         font-size: 1rem;
     }
 
-    .table--editable .cell--remove .remove-toggle {
-        min-width: var(--tap);
-        min-height: var(--tap);
-        margin: 0;
-        justify-self: start;
-    }
-
-    .table--editable .cell--remove input[type="checkbox"] {
-        width: 1.375rem;
-        height: 1.375rem;
-    }
+    .table--editable .row-remove { min-height: var(--tap); font-size: 1rem; }
 
     .tech-toggle__label {
         min-height: var(--tap);

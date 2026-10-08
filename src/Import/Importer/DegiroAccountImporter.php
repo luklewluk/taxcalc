@@ -14,12 +14,14 @@ use App\Import\Degiro\DegiroCashRow;
 use App\Import\Degiro\DegiroCsvReader;
 use App\Import\Degiro\DegiroHeader;
 use App\Import\Degiro\Isin;
+use App\Import\Dto\TransactionTax;
 use App\Import\ImportMessage;
 use App\Import\ImportResult;
 use App\Import\Parser\DateParser;
 use App\Import\Parser\NumberParser;
 use App\Model\Dividend;
 use App\Model\AccountFee;
+use App\Model\AccountFeeCategory;
 use App\Money\Amount;
 use App\Money\Decimal;
 use DateTimeImmutable;
@@ -72,6 +74,16 @@ final class DegiroAccountImporter implements BatchImporterInterface
      *
      * @var list<string>
      */
+    /**
+     * A tax charged on a purchase (French, Italian, Spanish), as the export's
+     * language names it. Checked before TAX_MARKERS: "podatek" alone is not a
+     * withholding.
+     */
+    private const array TRANSACTION_TAX_MARKERS = [
+        'podatek od transakcji', 'transaction tax', 'transactiebelasting',
+        'finanztransaktionssteuer', 'taxe sur les transactions',
+    ];
+
     private const array TAX_MARKERS = [
         'dividend tax', 'dividendtax', 'withholding tax', 'withholdingtax',
         'dividendbelasting',
@@ -149,12 +161,15 @@ final class DegiroAccountImporter implements BatchImporterInterface
         $skippedTrades = 0;
         /** @var list<AccountFee> $fees */
         $fees = [];
+        /** @var list<TransactionTax> $taxes */
+        $taxes = [];
 
         foreach ($sources as $source) {
-            [$sourceRows, $sourceFees, $sourceMessages, $sourceSkipped, $sourceTrades] = $this->readSource($source);
+            [$sourceRows, $sourceFees, $sourceMessages, $sourceSkipped, $sourceTrades, $sourceTaxes] = $this->readSource($source);
 
             $rows = [...$rows, ...$sourceRows];
             $fees = [...$fees, ...$sourceFees];
+            $taxes = [...$taxes, ...$sourceTaxes];
             $messages = [...$messages, ...$sourceMessages];
             $skipped += $sourceSkipped;
             $skippedTrades += $sourceTrades;
@@ -162,6 +177,10 @@ final class DegiroAccountImporter implements BatchImporterInterface
 
         [$rows, $duplicates] = self::deduplicate($rows);
         [$fees, $feeDuplicates] = self::deduplicateFees($fees);
+        $uniqueTaxes = [];
+        foreach ($taxes as $tax) {
+            $uniqueTaxes[$tax->id] ??= $tax;
+        }
 
         /** @var array<string, array{string, string, string, DateTimeImmutable, Decimal}> $gross */
         $gross = [];
@@ -367,19 +386,19 @@ final class DegiroAccountImporter implements BatchImporterInterface
             );
         }
 
-        return new ImportResult([], $dividends, $messages, [], $fees);
+        return new ImportResult([], $dividends, $messages, [], $fees, array_values($uniqueTaxes));
     }
 
     /**
      * Reads one statement on its own: its own header, language and notation.
      *
-     * @return array{list<DegiroCashRow>, list<AccountFee>, list<ImportMessage>, int, int}
+     * @return array{list<DegiroCashRow>, list<AccountFee>, list<ImportMessage>, int, int, list<TransactionTax>}
      */
     private function readSource(CsvSource $source): array
     {
         [$table, $messages] = DegiroCsvReader::read($source, $this->maxRowsPerFile);
         if (null === $table) {
-            return [[], [], $messages, 0, 0];
+            return [[], [], $messages, 0, 0, []];
         }
 
         $header = $table->header;
@@ -414,7 +433,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
             return [[], [], [...$messages, ImportMessage::error(
                 $source->name,
                 sprintf('Brakuje wymaganych kolumn: %s.', implode(', ', $missing)),
-            )], 0, 0];
+            )], 0, 0, []];
         }
 
         [$amountIndex, $currencyIndex, $headerCurrency] = $money;
@@ -424,6 +443,8 @@ final class DegiroAccountImporter implements BatchImporterInterface
 
         $rows = [];
         $fees = [];
+        /** @var list<TransactionTax> $taxes */
+        $taxes = [];
         $skipped = 0;
         $skippedTrades = 0;
         $unsupported = [];
@@ -433,6 +454,55 @@ final class DegiroAccountImporter implements BatchImporterInterface
 
         foreach ($table->rows as [$line, $row]) {
             $description = DegiroHeader::normalize($table->value($row, $descriptionIndex));
+
+            if (self::matches($description, self::TRANSACTION_TAX_MARKERS)) {
+                try {
+                    $currency = self::normalizeCurrency($headerCurrency ?? mb_strtoupper($table->value($row, $currencyIndex)));
+                    $signedAmount = NumberParser::parseLocalized($table->value($row, $amountIndex), $table->decimalComma());
+                    $date = DateParser::parse($table->value($row, $dateIndex));
+                    $isin = null === $isinIndex ? '' : mb_strtoupper($table->value($row, $isinIndex));
+                    if ($signedAmount->isZero()) {
+                        ++$skipped;
+                        continue;
+                    }
+
+                    $label = $table->value($row, $descriptionIndex);
+                    $problem = match (true) {
+                        !$signedAmount->isNegative() => 'to zwrot podatku, a nie obciążenie',
+                        !Isin::isWellFormed($isin) => 'wiersz nie podaje numeru ISIN papieru',
+                        default => null,
+                    };
+                    if (null !== $problem) {
+                        $messages[] = ImportMessage::review($source->name, sprintf(
+                            '%s %s %s z dnia %s - %s. Rozlicz tę kwotę ręcznie w koszcie zakupu, którego dotyczy.',
+                            $label,
+                            (string) $signedAmount->abs(),
+                            $currency,
+                            $date->format('Y-m-d'),
+                            $problem,
+                        ), $line)->forTab('transactions');
+
+                        continue;
+                    }
+
+                    $identity = implode('|', ['tax', $description, $date->format('Y-m-d'), $isin, $currency, (string) $signedAmount]);
+                    $ordinal = $ordinals[$identity] = ($ordinals[$identity] ?? 0) + 1;
+                    $taxes[] = new TransactionTax(
+                        'DEGIRO',
+                        $isin,
+                        $date,
+                        Amount::fromDecimal($signedAmount->abs(), $currency),
+                        $label,
+                        sprintf('%s (%s)', $source->name, CsvFormat::DegiroAccount->label()),
+                        $line,
+                        hash('sha256', 'degiro-tax|'.$identity.'|'.$ordinal),
+                    );
+                } catch (InvalidNumberException|InvalidDateException|InvalidCurrencyException|InvalidRecordException $e) {
+                    $messages[] = ImportMessage::error($source->name, 'Podatek od transakcji: '.$e->getMessage(), $line);
+                }
+
+                continue;
+            }
 
             $isTax = self::matches($description, self::TAX_MARKERS);
             $isConnectionFee = in_array(self::connectionFeeKey($description), self::CONNECTION_FEE_DESCRIPTIONS, true);
@@ -452,7 +522,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
                     $ordinal = $ordinals['fee|'.$identity] = ($ordinals['fee|'.$identity] ?? 0) + 1;
                     $fees[] = new AccountFee(
                         $table->value($row, $descriptionIndex),
-                        'Połączenie z giełdą DEGIRO',
+                        AccountFeeCategory::ExchangeConnection->value,
                         $date,
                         $currency,
                         Amount::fromDecimal($signedAmount->abs(), $currency),
@@ -584,7 +654,7 @@ final class DegiroAccountImporter implements BatchImporterInterface
             );
         }
 
-        return [$rows, $fees, $messages, $skipped, $skippedTrades];
+        return [$rows, $fees, $messages, $skipped, $skippedTrades, $taxes];
     }
 
     /**

@@ -173,6 +173,12 @@ final readonly class CsvImportService
 
         $result = $this->deduplicate($result);
 
+        // A tax charged on a purchase arrives on the account statement, apart
+        // from the trade: add it to that purchase now that every trade is final.
+        [$trades, $taxMessages] = TransactionTaxApplier::apply($result->trades, $result->transactionTaxes);
+        $result = (new ImportResult($result->positions, $result->dividends, $result->messages, $trades, $result->fees))
+            ->withMessages($taxMessages);
+
         // Any import error makes the whole batch unusable. A tax calculation
         // from only the files/rows that happened to parse would look valid while
         // silently understating the result.
@@ -217,6 +223,7 @@ final readonly class CsvImportService
             self::messagesForTab($result->messages, $targetTab),
             $result->trades,
             $result->fees,
+            $result->transactionTaxes,
         );
     }
 
@@ -582,6 +589,7 @@ final readonly class CsvImportService
             $messages,
             $result->trades,
             $result->fees,
+            $result->transactionTaxes,
         );
     }
 
