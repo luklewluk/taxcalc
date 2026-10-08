@@ -14,6 +14,7 @@ use App\Money\Amount;
 use App\Money\Decimal;
 use App\Report\CsvReportWriter;
 use App\Report\TaxReport;
+use App\Settlement\SettlementCycle;
 use App\Report\TaxReportBuilder;
 use App\Tax\DividendTaxCalculator;
 use App\Tax\StockTaxCalculator;
@@ -186,6 +187,18 @@ final class CsvReportWriterTest extends TestCase
         self::assertStringContainsString(',Akcje,dluga,2024-12-16,,,FIFO', $csv);
         self::assertStringContainsString(',Akcje,dluga,2024-12-16,,,"wskazanie partii"', $csv);
         self::assertStringContainsString('0112-KDIL2-1.4011.929.2025.1.TR', $csv);
+    }
+
+    public function testTheReportStatesItsSettlementCycleOnceAndEachLegsSettlement(): void
+    {
+        $position = self::position('AAA', 'US', '2024-05-03', '100.00', '2024-12-16', '150.00')
+            ->withSettlement(new DateTimeImmutable('2024-05-07'), new DateTimeImmutable('2024-12-17'));
+
+        $csv = (new CsvReportWriter())->write($this->report([$position], []), cycle: SettlementCycle::Market);
+
+        self::assertStringContainsString('"Cykl rozliczenia","Dzień rozliczenia wg giełdy (D+1 / D+2)"', $csv);
+        self::assertStringContainsString('"Metoda doboru partii","Data rozliczenia zakupu","Data rozliczenia sprzedazy"', $csv);
+        self::assertStringContainsString(',FIFO,2024-05-07,2024-12-17', $csv);
     }
 
     public function testAFifoOnlyReportCarriesNoLotNote(): void

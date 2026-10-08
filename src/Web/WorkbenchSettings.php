@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Web;
 
+use App\Settlement\SettlementCycle;
 use App\Tax\CreditMethod;
 
 /**
@@ -27,6 +28,11 @@ final readonly class WorkbenchSettings
          * computes both; every surface shows this one only, named.
          */
         public CreditMethod $creditMethod = CreditMethod::Conservative,
+        /**
+         * Which day of a trade leg sets its NBP rate and - for the closing
+         * leg - its tax year: the trade itself, or the day it settles.
+         */
+        public SettlementCycle $settlementCycle = SettlementCycle::TradeDate,
     ) {
     }
 }

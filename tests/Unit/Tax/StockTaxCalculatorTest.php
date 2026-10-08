@@ -39,6 +39,28 @@ final class StockTaxCalculatorTest extends TestCase
         self::assertSame('2024-12-15', $position->revenue->rateDate?->format('Y-m-d'));
     }
 
+    public function testUnderASettlementCycleEachAmountTakesTheRateBeforeItsSettlement(): void
+    {
+        $position = (new ClosedPosition(
+            'AAPL',
+            'US',
+            'USD',
+            new DateTimeImmutable('2024-05-03'),
+            Amount::of('100.00', 'USD'),
+            new DateTimeImmutable('2024-12-16'),
+            Amount::of('150.00', 'USD'),
+            null,
+            'test',
+            sellCommission: Amount::of('1.00', 'USD'),
+        ))->withSettlement(new DateTimeImmutable('2024-05-07'), new DateTimeImmutable('2024-12-17'));
+
+        $calculated = $this->calculator->calculate([$position])->positions[0];
+
+        self::assertSame('2024-05-06', $calculated->cost->rateDate?->format('Y-m-d'));
+        self::assertSame('2024-12-16', $calculated->revenue->rateDate?->format('Y-m-d'));
+        self::assertSame('2024-12-16', $calculated->disposalCost?->rateDate?->format('Y-m-d'));
+    }
+
     public function testTotalsAndNineteenPercentTax(): void
     {
         $result = $this->calculator->calculate([

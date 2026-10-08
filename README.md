@@ -104,7 +104,8 @@ jest każdy eksport: [docs/formaty.md](docs/formaty.md).
 ## Jak liczymy
 
 - **Kurs:** średni NBP (tabela A) z ostatniego dnia roboczego przed transakcją lub wypłatą
-  (art. 11a ustawy o PIT).
+  (art. 11a ustawy o PIT). W ustawieniach możesz zamiast daty transakcji przyjąć dzień jej
+  rozliczenia (D+1 / D+2) — wtedy od niego zależy też rok podatkowy.
 - **Akcje i ETF-y:** FIFO — najstarsze zakupy najpierw, przez wszystkie wgrane lata —
   chyba że sprzedaży wskażesz konkretne partie (art. 30b ust. 7 ustawy o PIT; interpretacja
   KIS 0112-KDIL2-1.4011.929.2025.1.TR). Do rozliczenia trafiają sprzedaże z wybranego roku. Podatek to 19% dochodu; strata daje

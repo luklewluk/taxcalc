@@ -11,6 +11,7 @@ use League\Csv\Writer;
 use App\Fifo\LotAssignments;
 use App\Fifo\LotMethod;
 use App\Fifo\Trade;
+use App\Settlement\SettlementCycle;
 use App\Model\AccountFee;
 use App\Model\Dividend;
 
@@ -52,13 +53,14 @@ final class CsvReportWriter
         array $dividends = [],
         CreditMethod $chosen = CreditMethod::Conservative,
         LotAssignments $assignments = new LotAssignments(),
+        SettlementCycle $cycle = SettlementCycle::TradeDate,
     ): string {
         $writer = Writer::fromString();
 
         // Only the reading chosen in the workbench settings. The file leaves the
         // page, so its summary states once which reading that is; the columns
         // are not labelled again.
-        $this->writeSummary($writer, $report, $chosen);
+        $this->writeSummary($writer, $report, $chosen, $cycle);
         $this->writeCountries($writer, $report, $chosen);
         $this->writePositions($writer, $report);
         $this->writeDividends($writer, $report, $chosen);
@@ -78,10 +80,12 @@ final class CsvReportWriter
         return sprintf('pit-38-%d-raport.csv', $report->taxYear);
     }
 
-    private function writeSummary(Writer $writer, TaxReport $report, CreditMethod $chosen): void
+    private function writeSummary(Writer $writer, TaxReport $report, CreditMethod $chosen, SettlementCycle $cycle): void
     {
         $this->section($writer, 'PODSUMOWANIE');
         $this->row($writer, ['Rok podatkowy', (string) $report->taxYear]);
+        // Stated once, like the credit reading: it moves rates and tax years.
+        $this->row($writer, ['Cykl rozliczenia', $cycle->label()]);
         $this->row($writer, ['Zastrzeżenie', self::DISCLAIMER]);
         $this->row($writer, []);
 
@@ -187,7 +191,7 @@ final class CsvReportWriter
             // Appended, so the columns above keep their positions for anyone
             // who reads this file by index.
             'Rodzaj instrumentu', 'Pozycja (dluga/krotka)', 'Data zamkniecia', 'Kurs NBP kosztu zbycia', 'Data kursu kosztu zbycia',
-            'Metoda doboru partii',
+            'Metoda doboru partii', 'Data rozliczenia zakupu', 'Data rozliczenia sprzedazy',
         ]);
 
         foreach ($report->stock->positions as $index => $position) {
@@ -239,6 +243,8 @@ final class CsvReportWriter
             null === $position->disposalCost ? '' : (string) $position->disposalCost->rate,
             $position->disposalCost?->rateDate?->format('Y-m-d') ?? '',
             LotMethod::Specific === $position->position->lotMethod ? 'wskazanie partii' : 'FIFO',
+            $position->position->buySettlement?->format('Y-m-d') ?? '',
+            $position->position->sellSettlement?->format('Y-m-d') ?? '',
         ];
     }
 

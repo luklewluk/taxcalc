@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Tests\Unit\Web;
 
+use App\Settlement\SettlementCycle;
 use App\Tax\CreditMethod;
 use App\Web\CountrySource;
 use App\Web\SettingsProvider;
@@ -26,6 +27,7 @@ final class SettingsProviderTest extends TestCase
 
         self::assertSame(CountrySource::Exchange, $settings->countrySource);
         self::assertSame(CreditMethod::Conservative, $settings->creditMethod);
+        self::assertSame(SettlementCycle::TradeDate, $settings->settlementCycle);
     }
 
     /**
@@ -34,18 +36,20 @@ final class SettingsProviderTest extends TestCase
      */
     public function testAnUnknownValueFallsBackToTheDefault(): void
     {
-        $settings = $this->provider->normalize('nonsense', ['array']);
+        $settings = $this->provider->normalize('nonsense', ['array'], 'T+5');
 
         self::assertSame(CountrySource::Exchange, $settings->countrySource);
         self::assertSame(CreditMethod::Conservative, $settings->creditMethod);
+        self::assertSame(SettlementCycle::TradeDate, $settings->settlementCycle);
     }
 
     public function testKnownValuesAreAccepted(): void
     {
-        $settings = $this->provider->normalize('isin', 'nsa');
+        $settings = $this->provider->normalize('isin', 'nsa', 'market');
 
         self::assertSame(CountrySource::Isin, $settings->countrySource);
         self::assertSame(CreditMethod::Nsa, $settings->creditMethod);
+        self::assertSame(SettlementCycle::Market, $settings->settlementCycle);
     }
 
     public function testBothVocabulariesAreOfferedWithPolishLabels(): void
@@ -59,6 +63,14 @@ final class SettingsProviderTest extends TestCase
         foreach ([...array_values($sources), ...array_values($methods)] as $label) {
             self::assertNotSame('', trim($label));
             self::assertMatchesRegularExpression('/[ąćęłńóśźżĄĆĘŁŃÓŚŹŻ]|giełd|ISIN|KIS|NSA/u', $label);
+        }
+    }
+
+    public function testEverySettlementCycleIsOfferedAndExplained(): void
+    {
+        self::assertSame(['trade_date', 'market', 'pl_d2'], array_keys($this->provider->settlementCycles()));
+        foreach ($this->provider->settlementCycleHelp() as $help) {
+            self::assertStringContainsString('kurs nbp', mb_strtolower($help));
         }
     }
 

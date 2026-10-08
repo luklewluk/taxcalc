@@ -78,7 +78,7 @@
     },
     "scripts": {
         "test": "phpunit",
-        "phpstan": "phpstan analyse",
+        "phpstan": "phpstan analyse --memory-limit=512M",
         "lint": [
             "@php bin/console lint:container",
             "@php bin/console lint:twig templates"

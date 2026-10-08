@@ -71,11 +71,11 @@ final readonly class StockTaxCalculator
                 ? $position->sellAmount
                 : $position->sellAmount->plus($disposalFee);
 
-            $cost = $this->exchange->toPln($position->buyAmount, $position->buyDate);
+            $cost = $this->exchange->toPln($position->buyAmount, $position->buyRateDate());
             $revenue = $this->exchange->toPln($grossProceeds, $position->revenueDate());
             $disposal = null === $disposalFee
                 ? null
-                : $this->exchange->toPln($disposalFee, $position->sellDate);
+                : $this->exchange->toPln($disposalFee, $position->sellRateDate());
 
             $positionCost = null === $disposal ? $cost->pln : $cost->pln->plus($disposal->pln);
 

@@ -5,25 +5,36 @@ declare(strict_types=1);
 namespace App\Web;
 
 use App\Exception\InvalidRecordException;
+use App\Fifo\FifoMatch;
 use App\Fifo\FifoMatcher;
 use App\Fifo\FifoViolationKind;
+use App\Fifo\InstrumentDetails;
 use App\Fifo\LotAssignments;
 use App\Fifo\UnmatchedSell;
 use App\Fifo\Trade;
+use App\Import\Degiro\ExchangeCountry;
 use App\Model\ClosedPosition;
+use App\Settlement\SettlementCycle;
+use App\Settlement\SettlementDateResolver;
+use DateTimeImmutable;
 
 /** Re-runs FIFO over the editable logical transactions on every submission. */
 final readonly class WorkbenchCalculator
 {
-    public function __construct(private FifoMatcher $fifoMatcher)
-    {
+    public function __construct(
+        private FifoMatcher $fifoMatcher,
+        private SettlementDateResolver $settlementDates = new SettlementDateResolver(),
+    ) {
     }
 
     /**
      * @param list<Trade> $trades
      */
-    public function settle(array $trades, LotAssignments $assignments = new LotAssignments()): SettlementResult
-    {
+    public function settle(
+        array $trades,
+        LotAssignments $assignments = new LotAssignments(),
+        SettlementCycle $cycle = SettlementCycle::TradeDate,
+    ): SettlementResult {
         $fifo = $this->fifoMatcher->match($trades, $assignments);
         $positions = [];
         $matchPositions = [];
@@ -52,12 +63,12 @@ final readonly class WorkbenchCalculator
             }
 
             try {
-                $position = ClosedPosition::fromMatch(
+                $position = $this->settled(ClosedPosition::fromMatch(
                     $match,
                     $name,
                     $country,
                     self::source($match->buySource, $match->sellSource),
-                );
+                ), $match, $cycle);
                 $positions[] = $position;
                 $matchPositions[$index] = $position;
             } catch (InvalidRecordException $e) {
@@ -119,5 +130,40 @@ final readonly class WorkbenchCalculator
         $sources = array_values(array_unique(array_filter([$buy, $sell])));
 
         return implode(', ', $sources);
+    }
+
+    /**
+     * The days the legs settle under the chosen cycle. A leg worth nothing - an
+     * option that expired or was assigned - is not a trade that settles, so it
+     * keeps its own day.
+     */
+    private function settled(ClosedPosition $position, FifoMatch $match, SettlementCycle $cycle): ClosedPosition
+    {
+        if (SettlementCycle::TradeDate === $cycle) {
+            return $position;
+        }
+
+        $leg = function (DateTimeImmutable $date, ?InstrumentDetails $instrument, bool $zero) use ($position, $match, $cycle): ?DateTimeImmutable {
+            return $zero ? null : $this->settlementDates->settle($date, self::market($instrument, $position->countryCode), $match->kind, $cycle);
+        };
+
+        return $position->withSettlement(
+            $leg($position->buyDate, $match->buyInstrument, $position->buyAmount->isZero()),
+            $leg($position->sellDate, $match->sellInstrument, $position->sellAmount->isZero()),
+        );
+    }
+
+    /**
+     * The market a leg was made on: its venue's country, else the country on
+     * the row - which a user fills before anything is settled anyway.
+     */
+    private static function market(?InstrumentDetails $instrument, string $fallback): string
+    {
+        $venue = '' === ($instrument->exchangeCode ?? '') ? '' : ExchangeCountry::country($instrument->exchangeCode ?? '');
+        if ('' !== $venue) {
+            return $venue;
+        }
+
+        return '' !== ($instrument->countryCode ?? '') ? (string) $instrument?->countryCode : $fallback;
     }
 }

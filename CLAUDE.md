@@ -61,7 +61,7 @@ behaviour change.
 
 ## Architecture
 
-Nine modules under `src/`, ordered from the inside out:
+Ten modules under `src/`, ordered from the inside out:
 
 - **Money** — `Decimal` (immutable arbitrary-precision decimal over `brick/math`) and
   `Amount` (decimal + ISO 4217 currency). **Every** monetary value and quantity in the
@@ -91,6 +91,13 @@ Nine modules under `src/`, ordered from the inside out:
   `ClosedPosition`, outside `lineageKey()`/`fingerprint()`: without assignments every figure
   and fingerprint is byte-identical, and other queues - and matches before the first named
   sale in the same queue - keep theirs.
+- **Settlement** — the trade-leg settlement cycle (a setting): `SettlementCycle`
+  (`trade_date` default / `market` / `pl_d2`), `HolidayCalendar` (holidays by rule per market,
+  cached per year: PL statutory and GPW, US = NYSE ∪ Fed, CA, MX, GB, TARGET + fixed local
+  closures for the euro area, CH, DK, SE, NO; anything else closes at weekends only; one-off
+  closures are not modelled) and `SettlementDateResolver` (T+n by market and trade date:
+  US T+1 from 2024-05-28, CA/MX from 2024-05-27, US/CA T+3 before 2017-09-05, Europe T+3 before
+  2014-10-06 and T+1 from 2027-10-11; options T+1).
 - **Model** — `ClosedPosition`, `Dividend`, and `AccountFee`, the normalized settlement
   records. Editable records carry stable form IDs in addition to content fingerprints.
   `ClosedPosition` carries `InstrumentKind` and `PositionDirection`; build it from a match
@@ -259,6 +266,15 @@ Nine modules under `src/`, ordered from the inside out:
   JPY, HUF, KRW, CLP and ISK with six decimals and IDR with eight, so the JSON float is
   formatted with `%.8F` and trimmed - `%.4F` turned the yen's `0.026287` into `0.0263`.
 - **FIFO keeps old buys.** Year filtering happens on the *sale* date, after matching.
+- **The settlement cycle moves rates and years, never the queue.** Under `trade_date` (the
+  default) every figure and fingerprint is byte-identical to before. Otherwise
+  `WorkbenchCalculator::settle()` gives each `ClosedPosition` `buySettlement`/`sellSettlement`
+  (outside `fingerprint()`, like `lotMethod`): each leg converts at the rate before its own
+  settlement (`buyRateDate()`, `sellRateDate()`), and `revenueDate()` - the closing leg's -
+  decides `taxYear()`, so a 31 December sale settled in January belongs to the next year.
+  `closeDate()`/`openDate()` stay trade dates. The leg's market is its venue's country
+  (`ExchangeCountry`), else the row's country. Dividends, account fees and a zero option leg
+  (expiry, assignment) are never moved. The CSV states the cycle once and lists both dates.
 - **FIFO is the default; a named lot is a choice that can only block.** The choice is one hidden
   field `lot_assignments` (JSON v1), rendered after `expected_fees` and **before** the first
   `trades[`, so a truncated post loses it together with the trades and `expected_trades`

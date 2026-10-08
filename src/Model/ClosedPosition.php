@@ -67,6 +67,13 @@ final readonly class ClosedPosition
         public PositionDirection $direction = PositionDirection::Long,
         /** How the lot was chosen; deliberately outside {@see fingerprint()}. */
         public LotMethod $lotMethod = LotMethod::Fifo,
+        /**
+         * The day each leg settles, when a settlement cycle is chosen: the leg's
+         * NBP rate follows it, and the closing leg's decides the tax year.
+         * `null` - the trade date stands. Outside {@see fingerprint()}.
+         */
+        public ?DateTimeImmutable $buySettlement = null,
+        public ?DateTimeImmutable $sellSettlement = null,
     ) {
         // Invariants live here because this is the one type every importer
         // produces and every form submission is mapped into. A negative or zero
@@ -216,6 +223,31 @@ final readonly class ClosedPosition
         );
     }
 
+    /** The same position with the days its legs settle; `null` keeps a leg on its trade date. */
+    public function withSettlement(?DateTimeImmutable $buy, ?DateTimeImmutable $sell): self
+    {
+        return new self(
+            $this->name, $this->countryCode, $this->currency, $this->buyDate, $this->buyAmount,
+            $this->sellDate, $this->sellAmount, $this->quantity, $this->source, $this->lineageKey,
+            $this->buyCommission, $this->sellCommission, $this->buyAutoFx, $this->sellAutoFx,
+            $this->broker, $this->symbol, $this->buyTradeId, $this->sellTradeId,
+            $this->buyUnitPrice, $this->sellUnitPrice, $this->kind, $this->direction, $this->lotMethod,
+            $buy, $sell,
+        );
+    }
+
+    /** The day whose preceding business day's NBP rate converts the buy leg. */
+    public function buyRateDate(): DateTimeImmutable
+    {
+        return $this->buySettlement ?? $this->buyDate;
+    }
+
+    /** The day whose preceding business day's NBP rate converts the sell leg. */
+    public function sellRateDate(): DateTimeImmutable
+    {
+        return $this->sellSettlement ?? $this->sellDate;
+    }
+
     public function isOption(): bool
     {
         return InstrumentKind::Option === $this->kind;
@@ -248,7 +280,7 @@ final readonly class ClosedPosition
      */
     public function revenueDate(): DateTimeImmutable
     {
-        return $this->closeDate();
+        return $this->isShort() ? $this->buyRateDate() : $this->sellRateDate();
     }
 
     /**
@@ -260,7 +292,7 @@ final readonly class ClosedPosition
     public function conversionDates(): array
     {
         $dates = [];
-        foreach ([$this->buyDate, $this->sellDate, $this->revenueDate()] as $date) {
+        foreach ([$this->buyRateDate(), $this->sellRateDate(), $this->revenueDate()] as $date) {
             $dates[$date->format('Y-m-d')] ??= $date;
         }
 
@@ -269,12 +301,13 @@ final readonly class ClosedPosition
 
     /**
      * The tax year a position belongs to is the year the income was realised,
-     * i.e. the year it *closed* - the sale for a stock. The opening leg may
-     * well be from an earlier year.
+     * i.e. the year it *closed* - the sale for a stock - or, under a settlement
+     * cycle, the year that closing leg settled. The opening leg may well be from
+     * an earlier year.
      */
     public function taxYear(): int
     {
-        return (int) $this->closeDate()->format('Y');
+        return (int) $this->revenueDate()->format('Y');
     }
 
     /**

@@ -97,6 +97,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     credit_methods: array<string, string>,
  *     country_source_help: array<string, string>,
  *     credit_method_help: array<string, string>,
+ *     settlement_cycles: array<string, string>,
+ *     settlement_cycle_help: array<string, string>,
  *     expected_trades: int,
  *     expected_dividends: int,
  *     expected_fees: int,
@@ -188,6 +190,7 @@ final class CalculatorController extends AbstractController
         $settings = $this->settingsProvider->normalize(
             $request->request->get('country_source'),
             $request->request->get('credit_method'),
+            $request->request->get('settlement_cycle'),
         );
         $hasCurrentState = [] !== $request->request->all('trades')
             || [] !== $request->request->all('dividends')
@@ -294,6 +297,7 @@ final class CalculatorController extends AbstractController
             $state['dividends'],
             $state['settings']->creditMethod,
             $state['lotAssignments'],
+            $state['settings']->settlementCycle,
         ));
         $response->headers->set('Content-Type', 'text/csv; charset=UTF-8');
         $response->headers->set('Content-Disposition', $response->headers->makeDisposition(
@@ -401,6 +405,7 @@ final class CalculatorController extends AbstractController
         $settings = $this->settingsProvider->normalize(
             $request->request->get('country_source'),
             $request->request->get('credit_method'),
+            $request->request->get('settlement_cycle'),
         );
 
         // Before the explicit action on purpose: a click on a bulk button is a
@@ -481,7 +486,7 @@ final class CalculatorController extends AbstractController
         $report = null;
         $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
         if (!$hasBlocking) {
-            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments']);
+            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments'], $state['settings']->settlementCycle);
             $state['errors'] = [...$state['errors'], ...$settlement->errors];
             $diagnostics = $this->uniqueDiagnostics([...$diagnostics, ...$settlement->diagnostics]);
             $hasBlocking = [] !== $state['errors'] || $this->hasBlocking($diagnostics);
@@ -537,6 +542,8 @@ final class CalculatorController extends AbstractController
             'credit_methods' => $this->settingsProvider->creditMethods(),
             'country_source_help' => $this->settingsProvider->countrySourceHelp(),
             'credit_method_help' => $this->settingsProvider->creditMethodHelp(),
+            'settlement_cycles' => $this->settingsProvider->settlementCycles(),
+            'settlement_cycle_help' => $this->settingsProvider->settlementCycleHelp(),
             'expected_trades' => count($state['tradeRows']),
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),
@@ -573,7 +580,7 @@ final class CalculatorController extends AbstractController
         // are not merged: the panel lists what blocks the result, and FIFO's
         // own items join it once the result is computed again.
         if (null === $settlement && $state['tradesComplete'] && [] !== $state['trades']) {
-            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments']);
+            $settlement = $this->workbenchCalculator->settle($state['trades'], $state['lotAssignments'], $state['settings']->settlementCycle);
         }
 
         $context['trade_ledger'] = $this->tradeLedgerBuilder->build(

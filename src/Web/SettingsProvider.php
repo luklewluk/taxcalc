@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 namespace App\Web;
 
+use App\Settlement\SettlementCycle;
 use App\Tax\CreditMethod;
 
 /**
@@ -17,12 +18,39 @@ use App\Tax\CreditMethod;
  */
 final readonly class SettingsProvider
 {
-    public function normalize(mixed $countrySource, mixed $creditMethod): WorkbenchSettings
+    public function normalize(mixed $countrySource, mixed $creditMethod, mixed $settlementCycle = null): WorkbenchSettings
     {
         return new WorkbenchSettings(
             self::source($countrySource) ?? CountrySource::Exchange,
             self::method($creditMethod) ?? CreditMethod::Conservative,
+            self::cycle($settlementCycle) ?? SettlementCycle::TradeDate,
         );
+    }
+
+    /**
+     * @return array<string, string> value => label, for the settings select
+     */
+    public function settlementCycles(): array
+    {
+        $options = [];
+        foreach (SettlementCycle::cases() as $case) {
+            $options[$case->value] = $case->label();
+        }
+
+        return $options;
+    }
+
+    /**
+     * @return array<string, string>
+     */
+    public function settlementCycleHelp(): array
+    {
+        $help = [];
+        foreach (SettlementCycle::cases() as $case) {
+            $help[$case->value] = $case->description();
+        }
+
+        return $help;
     }
 
     /**
@@ -88,5 +116,10 @@ final readonly class SettingsProvider
     private static function method(mixed $value): ?CreditMethod
     {
         return is_scalar($value) ? CreditMethod::tryFrom((string) $value) : null;
+    }
+
+    private static function cycle(mixed $value): ?SettlementCycle
+    {
+        return is_scalar($value) ? SettlementCycle::tryFrom((string) $value) : null;
     }
 }

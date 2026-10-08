@@ -52,7 +52,7 @@ jobs:
         run: composer audit
 
       - name: Static analysis
-        run: vendor/bin/phpstan analyse --no-progress
+        run: vendor/bin/phpstan analyse --no-progress --memory-limit=512M
 
       # Tests never touch the network: NBP rates come from a fixed fake.
       - name: Tests

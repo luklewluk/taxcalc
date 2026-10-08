@@ -6,13 +6,16 @@ namespace App\Tests\Unit\Web;
 
 use App\Fifo\FifoMatcher;
 use App\Fifo\InstrumentDetails;
+use App\Fifo\InstrumentKind;
 use App\Fifo\LotAllocation;
 use App\Fifo\LotAssignments;
 use App\Fifo\LotMethod;
 use App\Fifo\PositionDirection;
+use App\Fifo\PositionEffect;
 use App\Fifo\Trade;
 use App\Money\Amount;
 use App\Money\Decimal;
+use App\Settlement\SettlementCycle;
 use App\Web\WorkbenchCalculator;
 use DateTimeImmutable;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -105,6 +108,85 @@ final class WorkbenchCalculatorTest extends TestCase
         self::assertSame(\App\Web\DiagnosticLevel::Blocking, $diagnostic->level);
         self::assertSame('fifo', $diagnostic->targetTab);
         self::assertSame($sale->id(), $diagnostic->rowId);
+    }
+
+    public function testByDefaultNoLegIsMovedOffItsTradeDate(): void
+    {
+        $settlement = (new WorkbenchCalculator(new FifoMatcher()))->settle(self::alfa());
+
+        self::assertNull($settlement->positions[0]->buySettlement);
+        self::assertNull($settlement->positions[0]->sellSettlement);
+        self::assertSame(2025, $settlement->positions[0]->taxYear());
+    }
+
+    /**
+     * The listing venue's market decides the calendar: XNYS is New York, so the
+     * sale of 31 December settles T+1 on 2 January - and moves to that year.
+     */
+    public function testTheMarketCycleSettlesEachLegOnItsOwnMarket(): void
+    {
+        $position = (new WorkbenchCalculator(new FifoMatcher()))
+            ->settle(self::alfa(), cycle: SettlementCycle::Market)->positions[0];
+
+        self::assertSame('2025-03-04', $position->buySettlement?->format('Y-m-d'));
+        self::assertSame('2026-01-02', $position->sellSettlement?->format('Y-m-d'));
+        self::assertSame(2026, $position->taxYear());
+    }
+
+    /** Without a venue the row's own country stands in for the market. */
+    public function testWithoutAVenueTheCountryOfTheRowNamesTheMarket(): void
+    {
+        $trades = [
+            self::trade('BETA', '2025-03-03', '1', '-100.00', 'EUR'),
+            self::trade('BETA', '2025-12-23', '-1', '120.00', 'EUR'),
+        ];
+        $trades = array_map(static fn (Trade $trade): Trade => new Trade(
+            $trade->symbol, $trade->date, $trade->quantity, $trade->grossAmount, $trade->externalId, $trade->source,
+            new InstrumentDetails('BETA', 'DE'), broker: 'DEGIRO', fifoPool: 'BETA',
+        ), $trades);
+
+        $position = (new WorkbenchCalculator(new FifoMatcher()))->settle($trades, cycle: SettlementCycle::Market)->positions[0];
+
+        // T+2 over Xetra's Christmas Eve and both Christmas days.
+        self::assertSame('2025-12-30', $position->sellSettlement?->format('Y-m-d'));
+    }
+
+    /** An option that expired closes at nothing: there is no trade to settle. */
+    public function testAnExpiryIsNeverMovedButTheWritingIs(): void
+    {
+        $option = static fn (string $date, string $quantity, string $total, PositionEffect $effect): Trade => new Trade(
+            'AAA 16JAN26 50 P',
+            new DateTimeImmutable($date.' 10:00:00'),
+            Decimal::of($quantity),
+            Amount::of($total, 'USD'),
+            externalId: 'auto:'.$date,
+            instrument: new InstrumentDetails('AAA 16JAN26 50 P', 'US', 'XCBO'),
+            broker: 'IBKR',
+            fifoPool: 'AAA 16JAN26 50 P@USD',
+            kind: InstrumentKind::Option,
+            effect: $effect,
+        );
+
+        $position = (new WorkbenchCalculator(new FifoMatcher()))->settle([
+            $option('2025-12-15', '-1', '99', PositionEffect::Open),
+            $option('2026-01-16', '1', '0', PositionEffect::Close),
+        ], cycle: SettlementCycle::Market)->positions[0];
+
+        self::assertSame('2025-12-16', $position->sellSettlement?->format('Y-m-d'));
+        self::assertNull($position->buySettlement);
+        self::assertSame('2026-01-16', $position->revenueDate()->format('Y-m-d'));
+    }
+
+    /** @return list<Trade> */
+    private static function alfa(): array
+    {
+        return array_map(static fn (Trade $trade): Trade => new Trade(
+            $trade->symbol, $trade->date, $trade->quantity, $trade->grossAmount, $trade->externalId, $trade->source,
+            new InstrumentDetails('ALFA', 'US', 'XNYS'), broker: 'IBKR', fifoPool: 'ALFA',
+        ), [
+            self::trade('ALFA', '2025-03-03', '1', '-100.00', 'USD'),
+            self::trade('ALFA', '2025-12-31', '-1', '120.00', 'USD'),
+        ]);
     }
 
     private static function trade(string $symbol, string $date, string $quantity, string $total, string $currency): Trade

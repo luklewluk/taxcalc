@@ -17,6 +17,40 @@ czytane są już z bazy. Kursów opublikowanych tabel się nie zmienia, więc ni
 i wdrożenie niczego nie kasuje. Gdy baza jest niedostępna, kurs jest pobierany wprost
 z NBP — wolniej, ale wynik się nie zmienia.
 
+#### Dzień przeliczenia: data transakcji albo dzień rozliczenia
+
+Art. 11a wiąże kurs z dniem uzyskania przychodu albo poniesienia kosztu. Przy papierach
+zdematerializowanych za ten dzień przyjmuje się albo **dzień zawarcia transakcji**, albo
+**dzień jej rozliczenia**, kiedy papiery przechodzą na kupującego, a pieniądze trafiają do
+sprzedającego. Wybór jest w zakładce **Ustawienia** („Dzień przeliczenia transakcji”):
+
+- **Data transakcji (D+0)** — domyślnie. Kurs z dnia roboczego przed zawarciem transakcji,
+  rok podatkowy według daty zawarcia.
+- **Dzień rozliczenia wg giełdy (D+1 / D+2)** — dzień rozliczenia liczony w dniach roboczych
+  rynku, na którym zawarto transakcję (kraj giełdy z pliku, a gdy go brak — kraj wiersza):
+  akcje i ETF-y dwa dni robocze; w USA od 28.05.2024 r. oraz w Kanadzie i Meksyku od
+  27.05.2024 r. jeden dzień; w USA i Kanadzie przed 5.09.2017 r. oraz w Europie przed
+  6.10.2014 r. trzy dni; w Europie (UE, EOG, Wielka Brytania, Szwajcaria) jeden dzień od
+  zaplanowanego 11.10.2027 r. Opcje — jeden dzień.
+- **Dzień rozliczenia, kalendarz polski (D+2)** — dwa polskie dni robocze dla akcji i ETF-ów,
+  jeden dla opcji, bez względu na rynek.
+
+Przy obu wariantach rozliczenia **rok podatkowy** wyznacza dzień rozliczenia strony
+zamykającej pozycję: sprzedaż z 31 grudnia rozliczona w styczniu należy do kolejnego roku.
+Koszt przeliczany jest kursem sprzed rozliczenia zakupu, a prowizja od sprzedaży — sprzed
+rozliczenia sprzedaży. Dywidendy i opłaty rachunkowe zostają w dniu wypłaty lub pobrania;
+wygaśnięcie i przydział opcji nie są transakcjami do rozliczenia, więc zostają w swoim dniu.
+Kolejność FIFO zawsze wyznacza czas zawarcia transakcji.
+
+Kalendarze dni wolnych są liczone regułami (stałe daty, święta ruchome od Wielkanocy,
+n-ty dzień tygodnia miesiąca, przesunięcia z weekendu): Polska (w tym Wielki Piątek
+i 31 grudnia na GPW), USA (święta giełdy i dni wolne systemu rozliczeń), Kanada, Meksyk,
+Wielka Brytania, rynki strefy euro (kalendarz TARGET oraz stałe dni zamknięcia, np. 24 i 31
+grudnia na Xetrze), Szwajcaria, Dania, Szwecja i Norwegia. Jednorazowe zamknięcia
+(np. żałoba narodowa) są pominięte, a na pozostałych rynkach wolne są tylko weekendy — dzień
+rozliczenia i kurs mogą wtedy wyjść o dzień wcześniej niż u brokera. Daty rozliczenia widać
+w tabeli par i w raporcie CSV.
+
 Jeżeli choć jednego wymaganego kursu nie uda się pobrać, aplikacja działa **fail closed**:
 nie pokazuje ani nie eksportuje sum policzonych z pozostałych rekordów, tylko wraca do ekranu
 roboczego z komunikatem. Zapobiega to rozliczeniu na

@@ -25,7 +25,7 @@
                         {% if item.position.lotMethod.value == 'specific' %}<span class="cell-note">wskazana partia</span>{% endif %}
                     </th>
                     <td>{{ item.position.quantity ?: '—' }}</td>
-                    <td>{{ item.position.buyDate|date('Y-m-d') }}</td>
+                    <td>{{ item.position.buyDate|date('Y-m-d') }}{% if item.position.buySettlement %}<span class="cell-note">rozliczenie {{ item.position.buySettlement|date('Y-m-d') }}</span>{% endif %}</td>
                     <td>{{ item.position.buyUnitPrice is null ? '—' : (item.position.buyUnitPrice|money_with_currency) }}</td>
                     {# Settled cash from the file, not item.cost.original - the two
                        are the same on this leg, but the sell leg's are not. #}
@@ -33,7 +33,7 @@
                     <td>{{ item.position.buyCommission is null ? '—' : (item.position.buyCommission|money) }}</td>
                     <td>{{ item.position.buyAutoFx is null ? '—' : (item.position.buyAutoFx|money) }}</td>
                     <td>{{ item.cost.rate }}<span class="cell-note">{{ item.cost.rateDate ? item.cost.rateDate|date('Y-m-d') : 'PLN' }}</span></td>
-                    <td>{{ item.position.sellDate|date('Y-m-d') }}</td>
+                    <td>{{ item.position.sellDate|date('Y-m-d') }}{% if item.position.sellSettlement %}<span class="cell-note">rozliczenie {{ item.position.sellSettlement|date('Y-m-d') }}</span>{% endif %}</td>
                     <td>{{ item.position.sellUnitPrice is null ? '—' : (item.position.sellUnitPrice|money_with_currency) }}</td>
                     {# Deliberately the record, not item.revenue.original: revenue is
                        the grossed-up amount, and printing it under a header that
@@ -68,6 +68,14 @@
                     o koszt zbycia, czyli <strong>(prowizja + AutoFX) × kurs</strong> z dnia sprzedaży. Kolumny
                     „Total” pokazują kwotę rozliczoną z pliku brokera.
                 </p>
+                {% if settings is defined and settings.settlementCycle.value != 'trade_date' %}
+                    <p>
+                        Dzień przeliczenia: <strong>{{ settings.settlementCycle.label }}</strong>. Kurs NBP każdej
+                        strony to kurs z dnia roboczego przed jej dniem rozliczenia (podanym pod datą transakcji),
+                        a rok podatkowy wyznacza dzień rozliczenia strony zamykającej pozycję. Wygaśnięcie
+                        i przydział opcji zostają w swoim dniu.
+                    </p>
+                {% endif %}
                 {% if report.stock.hasOptions %}
                     <p>
                         Opcje rozliczamy w dniu <strong>zamknięcia</strong> pozycji — odkupu lub sprzedaży zamykającej,
