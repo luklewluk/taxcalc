@@ -103,6 +103,8 @@ final class UiSurfacesTest extends WebTestCase
         self::assertSame(0, $crawler->filter('main details')->count());
         self::assertStringNotContainsString('Performance & Reports', $crawler->filter('main')->text());
         self::assertGreaterThan(0, $crawler->filter('main a[href="/skad-wziac-pliki"]')->count());
+        // Under the submit button, not among the file hints.
+        self::assertSame(1, $crawler->filter('form .actions + p a[href="/skad-wziac-pliki"]')->count());
 
         $guide = $client->request('GET', '/skad-wziac-pliki');
         self::assertResponseIsSuccessful();

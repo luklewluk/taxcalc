@@ -128,6 +128,20 @@ final class LandingPageTest extends WebTestCase
         self::assertGreaterThan(0, $faq->filter('a[href="/skad-wziac-pliki"]')->count());
     }
 
+    public function testTheFaqAnswersHowOptionsAreSettled(): void
+    {
+        $client = static::createClient();
+        $faq = $client->request('GET', '/')->filter('section[aria-labelledby="faq"]');
+
+        $answer = $faq->filterXPath('//details[summary[normalize-space()="Czy kalkulator rozlicza opcje?"]]');
+        self::assertCount(1, $answer);
+        self::assertStringContainsString('0113-KDIPT2-3.4011.645.2025.3.KKA', $answer->text());
+        self::assertStringContainsString('po cenie wykonania', $answer->text());
+
+        $guide = $client->request('GET', '/skad-wziac-pliki')->filter('main')->text();
+        self::assertStringNotContainsString('0113-KDIPT2', $guide);
+    }
+
     public function testTheDetailsAreAnFaqAndTheFlowSectionIsGone(): void
     {
         $client = static::createClient();

@@ -38,13 +38,13 @@
             <p class="quiet">
                 Do {{ max_files }} plików CSV, każdy do {{ max_megabytes }} MB, w kodowaniu UTF-8.
             </p>
-            <p class="field__hint">
-                Nie wiesz, skąd wziąć pliki? <a href="{{ path('app_files_guide') }}">Instrukcja dla IBKR i DEGIRO</a>.
-            </p>
         </div>
 
         <p class="actions actions--start">
             <button type="submit" class="button button--primary button--large button--next">Wczytaj pliki</button>
+        </p>
+        <p class="field__hint">
+            Nie wiesz, skąd wziąć pliki? <a href="{{ path('app_files_guide') }}">Instrukcja dla IBKR i DEGIRO</a>.
         </p>
     </form>
 {% endblock %}
