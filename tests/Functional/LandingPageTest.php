@@ -96,10 +96,22 @@ final class LandingPageTest extends WebTestCase
         $crawler = $client->request('GET', '/');
 
         $links = $crawler->filter('.site-nav a');
-        self::assertSame(['Start', 'Kalkulator', 'Zgłoś problem'], $links->each(
+        self::assertSame(['Start', 'Zgłoś problem'], $links->each(
             static fn (Crawler $link): string => trim($link->text()),
         ));
         self::assertStringEndsWith('/issues', (string) $links->last()->attr('href'));
+    }
+
+    public function testTheHeroSaysWhatItIsAndOffersOneWayIn(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/');
+
+        self::assertSame('Kalkulator PIT-38 dla inwestorów', trim($crawler->filter('.hero h1')->text()));
+        $actions = $crawler->filter('.hero__actions a');
+        self::assertCount(1, $actions);
+        self::assertSame('/kalkulator', $actions->attr('href'));
+        self::assertStringNotContainsString('Jak to działa', $crawler->filter('main')->text());
     }
 
     public function testTheDetailsAreAnFaqAndTheFlowSectionIsGone(): void
@@ -115,7 +127,6 @@ final class LandingPageTest extends WebTestCase
         $faq->filter('details > summary')->each(
             static fn (Crawler $question) => self::assertStringEndsWith('?', trim($question->text())),
         );
-        self::assertSame('#faq', $crawler->filter('.hero__actions a[href^="#"]')->attr('href'));
 
         self::assertCount(0, $crawler->filter('.flow, #jak-to-dziala, #szczegoly'));
         self::assertStringNotContainsString('Przebieg', $text);
