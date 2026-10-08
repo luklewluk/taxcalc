@@ -478,10 +478,12 @@ The public flow is `upload → work with the result`. After the first import,
   the canonical link and OG tags. The palette is the logo's teal (`--brand*`); `--brand`
   carries white text, so it is darkened to `#087F7C` (4.8:1) - never use the logo's raw
   `#029F9D` under text.
-- **Broker logos are someone else's marks.** `public/img/brokers/` holds the IBKR and DEGIRO
-  logos, unchanged in appearance (their `<style>` replaced by `fill` attributes, so nothing
-  depends on CSP). They sit on `--logo-plate`, light in both themes, because recolouring a
-  broker's mark is not ours to do; README's *Znaki towarowe* names the sources. The header
+- **Broker logos are someone else's marks.** `templates/_partials/logos/` holds the IBKR and
+  DEGIRO logos as inline SVG, shapes and brand colours unchanged (`<style>` replaced by `fill`
+  attributes, so nothing depends on CSP; DEGIRO's white counters are real evenodd holes).
+  Only the lettering is `currentColor`, set from `--logo-ink-*`: as shipped on the light
+  canvas, white on the dark one - the inverse IBKR publishes itself. No plates, no borders.
+  README's *Znaki towarowe* names the sources. The header
   links *Zgłoś problem* to `APP_REPOSITORY_URL/issues`; the code stays linked in the footer.
 - **`--ink-3` is for rules and dots, not words.** It is a 3.3:1 grey on the light canvas;
   text uses `--ink` or `--ink-2`.

@@ -15,7 +15,6 @@
                 <a class="button button--primary button--large button--next" href="{{ path('app_calculator') }}">Oblicz podatek</a>
                 <a class="button" href="#faq">Jak to działa</a>
             </p>
-            <p class="hero__meta">Działa z eksportami IBKR i DEGIRO.</p>
         </div>
 
         {#
@@ -34,18 +33,16 @@
         </div>
     </section>
 
-    <ul class="chips trust">
-        <li class="chip">Bez konta</li>
-        <li class="chip">Bez bazy danych</li>
-        <li class="chip">Bez śledzenia</li>
-    </ul>
-
-    <section class="section section--tight" aria-labelledby="brokerzy">
-        <h2 id="brokerzy" class="visually-hidden">Obsługiwani brokerzy</h2>
-        {# Trademarks of their owners, shown only to say which exports work. #}
+    <section class="section" aria-labelledby="brokerzy">
+        <h2 id="brokerzy">Obsługiwani brokerzy</h2>
+        {#
+            Trademarks of their owners, shown only to say which exports work.
+            Inline, so the lettering takes the theme's colour - dark on the
+            light canvas, white on the dark one.
+        #}
         <ul class="broker-logos">
-            <li><img src="{{ asset('img/brokers/interactive-brokers.svg') }}" alt="Interactive Brokers" width="452" height="69"></li>
-            <li><img class="broker-logo--degiro" src="{{ asset('img/brokers/degiro.svg') }}" alt="DEGIRO" width="722" height="102"></li>
+            <li>{{ include('_partials/logos/interactive-brokers.svg.twig') }}</li>
+            <li>{{ include('_partials/logos/degiro.svg.twig') }}</li>
         </ul>
     </section>
 

@@ -55,10 +55,9 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $client->request('GET', '/');
         $text = $crawler->filter('body')->text();
 
-        self::assertStringContainsString('Bez konta', $text);
-        self::assertStringContainsString('Bez bazy danych', $text);
-        self::assertStringContainsString('Bez śledzenia', $text);
-        self::assertStringContainsString('IBKR i DEGIRO', $text);
+        self::assertStringContainsString('Co się dzieje z moimi danymi?', $text);
+        self::assertStringContainsString('Aplikacja nie ma bazy danych', $text);
+        self::assertStringContainsString('niczego nie zapisuje', $text);
         self::assertStringNotContainsString('Sprawdź →', $text);
     }
 

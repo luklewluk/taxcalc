@@ -980,11 +980,13 @@ Szczegóły w [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ### Znaki towarowe
 
-Loga Interactive Brokers i DEGIRO (`public/img/brokers/`) są znakami towarowymi ich
-właścicieli i nie są objęte licencją MIT. Strona pokazuje je wyłącznie po to, by wskazać,
-z eksportami których brokerów kalkulator współpracuje; projekt nie jest z nimi powiązany.
-Źródła: logo IBKR ze strony
+Loga Interactive Brokers i DEGIRO (`templates/_partials/logos/`) są znakami towarowymi
+ich właścicieli i nie są objęte licencją MIT. Strona pokazuje je wyłącznie po to, by
+wskazać, z eksportami których brokerów kalkulator współpracuje; projekt nie jest z nimi
+powiązany. Źródła: logo IBKR ze strony
 [interactivebrokers.com/design](https://www.interactivebrokers.com/design/assets-logos-ibkr.php),
 logo DEGIRO z [Wikimedia Commons](https://commons.wikimedia.org/wiki/File:Degiro_logo.svg).
-Pliki zapisano bez zmian wyglądu; usunięto z nich jedynie arkusz stylów (zastąpiony
-atrybutami `fill`) i metadane edytora.
+Kształty i kolory znaków pozostały bez zmian. Pliki osadzono bezpośrednio w stronie,
+dlatego napisy przyjmują kolor motywu: w jasnym są takie jak w oryginale, w ciemnym białe.
+Białe wypełnienia liter DEGIRO zastąpiono prawdziwymi otworami. Usunięto też arkusz
+stylów (zastąpiony atrybutami `fill`) i metadane edytora.

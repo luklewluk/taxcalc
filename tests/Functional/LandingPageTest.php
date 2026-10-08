@@ -52,22 +52,36 @@ final class LandingPageTest extends WebTestCase
         self::assertStringContainsString('CSV', $text);
     }
 
-    public function testTheSupportedBrokersAreShownByTheirLocalLogos(): void
+    public function testTheSupportedBrokersAreShownByTheirLogosUnderAHeading(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/');
 
-        $logos = $crawler->filter('.broker-logos img');
+        $section = $crawler->filter('section[aria-labelledby="brokerzy"]');
+        self::assertSame('Obsługiwani brokerzy', trim($section->filter('h2#brokerzy')->text()));
+        self::assertStringNotContainsString('visually-hidden', (string) $section->filter('h2#brokerzy')->attr('class'));
+
+        // Inline, so the lettering can follow the theme; nothing is fetched.
+        $logos = $section->filter('.broker-logos svg[role="img"]');
         self::assertSame(['Interactive Brokers', 'DEGIRO'], $logos->each(
-            static fn (Crawler $logo): string => (string) $logo->attr('alt'),
+            static fn (Crawler $logo): string => (string) $logo->attr('aria-label'),
         ));
+        self::assertCount(0, $section->filter('img'));
         $logos->each(static function (Crawler $logo): void {
-            $src = (string) $logo->attr('src');
-            self::assertDoesNotMatchRegularExpression('#^(https?:)?//#', $src);
-            self::assertFileExists(dirname(__DIR__, 2).'/public'.$src);
-            self::assertNotNull($logo->attr('width'));
-            self::assertNotNull($logo->attr('height'));
+            self::assertStringContainsString('currentColor', $logo->html());
+            self::assertStringNotContainsString('style', $logo->html());
         });
+    }
+
+    public function testTheHeroCarriesNoTaglinesUnderItsButtons(): void
+    {
+        $client = static::createClient();
+        $text = $client->request('GET', '/')->filter('main')->text();
+
+        self::assertStringNotContainsString('Działa z eksportami', $text);
+        foreach (['Bez konta', 'Bez bazy danych', 'Bez śledzenia'] as $chip) {
+            self::assertStringNotContainsString($chip, $text);
+        }
     }
 
     public function testTheNavigationReportsProblemsInsteadOfLinkingTheCode(): void

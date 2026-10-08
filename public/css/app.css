@@ -31,8 +31,9 @@
     --surface: light-dark(#ffffff, #171a14);
     --surface-sunken: light-dark(#f2efe7, #11140e);
     --surface-raised: light-dark(#ffffff, #1d211a);
-    /* Behind third-party logos: light in both themes, softened in dark. */
-    --logo-plate: light-dark(#ffffff, #eef0e6);
+    /* The lettering of the broker logos: as shipped, or white on dark. */
+    --logo-ink-ibkr: light-dark(#222222, #ffffff);
+    --logo-ink-degiro: light-dark(#111111, #ffffff);
 
     /* Ink ----------------------------------------------------------------- */
     --ink: light-dark(#101410, #f1f3e9);
@@ -523,12 +524,6 @@ code {
     margin: 0 0 1.25rem;
 }
 
-.hero__meta {
-    margin: 0;
-    color: var(--ink-2);
-    font-size: 0.9375rem;
-}
-
 /*
  * Decorative only, and marked aria-hidden in the markup: a settled statement
  * turning into one number. Bars, not text, so it can never be mistaken for a
@@ -590,73 +585,24 @@ code {
     transform: rotate(-4deg);
 }
 
-/* Trust chips */
-
-.chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem;
-    margin: 2.75rem 0 0;
-    padding: 0;
-    list-style: none;
-}
-
-.chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.5rem;
-    padding: 0.4375rem 0.9375rem 0.4375rem 0.75rem;
-    border-radius: var(--r-pill);
-    background: var(--surface);
-    box-shadow: var(--shadow-1), 0 0 0 1px var(--hairline);
-    color: var(--ink-2);
-    font-size: 0.875rem;
-    font-weight: 550;
-}
-
-.chip::before {
-    content: "";
-    width: 0.5rem;
-    height: 0.5rem;
-    border-radius: 50%;
-    background: var(--brand-deep);
-    box-shadow: 0 0 0 3px var(--accent-tint);
-}
-
-.trust {
-    margin: 2.75rem 0 0;
-    color: var(--ink-2);
-    font-size: 0.9375rem;
-}
-
 .broker-logos {
     display: flex;
     flex-wrap: wrap;
-    gap: 1rem;
-    max-width: 40rem;
-    margin: 0;
+    align-items: center;
+    gap: 1.25rem 3rem;
+    margin: 1.75rem 0 0;
     padding: 0;
     list-style: none;
 }
 
 /*
- * Third-party logos, drawn as their owners ship them: dark lettering on a
- * light plate, in both themes - the dark canvas would swallow the lettering,
- * and recolouring a broker's mark is not ours to do.
+ * Third-party logos as their owners draw them; only the lettering follows the
+ * theme (currentColor) - dark as shipped on the light canvas, white on the
+ * dark one, the inverse variant IBKR itself publishes.
  */
-.broker-logos li {
-    flex: 1 1 14rem;
-    display: grid;
-    place-items: center;
-    min-height: 4.5rem;
-    padding: 1rem 1.75rem;
-    border-radius: var(--r-2);
-    background: var(--logo-plate);
-    box-shadow: 0 0 0 1px var(--hairline);
-}
-
-.broker-logos img { display: block; width: auto; max-width: 100%; height: 2rem; }
-.broker-logos .broker-logo--degiro { height: 1.375rem; }
+.broker-logo { display: block; width: auto; max-width: 100%; height: 2.25rem; }
+.broker-logo--ibkr { color: var(--logo-ink-ibkr); }
+.broker-logo--degiro { height: 1.5rem; color: var(--logo-ink-degiro); }
 
 /*
  * Closing call to action. The teal wash is a background, so the ink on top is
