@@ -22,9 +22,9 @@ final class CsvReportWriter
 {
     private const int PLN_SCALE = 2;
 
-    public const string SCENARIO_NOTE =
-        'Wysokosc odliczenia zagranicznego podatku u zrodla jest sporna. Ponizej podano oba warianty; '
-        .'wybor nalezy do podatnika. Przy istotnej roznicy rozwaz wystapienie o interpretacje indywidualna '
+    public const string CREDIT_NOTE =
+        'Wysokosc odliczenia zagranicznego podatku u zrodla jest sporna. Raport podaje wariant wybrany '
+        .'w ustawieniach kalkulatora. W razie watpliwosci rozwaz wystapienie o interpretacje indywidualna '
         .'albo konsultacje z doradca podatkowym.';
 
     public const string DISCLAIMER =
@@ -36,14 +36,21 @@ final class CsvReportWriter
      * @param list<AccountFee> $fees
      * @param list<Dividend>   $dividends
      */
-    public function write(TaxReport $report, array $trades = [], array $fees = [], array $dividends = [], ?CreditMethod $chosen = null): string
-    {
+    public function write(
+        TaxReport $report,
+        array $trades = [],
+        array $fees = [],
+        array $dividends = [],
+        CreditMethod $chosen = CreditMethod::Conservative,
+    ): string {
         $writer = Writer::fromString();
 
+        // Only the reading chosen in the workbench settings, named in every
+        // column that depends on it - the file mirrors what the screen showed.
         $this->writeSummary($writer, $report, $chosen);
-        $this->writeCountries($writer, $report);
+        $this->writeCountries($writer, $report, $chosen);
         $this->writePositions($writer, $report);
-        $this->writeDividends($writer, $report);
+        $this->writeDividends($writer, $report, $chosen);
         $this->writeRawTrades($writer, $trades);
         $this->writeCurrentDividends($writer, $dividends);
         $this->writeFees($writer, $fees, $report);
@@ -59,7 +66,7 @@ final class CsvReportWriter
         return sprintf('pit-38-%d-raport.csv', $report->taxYear);
     }
 
-    private function writeSummary(Writer $writer, TaxReport $report, ?CreditMethod $chosen): void
+    private function writeSummary(Writer $writer, TaxReport $report, CreditMethod $chosen): void
     {
         $this->section($writer, 'PODSUMOWANIE');
         $this->row($writer, ['Rok podatkowy', (string) $report->taxYear]);
@@ -83,35 +90,20 @@ final class CsvReportWriter
         $this->row($writer, ['Podatek pobrany za granica', (string) $report->dividends->totalWithheldTax->value()]);
         $this->row($writer, []);
 
-        $this->section($writer, 'DWA WARIANTY ODLICZENIA PODATKU ZAGRANICZNEGO');
-        $this->row($writer, ['Uwaga', self::SCENARIO_NOTE]);
-        $this->row($writer, ['Wariant', 'Do odliczenia (PLN)', 'Dywidendy - do zaplaty (PLN)', 'Podatek lacznie (PLN)', 'Lacznie w pelnych zlotych']);
-        $this->row($writer, [
-            CreditMethod::Conservative->label(),
-            (string) $report->dividends->conservative->creditableTax->value(),
-            (string) $report->dividends->conservative->taxDue->value(),
-            (string) $report->totalTaxConservative->value(),
-            (string) $report->totalTaxConservativeRounded->value(),
-        ]);
-        $this->row($writer, [
-            CreditMethod::Nsa->label(),
-            (string) $report->dividends->nsa->creditableTax->value(),
-            (string) $report->dividends->nsa->taxDue->value(),
-            (string) $report->totalTaxNsa->value(),
-            (string) $report->totalTaxNsaRounded->value(),
-        ]);
-        if (null !== $chosen) {
-            // Both readings stay in the file; this only records which one the
-            // workbench put in the PIT fields when the export was made.
-            $this->row($writer, ['Wybrany wariant', $chosen->label()]);
-        }
-        $this->row($writer, ['Roznica miedzy wariantami', (string) $report->scenarioDifference()->value()]);
-        $this->row($writer, [CreditMethod::Conservative->label(), CreditMethod::Conservative->description()]);
-        $this->row($writer, [CreditMethod::Nsa->label(), CreditMethod::Nsa->description()]);
+        $scenario = $report->dividends->scenarioFor($chosen);
+        $this->section($writer, 'WARIANT ODLICZENIA PODATKU ZAGRANICZNEGO');
+        $this->row($writer, ['Uwaga', self::CREDIT_NOTE]);
+        $this->row($writer, ['Wariant', $chosen->label()]);
+        $this->row($writer, ['Opis', $chosen->description()]);
+        $this->row($writer, ['Pozycja', 'Kwota (PLN)']);
+        $this->row($writer, ['Do odliczenia', (string) $scenario->creditableTax->value()]);
+        $this->row($writer, ['Dywidendy - do zaplaty', (string) $scenario->taxDue->value()]);
+        $this->row($writer, ['Podatek lacznie', (string) $report->totalTaxFor($chosen)->value()]);
+        $this->row($writer, ['Podatek lacznie w pelnych zlotych', (string) $report->totalTaxRoundedFor($chosen)->value()]);
         $this->row($writer, []);
     }
 
-    private function writeCountries(Writer $writer, TaxReport $report): void
+    private function writeCountries(Writer $writer, TaxReport $report, CreditMethod $chosen): void
     {
         if ([] !== $report->stock->pitZgCountries) {
             $this->section($writer, 'AKCJE WEDLUG KRAJU (PIT/ZG)');
@@ -149,8 +141,7 @@ final class CsvReportWriter
             $this->section($writer, 'AUDYT DYWIDEND WEDLUG KRAJU (BEZ PIT/ZG)');
             $this->row($writer, [
                 'Kraj', 'Nazwa', 'Przychod brutto (PLN)', 'Podatek pobrany (PLN)', 'Podatek polski (PLN)',
-                'Do odliczenia - zachowawczy (PLN)', 'Do zaplaty - zachowawczy (PLN)',
-                'Do odliczenia - wg NSA (PLN)', 'Do zaplaty - wg NSA (PLN)',
+                self::chosenColumn('Do odliczenia', $chosen), self::chosenColumn('Do zaplaty', $chosen),
             ]);
             foreach ($report->dividends->countries as $country) {
                 $this->row($writer, [
@@ -159,10 +150,8 @@ final class CsvReportWriter
                     (string) $country->gross->value(),
                     (string) $country->withheldTax->value(),
                     (string) $country->polishTax->value(),
-                    (string) $country->conservative->creditableTax->value(),
-                    (string) $country->conservative->taxDue->value(),
-                    (string) $country->nsa->creditableTax->value(),
-                    (string) $country->nsa->taxDue->value(),
+                    (string) $country->creditFor($chosen)->creditableTax->value(),
+                    (string) $country->creditFor($chosen)->taxDue->value(),
                 ]);
             }
             $this->row($writer, []);
@@ -322,7 +311,7 @@ final class CsvReportWriter
         $this->row($writer, []);
     }
 
-    private function writeDividends(Writer $writer, TaxReport $report): void
+    private function writeDividends(Writer $writer, TaxReport $report, CreditMethod $chosen): void
     {
         if ([] === $report->dividends->dividends) {
             return;
@@ -333,12 +322,11 @@ final class CsvReportWriter
             'Lp.', 'Instrument', 'Kraj', 'Waluta', 'Data wyplaty',
             'Brutto', 'Kurs NBP', 'Data kursu', 'Brutto (PLN)',
             'Podatek pobrany', 'Podatek pobrany (PLN)', 'Stawka umowna (%)', 'Podatek polski (PLN)',
-            'Do odliczenia - zachowawczy (PLN)', 'Do odliczenia - wg NSA (PLN)', 'Roznica odliczen NSA - KIS (PLN)',
-            'Do zaplaty - zachowawczy (PLN)', 'Do zaplaty - wg NSA (PLN)', 'Zrodlo', 'Uwagi',
+            self::chosenColumn('Do odliczenia', $chosen), self::chosenColumn('Do zaplaty', $chosen), 'Zrodlo', 'Uwagi',
         ]);
 
         foreach ($report->dividends->dividends as $index => $dividend) {
-            $this->row($writer, $this->dividendRow($index + 1, $dividend));
+            $this->row($writer, $this->dividendRow($index + 1, $dividend, $chosen));
         }
 
         $this->row($writer, []);
@@ -347,7 +335,7 @@ final class CsvReportWriter
     /**
      * @return list<string>
      */
-    private function dividendRow(int $number, CalculatedDividend $dividend): array
+    private function dividendRow(int $number, CalculatedDividend $dividend, CreditMethod $chosen): array
     {
         return [
             (string) $number,
@@ -363,14 +351,19 @@ final class CsvReportWriter
             (string) $dividend->withheldTax->pln->value(),
             null === $dividend->treatyPercent ? '' : (string) $dividend->treatyPercent,
             (string) $dividend->polishTax->toScale(self::PLN_SCALE)->value(),
-            (string) $dividend->conservative->creditableTax->toScale(self::PLN_SCALE)->value(),
-            (string) $dividend->nsa->creditableTax->toScale(self::PLN_SCALE)->value(),
-            (string) $dividend->creditDifference()->toScale(self::PLN_SCALE)->value(),
-            (string) $dividend->conservative->taxDue->toScale(self::PLN_SCALE)->value(),
-            (string) $dividend->nsa->taxDue->toScale(self::PLN_SCALE)->value(),
+            (string) $dividend->creditFor($chosen)->creditableTax->toScale(self::PLN_SCALE)->value(),
+            (string) $dividend->creditFor($chosen)->taxDue->toScale(self::PLN_SCALE)->value(),
             $dividend->dividend->source,
             $dividend->warning ?? '',
         ];
+    }
+
+    /**
+     * A column header that names the reading its figures follow.
+     */
+    private static function chosenColumn(string $what, CreditMethod $chosen): string
+    {
+        return sprintf('%s - %s (PLN)', $what, $chosen->shortLabel());
     }
 
     private function writeMessages(Writer $writer, TaxReport $report): void

@@ -6,14 +6,14 @@
 {% elseif report.dividends.dividends is empty %}
     <p class="note">Brak dywidend w wybranym roku.</p>
 {% else %}
+    {% set chosen = settings.creditMethod %}
     <h3>Przeliczenia dywidend</h3>
     <div class="table-wrapper">
         <table class="table table--detail dividend-results">
             <thead><tr>
                 <th>Instrument</th><th>Data uzyskania</th><th>Brutto</th><th>Kurs NBP / data</th><th>Brutto PLN</th>
                 <th>Stawka umowna</th><th>Pobrany PLN</th><th>Podatek PL</th>
-                <th>Odliczenie KIS</th><th>Odliczenie NSA</th><th>Różnica odliczeń</th>
-                <th>KIS do zapłaty</th><th>NSA do zapłaty</th>
+                <th>Odliczenie ({{ chosen.shortLabel }})</th><th>Do zapłaty ({{ chosen.shortLabel }})</th>
             </tr></thead>
             <tbody>
             {% for item in report.dividends.dividends %}
@@ -28,11 +28,8 @@
                     <td>{{ item.treatyPercent is null ? '—' : item.treatyPercent ~ '%' }}</td>
                     <td>{{ item.withheldTax.pln|money(2) }}</td>
                     <td>{{ item.polishTax|money(2) }}</td>
-                    <td>{{ item.conservative.creditableTax|money(2) }}</td>
-                    <td>{{ item.nsa.creditableTax|money(2) }}</td>
-                    <td>{{ item.creditDifference|money(2) }}</td>
-                    <td>{{ item.conservative.taxDue|money(2) }}</td>
-                    <td>{{ item.nsa.taxDue|money(2) }}</td>
+                    <td>{{ item.creditFor(chosen).creditableTax|money(2) }}</td>
+                    <td>{{ item.creditFor(chosen).taxDue|money(2) }}</td>
                 </tr>
             {% endfor %}
             </tbody>

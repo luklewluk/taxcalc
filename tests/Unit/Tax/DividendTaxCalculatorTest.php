@@ -47,7 +47,7 @@ final class DividendTaxCalculatorTest extends TestCase
         self::assertSame('60.00', (string) $calculated->conservative->creditableTax->toScale(2)->value());
         self::assertSame('16.00', (string) $calculated->conservative->taxDue->toScale(2)->value());
         self::assertNull($calculated->warning);
-        self::assertSame('16.00', (string) $calculated->creditDifference()->toScale(2)->value());
+        self::assertSame('76.00', (string) $calculated->nsa->creditableTax->toScale(2)->value());
         self::assertSame([], $result->warnings());
     }
 

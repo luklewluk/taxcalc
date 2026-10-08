@@ -13,9 +13,9 @@ use App\Web\Diagnostic;
 /**
  * Everything needed to render or export a settlement for one tax year.
  *
- * There is no single "the tax" figure: how much foreign withholding tax may be
- * credited is legally disputed, so the total is reported under both readings
- * and every consumer is expected to show both.
+ * How much foreign withholding tax may be credited is legally disputed, so the
+ * total is kept under both readings; the workbench setting picks the one every
+ * surface shows ({@see totalTaxFor()}, {@see totalTaxRoundedFor()}).
  */
 final readonly class TaxReport
 {
@@ -49,20 +49,6 @@ final readonly class TaxReport
     public function hasExclusions(): bool
     {
         return $this->excludedPositions > 0 || $this->excludedDividends > 0 || $this->excludedFees > 0;
-    }
-
-    /**
-     * True when the disputed treaty cap changes the bottom line. Only then does
-     * the user actually have to take a position on it.
-     */
-    public function scenariosDiffer(): bool
-    {
-        return 0 !== $this->totalTaxConservative->compareTo($this->totalTaxNsa);
-    }
-
-    public function scenarioDifference(): Amount
-    {
-        return $this->totalTaxConservative->minus($this->totalTaxNsa);
     }
 
     /**

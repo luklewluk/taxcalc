@@ -66,25 +66,20 @@
             <dl class="pit-fields">
                 <div><dt>Pole {{ form_map.dividend_polish_tax }} — polski podatek 19%</dt><dd>{{ dividends.totalPolishTax|money }} zł</dd></div>
                 <div><dt>Pole {{ form_map.dividend_foreign_tax }} — pobrany za granicą</dt><dd>{{ dividends.totalWithheldTax|money }} zł</dd></div>
-                {# The setting picks which reading fills the field; the other one
-                   stays right next to it, because the dispute is live and hiding
-                   a figure would take a side in it. #}
+                {# Only the reading chosen in Ustawienia, named so it is clear which one. #}
                 {% set chosen = settings.creditMethod %}
-                {% set other = settings.alternativeCreditMethod %}
                 <div>
                     <dt>Pole {{ form_map.dividend_tax_due }} — do zapłaty</dt>
                     <dd>
                         {{ dividends.scenarioFor(chosen).taxDue|money }} zł
-                        <span class="cell-note">{{ chosen.shortLabel }} — wariant użyty w polach PIT</span>
-                        <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ dividends.scenarioFor(other).taxDue|money }} zł</span>
+                        <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                     </dd>
                 </div>
                 <div>
                     <dt>Pole {{ form_map.total_tax }} — podatek łącznie</dt>
                     <dd>
                         {{ report.totalTaxRoundedFor(chosen)|money }} zł
-                        <span class="cell-note">{{ chosen.shortLabel }}</span>
-                        <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ report.totalTaxRoundedFor(other)|money }} zł</span>
+                        <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                     </dd>
                 </div>
             </dl>

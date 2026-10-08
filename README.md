@@ -38,8 +38,8 @@ i podaje wartości do wpisania w **PIT-38** i **PIT/ZG**. Twoje dane nigdzie nie
   z 2022 r. pokrywa sprzedaż z 2025 r.
 - Przelicza każdą kwotę **kursem średnim NBP z dnia roboczego przed transakcją**.
 - Podaje numery pól **PIT-38** i **PIT/ZG** właściwe dla wybranego roku (2021–2026).
-- Pokazuje **oba warianty** odliczenia podatku od dywidend — stanowisko urzędu (KIS)
-  i orzecznictwo NSA — bo kwestia jest sporna.
+- Pozwala wybrać **wariant odliczenia** podatku od dywidend — stanowisko urzędu (KIS)
+  albo orzecznictwo NSA — bo kwestia jest sporna; wynik pokazuje wybrany wariant.
 - Wynik pobierzesz jako **raport CSV** albo wydrukujesz.
 
 ## Prywatność
@@ -108,7 +108,8 @@ jest każdy eksport: [docs/formaty.md](docs/formaty.md).
   przydział), nigdy w dniu otwarcia — zgodnie z interpretacją KIS
   0113-KDIPT2-3.4011.645.2025.3.KKA.
 - **Dywidendy:** podatek polski to 19% kwoty brutto, od którego odlicza się podatek pobrany
-  za granicą. Ile wolno odliczyć — jest sporne, więc kalkulator liczy oba warianty:
+  za granicą. Ile wolno odliczyć — jest sporne, więc wariant wybierasz sam w Ustawieniach
+  (domyślnie KIS). Różnica na przykładzie:
 
   | Dywidenda z USA: 100 USD brutto, 30 USD pobrane, kurs 4,00 | Wariant KIS | Wariant NSA |
   | --- | --- | --- |
@@ -117,8 +118,8 @@ jest każdy eksport: [docs/formaty.md](docs/formaty.md).
   | **Do zapłaty** | **16,00 PLN** | **0,00 PLN** |
 
   Wariant KIS to stanowisko organów podatkowych; wariant NSA wynika z wyroków II FSK 1171/22
-  i II FSK 1302/22. Wybór należy do Ciebie — w Ustawieniach decydujesz, który wypełnia pola
-  PIT, a drugi pozostaje widoczny.
+  i II FSK 1302/22. Pola PIT, podsumowanie, wydruk i raport CSV liczą się według wybranego
+  wariantu i pokazują tylko jego.
 - **Zaokrąglanie:** arytmetyka dziesiętna bez błędów zmiennoprzecinkowych; podatek jest
   liczony dokładnie, sumowany i zaokrąglany raz.
 

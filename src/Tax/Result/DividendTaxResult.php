@@ -37,16 +37,6 @@ final readonly class DividendTaxResult
         return CreditMethod::Conservative === $method ? $this->conservative : $this->nsa;
     }
 
-    public function scenariosDiffer(): bool
-    {
-        return 0 !== $this->conservative->taxDue->compareTo($this->nsa->taxDue);
-    }
-
-    public function scenarioDifference(): Amount
-    {
-        return $this->conservative->taxDue->minus($this->nsa->taxDue);
-    }
-
     /**
      * @return list<string>
      */

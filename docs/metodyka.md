@@ -114,11 +114,11 @@ bez dodatkowego limitu stawką umowną.
 #### Co z tym zrobić
 
 Stan na 2026 r. pozostaje rozbieżny: interpretacje i komentarze idą w obie strony, a wyroki
-NSA wiążą formalnie w konkretnych sprawach. Kalkulator pokazuje obie kwoty w wyniku,
-w wersji do wydruku i w raporcie CSV — **wybór wariantu i jego uzasadnienie należą do
-podatnika**. W zakładce **Ustawienia** wybierasz, który wariant wypełnia pola PIT
-(domyślnie zachowawczy); drugi pozostaje widoczny wszędzie. Przy istotnej różnicy rozważ wniosek o interpretację indywidualną
-albo konsultację z doradcą podatkowym. To narzędzie nie rozstrzyga Twojej indywidualnej
+NSA wiążą formalnie w konkretnych sprawach. **Wybór wariantu i jego uzasadnienie należą do
+podatnika**: w zakładce **Ustawienia** wybierasz wariant (domyślnie zachowawczy), a wynik,
+wersja do wydruku i raport CSV liczą się według niego i pokazują tylko jego. W razie
+wątpliwości rozważ wniosek o interpretację indywidualną albo konsultację z doradcą
+podatkowym. To narzędzie nie rozstrzyga Twojej indywidualnej
 sytuacji.
 
 Przykład (kurs 4,00; dywidenda z USA 100 USD brutto, 30 USD pobrane):

@@ -1,14 +1,13 @@
 {% if report is not null and report.dividends.dividends is not empty %}
     {% set dividends = report.dividends %}
     {% set chosen = settings.creditMethod %}
-    {% set other = settings.alternativeCreditMethod %}
     <div class="dividend-summary">
         <div class="panel-heading">
             <div>
                 <h3>Podsumowanie dywidend</h3>
                 <p class="note">
-                    Liczby, z których powstają pola PIT-38 część G. Wariant odliczenia wybierasz
-                    w zakładce „Ustawienia”; drugi jest pokazany obok, bo wysokość odliczenia jest sporna.
+                    Liczby, z których powstają pola PIT-38 część G, w wariancie odliczenia
+                    {{ chosen.shortLabel }} — zmienisz go w zakładce „Ustawienia”.
                 </p>
             </div>
         </div>
@@ -23,16 +22,14 @@
                         <dt>Pole {{ form_map.dividend_tax_due }} — do zapłaty</dt>
                         <dd>
                             {{ dividends.scenarioFor(chosen).taxDue|money }} zł
-                            <span class="cell-note">{{ chosen.shortLabel }} — wariant użyty w polach PIT</span>
-                            <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ dividends.scenarioFor(other).taxDue|money }} zł</span>
+                            <span class="cell-note">wariant {{ chosen.shortLabel }}</span>
                         </dd>
                     </div>
                     <div>
                         <dt>Pole {{ form_map.total_tax }} — podatek łącznie (z akcjami)</dt>
                         <dd>
                             {{ report.totalTaxRoundedFor(chosen)|money }} zł
-                            <span class="cell-note">w pełnych złotych, {{ chosen.shortLabel }}</span>
-                            <span class="cell-note">wariant alternatywny {{ other.shortLabel }}: {{ report.totalTaxRoundedFor(other)|money }} zł</span>
+                            <span class="cell-note">w pełnych złotych, wariant {{ chosen.shortLabel }}</span>
                         </dd>
                     </div>
                 </dl>
@@ -47,9 +44,6 @@
                     <div><dt>Do odliczenia ({{ chosen.shortLabel }})</dt><dd>{{ dividends.scenarioFor(chosen).creditableTax|money }} zł</dd></div>
                     <div><dt>Do zapłaty w pełnych złotych</dt><dd>{{ dividends.scenarioFor(chosen).taxDueRoundedToZloty|money }} zł</dd></div>
                     <div><dt>Liczba wypłat</dt><dd>{{ dividends.dividends|length }}</dd></div>
-                    {% if dividends.scenariosDiffer %}
-                        <div><dt>Różnica między wariantami</dt><dd>{{ dividends.scenarioDifference|money }} zł</dd></div>
-                    {% endif %}
                 </dl>
                 {% if report.excludedDividends > 0 %}
                     <p class="reconciliation">
@@ -73,7 +67,7 @@
                     </tr></thead>
                     <tbody>
                     {% for country in dividends.countries %}
-                        {% set credit = chosen.value == 'conservative' ? country.conservative : country.nsa %}
+                        {% set credit = country.creditFor(chosen) %}
                         <tr>
                             <th>{{ country.countryCode }}{{ country.countryName ? ' — ' ~ country.countryName : '' }}</th>
                             <td>{{ country.gross|money }}</td>

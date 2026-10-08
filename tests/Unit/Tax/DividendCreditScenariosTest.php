@@ -75,14 +75,14 @@ final class DividendCreditScenariosTest extends TestCase
         self::assertSame('40.00', (string) $item->nsa->creditableTax->toScale(2)->value());
         self::assertSame('36.00', (string) $item->conservative->taxDue->toScale(2)->value());
         self::assertSame('36.00', (string) $item->nsa->taxDue->toScale(2)->value());
-        self::assertFalse($result->scenariosDiffer());
     }
 
     public function testDifferenceBetweenScenariosIsFlagged(): void
     {
         $result = $this->calculate('US', '100.00', '30.00');
 
-        self::assertTrue($result->scenariosDiffer());
+        self::assertSame('16.00', (string) $result->conservative->taxDue->toScale(2)->value());
+        self::assertSame('0.00', (string) $result->nsa->taxDue->toScale(2)->value());
     }
 
     public function testNeitherScenarioEverCreditsMoreThanThePolishTax(): void

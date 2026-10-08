@@ -19,18 +19,10 @@ final readonly class WorkbenchSettings
         /** Which country a *trade* declares; a dividend always follows its ISIN. */
         public CountrySource $countrySource = CountrySource::Exchange,
         /**
-         * Which reading of the foreign-tax credit fills the PIT fields. The
-         * other one stays visible everywhere for comparison - the dispute is
-         * live, so the calculator may headline a variant but never hide one.
+         * Which reading of the foreign-tax credit the return uses. The domain
+         * computes both; every surface shows this one only, named.
          */
         public CreditMethod $creditMethod = CreditMethod::Conservative,
     ) {
-    }
-
-    public function alternativeCreditMethod(): CreditMethod
-    {
-        return CreditMethod::Conservative === $this->creditMethod
-            ? CreditMethod::Nsa
-            : CreditMethod::Conservative;
     }
 }

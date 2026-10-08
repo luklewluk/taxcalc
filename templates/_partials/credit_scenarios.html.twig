@@ -1,29 +1,19 @@
+{# The reading chosen in Ustawienia, explained - the only one any surface shows. #}
 {% set expanded = expanded is defined and expanded %}
-<details class="disclosure disclosure--card"{{ expanded ? ' open' : '' }}>
-    <summary>Dlaczego są dwa warianty KIS/NSA?</summary>
+{% set chosen = settings.creditMethod %}
+<details class="disclosure disclosure--card" data-role="credit-method"{{ expanded ? ' open' : '' }}>
+    <summary>Wariant odliczenia podatku od dywidend: {{ chosen.shortLabel }}</summary>
     <div class="disclosure__body">
-        <p>
-            Dwa warianty odliczenia zagranicznego podatku od dywidend wynikają ze spornego sposobu rozliczenia. Wariant zachowawczy
-            odzwierciedla praktykę KIS i limituje odliczenie stawką z umowy. Wariant NSA odzwierciedla
-            prawomocne wyroki <strong>II FSK 1171/22</strong> i <strong>II FSK 1302/22</strong>:
-            podatek faktycznie pobrany jest ograniczony polskim podatkiem 19%.
+        <p><strong>{{ chosen.label }}.</strong> {{ chosen.description }}</p>
+        <p class="note">
+            Wysokość odliczenia zagranicznego podatku od dywidend jest sporna, dlatego wariant wybierasz
+            sam w zakładce „Ustawienia”. Pola PIT, wydruk i raport CSV liczą się według wybranego wariantu.
         </p>
-        <div class="table-wrapper">
-            <table class="table table--compact">
-                <thead><tr><th>Wariant</th><th>Do odliczenia</th><th>Dywidendy — do zapłaty</th><th>Podatek łącznie</th></tr></thead>
-                <tbody>
-                    <tr><th>{{ dividends.conservative.label }}</th><td>{{ dividends.conservative.creditableTax|money }} zł</td><td>{{ dividends.conservative.taxDue|money }} zł</td><td>{{ report.totalTaxConservative|money }} zł</td></tr>
-                    <tr><th>{{ dividends.nsa.label }}</th><td>{{ dividends.nsa.creditableTax|money }} zł</td><td>{{ dividends.nsa.taxDue|money }} zł</td><td>{{ report.totalTaxNsa|money }} zł</td></tr>
-                </tbody>
-            </table>
-        </div>
-        <p class="note">{{ dividends.conservative.method.description }}</p>
-        <p class="note">{{ dividends.nsa.method.description }}</p>
         <p class="note">
             Źródła: <a href="https://isap.sejm.gov.pl/isap.nsf/DocDetails.xsp?id=WDU19910800350" rel="noopener noreferrer">art. 30a ust. 9 ustawy o PIT</a>,
-            <a href="https://www.podatki.gov.pl/pit/" rel="noopener noreferrer">informacje MF</a> oraz
-            <a href="https://orzeczenia.nsa.gov.pl/" rel="noopener noreferrer">orzeczenia NSA w CBOSA</a>.
-            Przy istotnej różnicy rozważ interpretację indywidualną albo konsultację z doradcą podatkowym.
+            <a href="https://www.podatki.gov.pl/pit/" rel="noopener noreferrer">informacje MF</a>{% if chosen.value == 'nsa' %},
+            <a href="https://orzeczenia.nsa.gov.pl/" rel="noopener noreferrer">orzeczenia NSA w CBOSA</a>{% endif %}.
+            W razie wątpliwości rozważ interpretację indywidualną albo konsultację z doradcą podatkowym.
         </p>
     </div>
 </details>

@@ -140,7 +140,7 @@ final class DegiroFlowTest extends WebTestCase
         self::assertSame('2350.99', $crawler->filter('input[name="trades[1][total]"]')->attr('value'));
     }
 
-    public function testFullDegiroFlowProducesBothCreditScenarios(): void
+    public function testFullDegiroFlowProducesAResultInTheChosenCreditVariant(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, [
@@ -155,9 +155,7 @@ final class DegiroFlowTest extends WebTestCase
 
         self::assertStringContainsString('Przychód', $text);
         self::assertStringContainsString('Koszty uzyskania przychodu', $text);
-        self::assertStringContainsString('Dwa warianty', $text);
-        self::assertStringContainsString('KIS', $text);
-        self::assertStringContainsString('NSA', $text);
+        self::assertStringContainsString('Wariant odliczenia podatku od dywidend: zachowawczy (KIS)', $text);
         self::assertStringContainsString('nie stanowi porady podatkowej', $text);
     }
 

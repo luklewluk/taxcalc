@@ -154,7 +154,8 @@ Nine modules under `src/`, ordered from the inside out:
   `DividendTaxCalculator`, `TaxYearFilter`, `CreditMethod`. Results are immutable DTOs in
   `Tax\Result`. The dividend calculator produces **two** credit scenarios, never one:
   `Conservative` (treaty-capped, KIS position) and `Nsa` (actual foreign tax up to the
-  Polish 19%, per II FSK 1171/22 and II FSK 1302/22). Every output surface must show both.
+  Polish 19%, per II FSK 1171/22 and II FSK 1302/22). Output surfaces show only the one
+  chosen in `WorkbenchSettings::$creditMethod`.
 - **Report** — `TaxReportBuilder` (filters to the year and pre-flights every exchange
   rate; one unavailable rate blocks the whole report rather than skipping a row), `CsvReportWriter`
   and `CsvCell` (formula-injection guard).
@@ -345,8 +346,12 @@ Nine modules under `src/`, ordered from the inside out:
   double-count it. A sign that contradicts the quantity is an error, not something to fix.
 - **PIT field numbers are versioned, never hard-coded in templates.** `TaxFormMap` owns the
   2021–2026 PIT-38/PIT-ZG mapping; 2026 is explicitly provisional.
-- **Never present one withholding-credit figure as "the" answer.** The dispute is live;
-  show both scenarios with their labels and sources.
+- **The chosen credit reading is the only one shown, and it is always named.** The dispute
+  is live, so the user picks the reading in Ustawienia (default: conservative/KIS). The domain
+  still computes both - switching must not need a re-import - but no surface prints the other
+  one, an "alternative" figure or a difference. Every figure that depends on the reading
+  carries its label (`CreditMethod::shortLabel()`), and the summary explains the chosen one
+  with its sources.
 - **Corporate actions are never settled silently.** Splits, mergers and spin-offs are out
   of scope. A row with a non-zero quantity but no price or no cash is *fatal*: skipping it
   would change the cost basis of every later sale of that instrument, so the batch stops
@@ -423,10 +428,11 @@ The public flow is `upload → work with the result`. After the first import,
   form exactly like `tax_year` (posted field + a total `normalize()`), never the session, and the
   panel deliberately sits outside every `data-fragment` so the debounce cannot wipe a control
   mid-change.
-- **The credit variant picks the headline, never the only figure.** `WorkbenchSettings::$creditMethod`
-  decides which reading fills the PIT fields (`DividendTaxResult::scenarioFor()`,
-  `TaxReport::totalTaxRoundedFor()`); the other stays visible on every surface — summary,
-  Dywidendy, print, CSV — because the dispute is live. `dividend.treaty_rate_missing` is
+- **The credit variant decides every figure.** `WorkbenchSettings::$creditMethod` picks the
+  reading (`DividendTaxResult::scenarioFor()`, `TaxReport::totalTaxRoundedFor()`,
+  `CalculatedDividend::creditFor()`, `CountryDividendIncome::creditFor()`), and summary,
+  Dywidendy, print and CSV (`CsvReportWriter::write(..., $chosen)`) show that one only.
+  `CreditMethodOutputTest` pins it. `dividend.treaty_rate_missing` is
   shown only under the conservative reading, where a missing treaty rate really means a zero
   credit; under NSA the cap plays no part and the item would be noise.
 - **The message strip is one sentence, the tab is the list.** `workbench_messages` renders

@@ -8,9 +8,11 @@ use App\CurrencyRate\ExchangedAmount;
 use App\Model\Dividend;
 use App\Money\Amount;
 use App\Money\Decimal;
+use App\Tax\CreditMethod;
 
 /**
- * One dividend with both readings of the foreign-tax credit.
+ * One dividend with both readings of the foreign-tax credit; a surface shows
+ * the chosen one through {@see creditFor()}.
  *
  * `polishTax` and the credits are exact: they are summed before rounding, and
  * rounded only where a figure is declared or displayed.
@@ -29,14 +31,11 @@ final readonly class CalculatedDividend
     ) {
     }
 
-    public function scenariosDiffer(): bool
+    /**
+     * The credit under one reading, for a surface that shows only the chosen one.
+     */
+    public function creditFor(CreditMethod $method): DividendCredit
     {
-        return 0 !== $this->conservative->taxDue->toScale(2)->compareTo($this->nsa->taxDue->toScale(2));
-    }
-
-    /** NSA credit minus the treaty-capped KIS credit. */
-    public function creditDifference(): Amount
-    {
-        return $this->nsa->creditableTax->minus($this->conservative->creditableTax);
+        return CreditMethod::Conservative === $method ? $this->conservative : $this->nsa;
     }
 }

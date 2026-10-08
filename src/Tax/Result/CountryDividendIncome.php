@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace App\Tax\Result;
 
 use App\Money\Amount;
+use App\Tax\CreditMethod;
 
 /**
  * Per-country dividend aggregate, with both credit scenarios so the return can
@@ -26,5 +27,13 @@ final readonly class CountryDividendIncome
         public DividendCredit $conservative,
         public DividendCredit $nsa,
     ) {
+    }
+
+    /**
+     * The credit under one reading, for a surface that shows only the chosen one.
+     */
+    public function creditFor(CreditMethod $method): DividendCredit
+    {
+        return CreditMethod::Conservative === $method ? $this->conservative : $this->nsa;
     }
 }

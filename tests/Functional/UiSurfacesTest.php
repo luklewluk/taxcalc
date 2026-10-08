@@ -350,10 +350,10 @@ final class UiSurfacesTest extends WebTestCase
     }
 
     /**
-     * The dispute is live, so the setting may pick which reading fills the PIT
-     * fields but neither may disappear - see DualScenarioOutputTest.
+     * The setting picks the reading, and the summary then shows that one only -
+     * see CreditMethodOutputTest for every other surface.
      */
-    public function testTheChosenVariantFillsThePitFieldsAndTheOtherStaysVisible(): void
+    public function testTheChosenVariantIsTheOnlyOneInTheSummary(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['div.csv' => self::DIVIDENDS]);
@@ -364,10 +364,9 @@ final class UiSurfacesTest extends WebTestCase
         $summary = $crawler->filter('#panel-summary');
 
         self::assertStringContainsString('wg NSA', $summary->text());
-        self::assertStringContainsString('wariant alternatywny', mb_strtolower($summary->text()));
-        // Both readings remain reachable on the page.
         self::assertStringContainsString('II FSK 1171/22', $summary->text());
-        self::assertStringContainsString('zachowawcz', mb_strtolower($summary->text()));
+        self::assertStringNotContainsString('alternatywn', mb_strtolower($summary->text()));
+        self::assertStringNotContainsString('zachowawcz', mb_strtolower($summary->text()));
     }
 
     public function testTheTreatyRateWarningDisappearsUnderNsa(): void
@@ -430,14 +429,17 @@ final class UiSurfacesTest extends WebTestCase
         self::assertStringContainsString('15,0000 USD', $fifo->text());
     }
 
-    public function testDividendResultsExplainBothCreditsNumericallyWithoutTheOldLongWarning(): void
+    public function testDividendResultsExplainTheChosenCreditNumericallyWithoutTheOldLongWarning(): void
     {
         $client = static::createClient();
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
         $text = $crawler->filter('[data-fragment="dividendResults"]')->text();
 
-        foreach (['Stawka umowna', 'Pobrany PLN', 'Podatek PL', 'Odliczenie KIS', 'Odliczenie NSA', 'Różnica odliczeń', 'KIS do zapłaty', 'NSA do zapłaty'] as $heading) {
+        foreach (['Stawka umowna', 'Pobrany PLN', 'Podatek PL', 'Odliczenie (zachowawczy (KIS))', 'Do zapłaty (zachowawczy (KIS))'] as $heading) {
             self::assertStringContainsString($heading, $text);
+        }
+        foreach (['NSA', 'Różnica'] as $absent) {
+            self::assertStringNotContainsString($absent, $text);
         }
         self::assertStringContainsString('15%', $text);
         self::assertStringNotContainsString('Pobrano podatek wyższy niż stawka umowna', $crawler->filter('body')->text());
