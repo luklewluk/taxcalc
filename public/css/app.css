@@ -585,10 +585,13 @@ code {
     transform: rotate(-4deg);
 }
 
+.brokers { text-align: center; }
+
 .broker-logos {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
+    justify-content: center;
     gap: 1.25rem 3rem;
     margin: 1.75rem 0 0;
     padding: 0;
