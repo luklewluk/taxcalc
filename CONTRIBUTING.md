@@ -97,6 +97,7 @@ src/
 | --- | --- | --- |
 | GET | `/` | strona główna |
 | GET | `/kalkulator` | formularz wgrywania plików |
+| GET | `/kalkulator/symulacja` | ekran roboczy na fikcyjnych danych z `demo/` |
 | POST | `/kalkulator/import` | atomowy import i ekran roboczy |
 | POST | `/kalkulator/wynik` | pełne lub asynchroniczne przeliczenie stanu roboczego |
 | POST | `/kalkulator/raport.csv` | pobranie raportu CSV |

@@ -361,6 +361,13 @@ The public flow is `upload → work with the result`. After the first import,
 `calculator/workbench` owns the entire editable state in four accessible tabs:
 `PIT-38 / PIT-ZG`, `FIFO`, `Dywidendy`, and `Opłaty`. There is no review screen or stepper.
 
+- **"Symulacja" is the real import on fictional files.** `GET /kalkulator/symulacja` reads the
+  three statements in `demo/` through `CsvImportService`, settles 2025 and renders the workbench
+  with a notice; a hidden `demo=1` field carries the notice through recalculations, like
+  `tax_year`. The data covers both brokers, USD/EUR/GBP/CAD/CHF/PLN (the currencies of the test
+  rate fake), stocks and ETFs on several exchanges, a call and a put each bought and written,
+  and dividends where the KIS and NSA credits differ. `DemoFlowTest` pins that it opens a
+  complete result with nothing in "Wymaga uwagi" - change `demo/` only with it green.
 - **The workbench is stateless.** Every logical trade, dividend, standalone fee, stable ID,
   and tombstone travels in the current form. Never move it into session or browser storage.
 - **The FIFO tab names its money columns.** `Przychód PLN` and `Koszt PLN` are the figures that
@@ -571,5 +578,6 @@ Sanitized fixtures live in `examples/` (symbols `AAA`/`BBB`, invented DEGIRO pro
 `ALFA CORP`/`BETA ETF`/`GAMMA SA` with placeholder ISINs `US000ALFA001`/`IE000BETA002`/
 `PL000GAMMA01`, account `UXXXXXXXX`, holder `Jan Przykładowy`). They are test fixtures and a
 reference for contributors only - the site does not serve them, and the Docker image leaves
-them out. `input/` and `output/` are gitignored and must not be
+them out. The statements in `demo/` (behind "Symulacja") are fictional in the same way and are
+deployed with the app. `input/` and `output/` are gitignored and must not be
 re-added to the repository.

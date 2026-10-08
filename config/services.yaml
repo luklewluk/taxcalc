@@ -3,6 +3,9 @@ parameters:
     app.upload.max_bytes: 5242880
     app.tax_year.first: 2021
 
+    # Fictional statements behind "Symulacja" (GET /kalkulator/symulacja).
+    app.demo_dir: '%kernel.project_dir%/demo'
+
     # Maximum editable records (trades + dividends + fees)
     # one import may produce. The workbench form has to fit inside PHP's
     # max_input_vars - see docker/php.ini.
@@ -31,6 +34,7 @@ services:
             $maxRowsPerFile: '%app.import.max_rows_per_file%'
             $rateBudgetSeconds: '%app.ledger.rate_budget_seconds%'
             $publicDir: '%kernel.project_dir%/public'
+            $demoDir: '%app.demo_dir%'
 
     App\:
         resource: '../src/'

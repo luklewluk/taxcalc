@@ -68,6 +68,10 @@ Szczegóły i mechanizmy obronne: [SECURITY.md](SECURITY.md).
    wynikiem — najczęściej kraj dochodu, który kalkulator tylko proponuje.
 4. **Przepisz wartości** z zakładki **PIT-38 / PIT-ZG** do formularzy.
 
+Chcesz najpierw zobaczyć, jak to wygląda? Przycisk **Symulacja** na stronie głównej otwiera
+ekran roboczy z fikcyjnymi danymi: akcje i ETF-y z kilku giełd i walut, opcje call i put
+(kupione i wystawione) oraz dywidendy — bez wgrywania czegokolwiek.
+
 Pozostałe zakładki pozwalają wszystko sprawdzić i poprawić: **Transakcje** (każda
 transakcja z dopasowanymi partiami, kursami i dochodem; edycja), **FIFO** (pary
 zakup–sprzedaż), **Dywidendy** (wypłaty i podsumowanie części G), **Opłaty** (koszty

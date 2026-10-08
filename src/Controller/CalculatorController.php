@@ -7,6 +7,7 @@ namespace App\Controller;
 use App\Fifo\FifoMatch;
 use App\Fifo\Trade;
 use App\Import\CsvImportService;
+use App\Import\CsvSource;
 use App\Import\Degiro\ExchangeCountry;
 use App\Import\ImportResult;
 use App\Import\MessageLevel;
@@ -59,7 +60,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     errors: list<string>,
  *     diagnostics: list<Diagnostic>,
  *     settings: WorkbenchSettings,
- *     tradesComplete: bool
+ *     tradesComplete: bool,
+ *     demo: bool
  * }
  * @phpstan-type WorkbenchContext array{
  *     report: TaxReport|null,
@@ -90,7 +92,8 @@ use Symfony\Component\Routing\Attribute\Route;
  *     expected_trades: int,
  *     expected_dividends: int,
  *     expected_fees: int,
- *     disclaimer: string
+ *     disclaimer: string,
+ *     demo: bool
  * }
  * @phpstan-type PreparedWorkbench array{state: WorkbenchState, context: WorkbenchContext, settlement: SettlementResult|null}
  */
@@ -103,6 +106,13 @@ final class CalculatorController extends AbstractController
     private const array WORKBENCH_RAISED_IMPORT_CODES = ['fifo.unmatched_sell', 'fifo.option_unmatched_close'];
 
     private const string CSRF_TOKEN_ID = 'kalkulator';
+
+    /**
+     * The fictional statements behind "Symulacja", and the year they settle.
+     */
+    private const array DEMO_FILES = ['ibkr-activity-statement.csv', 'degiro-transakcje.csv', 'degiro-rachunek.csv'];
+
+    private const int DEMO_YEAR = 2025;
 
     public function __construct(
         private readonly UploadedCsvReader $uploadedCsvReader,
@@ -120,6 +130,7 @@ final class CalculatorController extends AbstractController
         private readonly TradeLedgerBuilder $tradeLedgerBuilder,
         private readonly int $maxFiles,
         private readonly int $maxBytes,
+        private readonly string $demoDir,
     ) {
     }
 
@@ -133,6 +144,29 @@ final class CalculatorController extends AbstractController
             'max_files' => $this->maxFiles,
             'max_megabytes' => round($this->maxBytes / 1024 / 1024, 1),
         ]);
+    }
+
+    /**
+     * The workbench on fictional statements, so anyone can see what it does
+     * before uploading their own. It goes through the real import and keeps
+     * nothing - a GET that changes no state.
+     */
+    #[Route('/kalkulator/symulacja', name: 'app_calculator_demo', methods: ['GET'])]
+    public function demo(): Response
+    {
+        $sources = [];
+        foreach (self::DEMO_FILES as $file) {
+            $content = file_get_contents($this->demoDir.'/'.$file);
+            if (false === $content) {
+                throw new \RuntimeException(sprintf('Brak pliku symulacji %s.', $file));
+            }
+            $sources[] = new CsvSource($file, $content);
+        }
+
+        $state = $this->stateFromImport($this->importService->import($sources), self::DEMO_YEAR, new WorkbenchSettings());
+        $state['demo'] = true;
+
+        return $this->workbenchResponse($state);
     }
 
     #[Route('/kalkulator/import', name: 'app_calculator_import', methods: ['POST'])]
@@ -278,7 +312,7 @@ final class CalculatorController extends AbstractController
             'trades' => [], 'dividends' => [], 'fees' => [],
             'tradeRows' => [], 'dividendRows' => [], 'feeRows' => [],
             'tombstones' => [], 'errors' => [], 'settings' => new WorkbenchSettings(),
-            'diagnostics' => [], 'tradesComplete' => true,
+            'diagnostics' => [], 'tradesComplete' => true, 'demo' => false,
         ];
     }
 
@@ -298,6 +332,7 @@ final class CalculatorController extends AbstractController
             'diagnostics' => $this->importDiagnostics($result),
             'settings' => $settings,
             'tradesComplete' => true,
+            'demo' => false,
         ];
     }
 
@@ -400,6 +435,8 @@ final class CalculatorController extends AbstractController
             // Every posted trade row became a trade, so FIFO over them means
             // something even while another tab blocks the result.
             'tradesComplete' => [] === $trades->errors && [] === $tradeTruncation,
+            // Rides the form like the tax year, so the notice outlives a recalculation.
+            'demo' => $this->truthy($request->request->get('demo')),
         ];
     }
 
@@ -480,6 +517,7 @@ final class CalculatorController extends AbstractController
             'expected_dividends' => count($state['dividendRows']),
             'expected_fees' => count($state['feeRows']),
             'disclaimer' => CsvReportWriter::DISCLAIMER,
+            'demo' => $state['demo'],
         ];
 
         return ['state' => $state, 'context' => $context, 'settlement' => $settlement];

@@ -12,6 +12,14 @@
         <p class="workbench-heading__privacy">Dane tylko w tej karcie przeglądarki</p>
     </div>
 
+    {% if demo %}
+        <p class="message message--info" data-role="demo-notice">
+            <strong>Symulacja na fikcyjnych danych.</strong> Spółki, kwoty i numery ISIN są zmyślone —
+            to podgląd tego, jak kalkulator rozlicza akcje, ETF-y, opcje i dywidendy z IBKR i DEGIRO.
+            <a href="{{ path('app_calculator') }}">Policz na własnych plikach</a>
+        </p>
+    {% endif %}
+
     <form action="{{ path('app_calculator_result') }}" method="post" enctype="multipart/form-data"
           data-role="review" data-workbench>
         <input type="hidden" name="_token" value="{{ csrf_token(csrf_token_id) }}">
@@ -19,6 +27,7 @@
         <input type="hidden" name="expected_dividends" value="{{ expected_dividends }}">
         <input type="hidden" name="expected_fees" value="{{ expected_fees }}">
         <input type="hidden" name="revision" value="0" data-revision>
+        {% if demo %}<input type="hidden" name="demo" value="1">{% endif %}
         {% for id in tombstones %}<input type="hidden" name="tombstones[]" value="{{ id }}">{% endfor %}
 
         <div class="workbench-bar">

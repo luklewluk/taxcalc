@@ -102,15 +102,15 @@ final class LandingPageTest extends WebTestCase
         self::assertStringEndsWith('/issues', (string) $links->last()->attr('href'));
     }
 
-    public function testTheHeroSaysWhatItIsAndOffersOneWayIn(): void
+    public function testTheHeroSaysWhatItIsAndOffersTheCalculatorAndADemo(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/');
 
         self::assertSame('Kalkulator PIT-38 dla inwestorów', trim($crawler->filter('.hero h1')->text()));
         $actions = $crawler->filter('.hero__actions a');
-        self::assertCount(1, $actions);
-        self::assertSame('/kalkulator', $actions->attr('href'));
+        self::assertSame(['Oblicz podatek', 'Symulacja'], $actions->each(static fn (Crawler $link): string => trim($link->text())));
+        self::assertSame(['/kalkulator', '/kalkulator/symulacja'], $actions->each(static fn (Crawler $link): string => (string) $link->attr('href')));
         self::assertStringNotContainsString('Jak to działa', $crawler->filter('main')->text());
     }
 

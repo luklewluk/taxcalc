@@ -71,6 +71,7 @@ COPY config config
 COPY public public
 COPY src src
 COPY migrations migrations
+COPY demo demo
 COPY templates templates
 COPY composer.json composer.lock ./
 # Use only the public template at build time. Runtime deployment values are
