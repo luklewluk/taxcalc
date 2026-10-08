@@ -67,6 +67,12 @@ final class LandingPageTest extends WebTestCase
             static fn (Crawler $logo): string => (string) $logo->attr('aria-label'),
         ));
         self::assertCount(0, $section->filter('img'));
+
+        // The heading keeps the left edge every other section heading has;
+        // only the logos are centred, each in its own cell.
+        $css = (string) file_get_contents(dirname(__DIR__, 2).'/public/css/app.css');
+        self::assertDoesNotMatchRegularExpression('/\.brokers\s*\{[^}]*text-align:\s*center/', $css);
+        self::assertMatchesRegularExpression('/\.broker-logos\s*\{[^}]*display:\s*grid/', $css);
         $logos->each(static function (Crawler $logo): void {
             self::assertStringContainsString('currentColor', $logo->html());
             self::assertStringNotContainsString('style', $logo->html());

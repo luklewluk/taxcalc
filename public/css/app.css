@@ -585,18 +585,30 @@ code {
     transform: rotate(-4deg);
 }
 
-.brokers { text-align: center; }
-
+/*
+ * Supported brokers: the heading keeps the left edge of every section, the
+ * logos sit in a strip drawn in the language of the FAQ list below it -
+ * hairlines above and below, one between the cells - each centred in its own
+ * half. The two marks differ in build (IBKR's symbol rises above its letters,
+ * DEGIRO's caps are heavier), so their heights are set to match optically.
+ */
 .broker-logos {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 1.25rem 3rem;
-    margin: 1.75rem 0 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    margin: 1.5rem 0 0;
     padding: 0;
+    border-block: 1px solid var(--hairline);
     list-style: none;
 }
+
+.broker-logos li {
+    display: grid;
+    place-items: center;
+    min-height: 6rem;
+    padding: 1.25rem 1.5rem;
+}
+
+.broker-logos li + li { border-left: 1px solid var(--hairline); }
 
 /*
  * Third-party logos as their owners draw them; only the lettering follows the
@@ -605,7 +617,15 @@ code {
  */
 .broker-logo { display: block; width: auto; max-width: 100%; height: 2.25rem; }
 .broker-logo--ibkr { color: var(--logo-ink-ibkr); }
-.broker-logo--degiro { height: 1.5rem; color: var(--logo-ink-degiro); }
+.broker-logo--degiro { height: 1.625rem; color: var(--logo-ink-degiro); }
+
+@media (max-width: 34rem) {
+    .broker-logos { grid-template-columns: minmax(0, 1fr); }
+    .broker-logos li { min-height: 4.5rem; padding: 1rem; }
+    .broker-logos li + li { border-left: 0; border-top: 1px solid var(--hairline); }
+    .broker-logo { height: 2rem; }
+    .broker-logo--degiro { height: 1.375rem; }
+}
 
 /*
  * Closing call to action. The teal wash is a background, so the ink on top is
