@@ -1,6 +1,6 @@
 {
     "name": "luklewluk/taxcalc",
-    "description": "Otwartoźródłowy, prywatny kalkulator podatku PIT-38 od akcji i dywidend (Interactive Brokers, DEGIRO)",
+    "description": "Kalkulator PIT-38",
     "type": "project",
     "license": "MIT",
     "keywords": ["pit-38", "podatek", "gielda", "dywidendy", "interactive-brokers", "degiro", "nbp"],
