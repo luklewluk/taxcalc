@@ -350,8 +350,8 @@ Nine modules under `src/`, ordered from the inside out:
   is live, so the user picks the reading in Ustawienia (default: conservative/KIS). The domain
   still computes both - switching must not need a re-import - but no surface prints the other
   one, an "alternative" figure or a difference. Every figure that depends on the reading
-  carries its label (`CreditMethod::shortLabel()`), and the summary explains the chosen one
-  with its sources.
+  carries its label (`CreditMethod::shortLabel()`); what the readings mean and their sources
+  live in Ustawienia, where the choice is made.
 - **Corporate actions are never settled silently.** Splits, mergers and spin-offs are out
   of scope. A row with a non-zero quantity but no price or no cash is *fatal*: skipping it
   would change the cost basis of every later sale of that instrument, so the batch stops

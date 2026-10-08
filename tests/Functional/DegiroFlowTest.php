@@ -155,7 +155,7 @@ final class DegiroFlowTest extends WebTestCase
 
         self::assertStringContainsString('Przychód', $text);
         self::assertStringContainsString('Koszty uzyskania przychodu', $text);
-        self::assertStringContainsString('Wariant odliczenia podatku od dywidend: zachowawczy (KIS)', $text);
+        self::assertStringContainsString('wariant zachowawczy (KIS)', $crawler->filter('#panel-summary')->text());
         self::assertStringContainsString('nie stanowi porady podatkowej', $text);
     }
 

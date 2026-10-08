@@ -158,16 +158,16 @@ final class UiSurfacesTest extends WebTestCase
         $client = static::createClient();
         $crawler = $this->import($client, ['dividends.csv' => self::DIVIDENDS]);
         $panel = $crawler->filter('#panel-settings');
-        $button = $panel->filter('[data-apply-settings]');
 
-        self::assertSame(1, $button->count());
-        self::assertNotNull($button->attr('formnovalidate'));
-        self::assertStringContainsString('/kalkulator/wynik', (string) $button->attr('formaction'));
+        // No button: a changed setting submits the whole form by itself.
+        self::assertSame(0, $panel->filter('button')->count());
         self::assertSame(2, $panel->filter('select[data-full-reload]')->count());
+        self::assertStringContainsString('/kalkulator/wynik', (string) $crawler->filter('form[data-workbench]')->attr('action'));
 
         $script = (string) file_get_contents(\dirname(__DIR__, 2).'/public/js/app.js');
         self::assertStringContainsString('data-full-reload', $script);
-        self::assertStringContainsString('data-apply-settings', $script);
+        self::assertStringContainsString('workbench.requestSubmit()', $script);
+        self::assertStringNotContainsString('data-apply-settings', $script);
     }
 
     public function testASelectedSettingSurvivesTheRoundTrip(): void
@@ -363,8 +363,7 @@ final class UiSurfacesTest extends WebTestCase
         $crawler = $client->request('POST', '/kalkulator/wynik', $payload);
         $summary = $crawler->filter('#panel-summary');
 
-        self::assertStringContainsString('wg NSA', $summary->text());
-        self::assertStringContainsString('II FSK 1171/22', $summary->text());
+        self::assertStringContainsString('wariant wg NSA', $summary->text());
         self::assertStringNotContainsString('alternatywn', mb_strtolower($summary->text()));
         self::assertStringNotContainsString('zachowawcz', mb_strtolower($summary->text()));
     }

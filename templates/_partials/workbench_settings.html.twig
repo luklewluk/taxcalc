@@ -7,20 +7,11 @@
         <h2>Ustawienia rozliczenia</h2>
         <p class="note">
             Tu decydujesz o rzeczach, w których przepisy dopuszczają więcej niż jedno odczytanie.
-            Nie są to błędy do naprawy, więc nie pojawiają się w „Wymaga uwagi”. Ustawienia jadą
-            razem z danymi w formularzu — nic nie jest zapisywane.
+            Nie są to błędy do naprawy, więc nie pojawiają się w „Wymaga uwagi”. Zmiana ustawienia
+            od razu przelicza cały arkusz (bez JavaScriptu — przyciskiem „Przelicz”). Ustawienia
+            jadą razem z danymi w formularzu — nic nie jest zapisywane.
         </p>
     </div>
-</div>
-
-<div class="settings-actions">
-    {# A full submit, not the AJAX debounce: the editor tables are not fragments,
-       so a background recalculation would leave the Transakcje tab showing the
-       old countries while the summary already used the new ones. #}
-    <button type="submit" class="button button--primary"
-            formaction="{{ path('app_calculator_result') }}" formnovalidate
-            data-apply-settings>Zastosuj ustawienia</button>
-    <p class="note">Zmiana ustawienia przelicza cały arkusz i odświeża tabele.</p>
 </div>
 
 <div class="settings-grid">
@@ -82,6 +73,12 @@
             Wysokość odliczenia jest sporna, więc wariant wybierasz sam. <strong>Wybrany wariant jest
             jedynym pokazywanym</strong> — wypełnia pola PIT i liczy się według niego podsumowanie,
             zakładka Dywidendy, wydruk i raport CSV. Domyślny jest wariant zachowawczy (KIS).
+        </p>
+        <p class="note">
+            Źródła: <a href="https://isap.sejm.gov.pl/isap.nsf/DocDetails.xsp?id=WDU19910800350" rel="noopener noreferrer">art. 30a ust. 9 ustawy o PIT</a>,
+            <a href="https://www.podatki.gov.pl/pit/" rel="noopener noreferrer">informacje MF</a>,
+            <a href="https://orzeczenia.nsa.gov.pl/" rel="noopener noreferrer">orzeczenia NSA w CBOSA</a>.
+            W razie wątpliwości rozważ interpretację indywidualną albo konsultację z doradcą podatkowym.
         </p>
     </section>
 </div>

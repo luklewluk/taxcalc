@@ -113,9 +113,8 @@
         {% endfor %}
     </section>
 
-    {% include '_partials/credit_scenarios.html.twig' %}
-
-    <details class="disclosure disclosure--card">
+    {# The printable report includes this partial with `expanded`: paper never loses content. #}
+    <details class="disclosure disclosure--card"{{ expanded is defined and expanded ? ' open' : '' }}>
         <summary>Dane spoza kalkulacji</summary>
         <div class="disclosure__body">
             <dl class="pit-fields">

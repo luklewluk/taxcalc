@@ -2041,14 +2041,6 @@ kbd {
     caption-side: top;
 }
 
-.settings-actions {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 0.75rem;
-    margin-bottom: 1rem;
-}
-
 .settings-grid {
     display: grid;
     gap: 1rem;

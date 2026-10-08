@@ -714,16 +714,19 @@
             // A setting changes values inside the editor tables, and those are
             // not AJAX fragments - recalculating in the background would leave
             // them showing the old countries while the summary used the new
-            // ones. So a setting submits for real.
+            // ones. So a setting submits for real, to the form's own action.
+            // requestSubmit() rather than submit(): the submit event has to fire
+            // so the leave-page warning stands down. noValidate is the
+            // `formnovalidate` every workbench submit carries - blank required
+            // country selects must not stop it. The formdata handler still
+            // decides what the rows carry.
             if (event.target instanceof Element && event.target.hasAttribute('data-full-reload')) {
                 window.clearTimeout(timer);
                 if (controller) {
                     controller.abort();
                 }
-                var apply = workbench.querySelector('[data-apply-settings]');
-                if (apply instanceof HTMLElement) {
-                    apply.click();
-                }
+                workbench.noValidate = true;
+                workbench.requestSubmit();
                 return;
             }
             // Trades change only through "Zapisz"; a keystroke in an editor is

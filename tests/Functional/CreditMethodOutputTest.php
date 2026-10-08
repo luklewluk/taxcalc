@@ -74,18 +74,25 @@ final class CreditMethodOutputTest extends WebTestCase
         self::assertNoTraceOf('KIS', $shown);
     }
 
-    public function testTheChosenVariantIsExplainedWithItsSource(): void
+    /**
+     * The summary names the reading next to its figures and explains nothing
+     * more; what the readings mean, and where they come from, is told where
+     * the choice is made.
+     */
+    public function testTheReadingsAreExplainedInTheSettingsNotInTheSummary(): void
     {
         $client = static::createClient();
+        $crawler = $this->calculate($client);
 
-        $kis = $this->calculate($client)->filter('#panel-summary');
-        self::assertStringContainsString('Krajowa Informacja Skarbowa', $kis->text());
-        self::assertMatchesRegularExpression('/Ustawieni/u', $kis->text());
+        self::assertSame(0, $crawler->filter('#panel-summary [data-role="credit-method"]')->count());
+        self::assertStringNotContainsString('Krajowa Informacja Skarbowa', $crawler->filter('#panel-summary')->text());
 
-        $nsa = $this->calculate($client, 'nsa')->filter('#panel-summary');
-        self::assertStringContainsString('II FSK 1171/22', $nsa->text());
-        self::assertStringContainsString('II FSK 1302/22', $nsa->text());
-        self::assertStringContainsString('orzeczenia.nsa.gov.pl', implode(' ', $nsa->filter('a')->extract(['href'])));
+        $settings = $crawler->filter('#panel-settings');
+        self::assertStringContainsString('Krajowa Informacja Skarbowa', $settings->text());
+        self::assertStringContainsString('II FSK 1171/22', $settings->text());
+        $links = implode(' ', $settings->filter('a')->extract(['href']));
+        self::assertStringContainsString('isap.sejm.gov.pl', $links);
+        self::assertStringContainsString('orzeczenia.nsa.gov.pl', $links);
     }
 
     public function testPrintableReportShowsOnlyTheChosenVariant(): void
