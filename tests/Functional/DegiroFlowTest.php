@@ -57,12 +57,12 @@ final class DegiroFlowTest extends WebTestCase
         parent::tearDown();
     }
 
-    public function testCalculatorPageExplainsWhereToGetTheDegiroFiles(): void
+    public function testTheFilesGuideExplainsWhereToGetTheDegiroFiles(): void
     {
         $client = static::createClient();
-        $crawler = $client->request('GET', '/kalkulator');
+        $crawler = $client->request('GET', '/skad-wziac-pliki');
 
-        $text = $crawler->filter('body')->text();
+        $text = $crawler->filter('section#degiro')->text();
         self::assertStringContainsString('DEGIRO', $text);
         self::assertStringContainsString('Transakcje', $text);
         self::assertStringContainsString('Zestawienie konta', $text);

@@ -19,4 +19,10 @@ final class HomeController extends AbstractController
             'country_names' => $taxRates->supportedCountries(),
         ]);
     }
+
+    #[Route('/skad-wziac-pliki', name: 'app_files_guide', methods: ['GET'])]
+    public function filesGuide(): Response
+    {
+        return $this->render('guide/index.html.twig');
+    }
 }

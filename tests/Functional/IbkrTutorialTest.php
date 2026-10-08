@@ -16,11 +16,12 @@ final class IbkrTutorialTest extends WebTestCase
     public function testTheIbkrHelpWalksThroughTheStatementWithThreeScreenshots(): void
     {
         $client = static::createClient();
-        $crawler = $client->request('GET', '/kalkulator');
+        $crawler = $client->request('GET', '/skad-wziac-pliki');
 
-        $help = $crawler->filterXPath('//details[summary[normalize-space()="Jak pobrać pliki z IBKR"]]');
+        self::assertResponseIsSuccessful();
+        $help = $crawler->filter('section#ibkr');
         self::assertCount(1, $help);
-        self::assertNull($help->attr('open'), 'The help stays collapsed until asked for.');
+        self::assertStringContainsString('Interactive Brokers', $help->filter('h2')->text());
 
         $steps = $help->filter('ol.tutorial > li.tutorial__step');
         self::assertCount(3, $steps);

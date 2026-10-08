@@ -96,7 +96,7 @@ final class LandingPageTest extends WebTestCase
         $crawler = $client->request('GET', '/');
 
         $links = $crawler->filter('.site-nav a');
-        self::assertSame(['Start', 'Zgłoś problem'], $links->each(
+        self::assertSame(['Start', 'Skąd wziąć pliki', 'Zgłoś problem'], $links->each(
             static fn (Crawler $link): string => trim($link->text()),
         ));
         self::assertStringEndsWith('/issues', (string) $links->last()->attr('href'));
@@ -112,6 +112,20 @@ final class LandingPageTest extends WebTestCase
         self::assertSame(['Oblicz podatek', 'Symulacja'], $actions->each(static fn (Crawler $link): string => trim($link->text())));
         self::assertSame(['/kalkulator', '/kalkulator/symulacja'], $actions->each(static fn (Crawler $link): string => (string) $link->attr('href')));
         self::assertStringNotContainsString('Jak to działa', $crawler->filter('main')->text());
+    }
+
+    public function testTheFilesGuideIsInTheMenuAndMarksItselfCurrent(): void
+    {
+        $client = static::createClient();
+        $crawler = $client->request('GET', '/skad-wziac-pliki');
+
+        $current = $crawler->filter('.site-nav a[aria-current="page"]');
+        self::assertCount(1, $current);
+        self::assertSame('Skąd wziąć pliki', trim($current->text()));
+        self::assertSame('/skad-wziac-pliki', $current->attr('href'));
+
+        $faq = $client->request('GET', '/')->filter('section[aria-labelledby="faq"]');
+        self::assertGreaterThan(0, $faq->filter('a[href="/skad-wziac-pliki"]')->count());
     }
 
     public function testTheDetailsAreAnFaqAndTheFlowSectionIsGone(): void

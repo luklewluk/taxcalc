@@ -1,0 +1,126 @@
+{% extends 'base.html.twig' %}
+
+{% block title %}Skąd wziąć pliki — {{ app_name }}{% endblock %}
+
+{% block body %}
+    <h1>Skąd wziąć pliki</h1>
+    <p class="lead">
+        Kalkulator czyta wyciąg <strong>Activity Statement</strong> z Interactive Brokers oraz dwa eksporty
+        z DEGIRO. Poniżej, krok po kroku, jak je pobrać.
+    </p>
+    <ul class="list-plain">
+        <li><a href="#ibkr">Interactive Brokers</a></li>
+        <li><a href="#degiro">DEGIRO</a></li>
+        <li><a href="#czego-nie-rozliczy">Czego kalkulator nie rozliczy</a></li>
+    </ul>
+
+    <section class="section" id="ibkr" aria-labelledby="ibkr-title">
+        <h2 id="ibkr-title">Interactive Brokers — Activity Statement</h2>
+        <p>
+            Najprościej: <strong>Activity Statement</strong> — standardowy wyciąg, który nie wymaga żadnej
+            konfiguracji. Jeden plik obejmuje najwyżej rok, więc pobierz go za każdy rok od pierwszego
+            zakupu papierów, które sprzedawałeś, i wgraj wszystkie pliki naraz — kalkulator połączy je
+            w jedną kolejkę FIFO.
+        </p>
+        <ol class="tutorial">
+            <li class="tutorial__step">
+                <p>Zaloguj się do portalu IBKR i z menu <strong>Performance &amp; Reports</strong> wybierz <strong>Statements</strong>.</p>
+                <figure class="tutorial__shot">
+                    <img src="{{ asset('img/ibkr/activity-statement-1.png') }}" width="878" height="195" loading="lazy"
+                         alt="Menu Performance &amp; Reports w portalu IBKR z zaznaczoną pozycją Statements">
+                </figure>
+            </li>
+            <li class="tutorial__step">
+                <p>W sekcji <em>Default Statements</em> przy <strong>Activity Statement</strong> kliknij strzałkę po prawej (obok przycisku Run).</p>
+                <figure class="tutorial__shot">
+                    <img src="{{ asset('img/ibkr/activity-statement-2.png') }}" width="960" height="620" loading="lazy"
+                         alt="Lista Default Statements; strzałka wskazuje przycisk ze strzałką przy Activity Statement">
+                </figure>
+            </li>
+            <li class="tutorial__step">
+                <p>
+                    Ustaw <strong>Period: Annual</strong>, w polu <strong>Date</strong> wybierz rok i kliknij
+                    <strong>Download CSV</strong>. Powtórz dla każdego roku. Raport musi być po angielsku
+                    (domyślnie tak jest).
+                </p>
+                <figure class="tutorial__shot">
+                    <img src="{{ asset('img/ibkr/activity-statement-3.png') }}" width="952" height="316" loading="lazy"
+                         alt="Okno Activity Statement: Period Annual, wybór roku w polu Date i przycisk Download CSV">
+                </figure>
+            </li>
+        </ol>
+        <p>
+            Jeden wyciąg zawiera transakcje, dywidendy i podatek u źródła. Kraj dochodu kalkulator
+            proponuje z giełdy notowania, a dla dywidend z prefiksu ISIN — sprawdź go w zakładkach
+            Transakcje i Dywidendy.
+        </p>
+        <p>
+            Opcje z wyciągu są rozliczane w dniu <strong>zamknięcia</strong> pozycji (odkup, sprzedaż,
+            wygaśnięcie, przydział), nigdy w dniu otwarcia — zgodnie z interpretacją KIS
+            0113-KDIPT2-3.4011.645.2025.3.KKA. Akcje z przydziału wchodzą do FIFO po cenie wykonania.
+        </p>
+    </section>
+
+    <section class="section" id="degiro" aria-labelledby="degiro-title">
+        <h2 id="degiro-title">DEGIRO — Transakcje i Zestawienie konta</h2>
+        <p>
+            Oba pliki są w portfelu DEGIRO w sekcji <em>Aktywność</em>. Wybierz zakres dat obejmujący
+            cały rok — a przy sprzedaży także lata, w których kupowałeś — i użyj <em>Eksport → CSV</em>.
+        </p>
+        <ul class="list-plain">
+            <li>
+                <strong>Transakcje</strong> — kupno i sprzedaż. Kwota rozliczenia brana jest z kolumny
+                <em>Total</em>, więc zawiera już opłatę transakcyjną.
+            </li>
+            <li>
+                <strong>Zestawienie konta</strong> — dywidendy i pobrany podatek u źródła. O roku
+                podatkowym i kursie decyduje dzień zaksięgowania na rachunku; w polskim eksporcie
+                z dwiema kolumnami „Data” jest to pierwsza z nich.
+            </li>
+        </ul>
+        <p>
+            Eksport nie zawiera kraju dochodu — kalkulator proponuje go dla transakcji z giełdy notowania,
+            a dla dywidend z prefiksu ISIN. To nie zawsze kraj źródła, więc sprawdź kolumnę „Kraj”
+            w zakładkach Transakcje i Dywidendy.
+        </p>
+        <p>
+            Instrukcję prowadzi też sam broker:
+            <a href="https://www.degiro.com/uk/helpdesk/tax/tax-treaties/which-reports-are-there-and-where-can-i-find-them"
+               rel="noreferrer noopener nofollow">Which reports are there and where can I find them</a>.
+        </p>
+    </section>
+
+    <section class="section" id="czego-nie-rozliczy" aria-labelledby="limits-title">
+        <h2 id="limits-title">Czego kalkulator nie rozliczy</h2>
+        <p>W każdym z tych przypadków import zatrzymuje się i mówi wprost, którego instrumentu dotyczy.</p>
+        <ul class="list-plain">
+            <li>
+                <strong>Operacje korporacyjne</strong> — splity, scalenia, przydziały. Pominięcie takiego
+                wiersza zmieniłoby koszt nabycia wszystkich późniejszych sprzedaży tego papieru.
+            </li>
+            <li>
+                <strong>Pozycja kupiona i sprzedana w różnych walutach</strong> — pozycja zamknięta ma
+                jedną walutę, więc wybór „którejś” z nich byłby zgadywaniem.
+            </li>
+        </ul>
+        <p>
+            <strong>Sprzedaż bez zakupu w wgranych plikach</strong> nie zatrzymuje importu: bez kosztu
+            nabycia nie da się jej rozliczyć, więc trafia do „Wymaga uwagi” i jest pominięta w wyniku.
+            Zwykle brakuje wyciągu za wcześniejszy rok — wgraj go razem z pozostałymi.
+        </p>
+        <ul class="list-plain">
+            <li>
+                <strong>Opłaty, których nie ma w pliku</strong> — starsze eksporty DEGIRO nie ujmowały
+                kosztu przewalutowania w kwocie całkowitej.
+            </li>
+            <li>
+                <strong>Capital Return i QIE Distribution Capital Gain</strong> — są pomijane z
+                ostrzeżeniem, bo ich kwalifikację podatkową trzeba sprawdzić ręcznie.
+            </li>
+        </ul>
+    </section>
+
+    <p class="actions actions--start">
+        <a class="button button--primary button--large button--next" href="{{ path('app_calculator') }}">Oblicz podatek</a>
+    </p>
+{% endblock %}

@@ -14,7 +14,7 @@ final class BrandTest extends WebTestCase
     {
         $client = static::createClient();
 
-        foreach (['/', '/kalkulator'] as $path) {
+        foreach (['/', '/kalkulator', '/skad-wziac-pliki'] as $path) {
             $crawler = $client->request('GET', $path);
 
             self::assertStringContainsString('TaxCalc.pl', $crawler->filter('title')->text(), $path);

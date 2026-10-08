@@ -90,6 +90,8 @@ dywidendy i podatek u źródła.
 - *Transakcje* → zakres dat obejmujący także lata zakupów → *Eksport → CSV*,
 - *Zestawienie konta* → *Eksport → CSV* (dywidendy i podatek u źródła).
 
+Instrukcja ze zrzutami ekranu: [taxcalc.pl/skad-wziac-pliki](https://taxcalc.pl/skad-wziac-pliki).
+
 Eksporty brokerów nie podają kraju źródła dochodu. Kalkulator **proponuje** go z giełdy
 notowania (dla dywidend z DEGIRO — z numeru ISIN), ale to tylko propozycja: sprawdź ją przed
 przepisaniem wyniku.

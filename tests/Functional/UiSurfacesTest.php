@@ -92,18 +92,24 @@ final class UiSurfacesTest extends WebTestCase
         self::assertSame(1, $crawler->filter('[data-role="dropzone"] input[type="file"][multiple]')->count());
     }
 
-    public function testBrokerHelpStaysCollapsed(): void
+    /**
+     * The upload page links to the guide instead of carrying it.
+     */
+    public function testTheCalculatorLinksToTheFilesGuideInsteadOfCarryingIt(): void
     {
         $client = static::createClient();
         $crawler = $client->request('GET', '/kalkulator');
-        $summaries = $crawler->filter('details > summary')->each(
-            static fn (Crawler $node): string => $node->text(),
-        );
 
-        self::assertContains('Jak pobrać pliki z IBKR', $summaries);
-        self::assertContains('Jak pobrać pliki z DEGIRO', $summaries);
-        self::assertNotContains('Przykładowe pliki', $summaries);
-        self::assertSame([], self::openDisclosures($crawler));
+        self::assertSame(0, $crawler->filter('main details')->count());
+        self::assertStringNotContainsString('Performance & Reports', $crawler->filter('main')->text());
+        self::assertGreaterThan(0, $crawler->filter('main a[href="/skad-wziac-pliki"]')->count());
+
+        $guide = $client->request('GET', '/skad-wziac-pliki');
+        self::assertResponseIsSuccessful();
+        foreach (['ibkr', 'degiro', 'czego-nie-rozliczy'] as $section) {
+            self::assertCount(1, $guide->filter('section#'.$section), $section);
+        }
+        self::assertSame('/kalkulator', $guide->filter('main a.button--primary')->attr('href'));
     }
 
     public function testFirstImportGoesStraightToTheSevenTabWorkbench(): void
