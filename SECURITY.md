@@ -64,7 +64,7 @@ Ta aplikacja została zaprojektowana tak, aby **nie przechowywać żadnych danyc
 - **Szablony** — automatyczne escapowanie Twiga, bez `|raw` na danych użytkownika.
 - **Nagłówki** — `Content-Security-Policy`, `X-Content-Type-Options`, `X-Frame-Options`,
   `Referrer-Policy`, `Permissions-Policy`, `Cross-Origin-*` oraz `Strict-Transport-Security`
-  wyłącznie na połączeniach HTTPS (patrz „HTTPS i odwrotne proxy”).
+  wyłącznie na połączeniach HTTPS (patrz „HTTPS i reverse proxy”).
 - **Walidacja wartości** — kwoty zakupu, sprzedaży i dywidendy brutto muszą być dodatnie,
   liczba sztuk dodatnia, podatek u źródła nieujemny, a kod kraju dwuliterowy. Reguły są
   wymuszane w modelu domenowym, więc obowiązują tak samo przy imporcie pliku, jak i przy
@@ -104,7 +104,7 @@ TRUSTED_HOSTS='^(kalkulator|www)\.example\.com$'
 
 Lokalnie zostaw wartość pustą — domyślna konfiguracja nie wymaga zmian i nic nie psuje.
 
-### HTTPS i odwrotne proxy
+### HTTPS i reverse proxy
 
 Nagłówek `Strict-Transport-Security` (HSTS, `max-age=31536000; includeSubDomains`) jest
 wysyłany **tylko wtedy, gdy żądanie jest rozpoznane jako HTTPS**. To celowe: HSTS jest
@@ -112,7 +112,7 @@ zobowiązaniem jednokierunkowym — przeglądarka, która je zobaczy, przez rok 
 połączenia po HTTP. Wysłanie go z lokalnego serwera `php -S` zablokowałoby dostęp do
 `localhost`.
 
-Jeśli TLS kończy się na odwrotnym proxy (nginx, Traefik, Cloudflare, load balancer),
+Jeśli TLS kończy się na reverse proxy (nginx, Traefik, Cloudflare, load balancer),
 aplikacja widzi zwykłe HTTP i **HSTS nie zostanie wysłany**, dopóki nie zaufasz nagłówkom
 przekazywanym przez proxy. Skonfiguruj oba końce:
 

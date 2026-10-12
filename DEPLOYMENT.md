@@ -96,7 +96,7 @@ Na co zwrócić uwagę:
 - `fastcgi_param SCRIPT_FILENAME $realpath_root…` sprawia, że PHP widzi ścieżkę nowego
   wydania zamiast symlinku.
 - TLS kończy się na tym nginx, więc aplikacja sama wie o HTTPS i wysyła HSTS. Za
-  Cloudflare w trybie proxy lub innym odwrotnym proxy skonfiguruj zaufane proxy wg
+  Cloudflare w trybie proxy lub innym reverse proxy skonfiguruj zaufane proxy wg
   [SECURITY.md](SECURITY.md).
 
 ## 4. Konfiguracja aplikacji
